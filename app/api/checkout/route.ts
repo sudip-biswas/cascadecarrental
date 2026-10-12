@@ -111,6 +111,7 @@ export async function POST(req: Request) {
     amount: pricing.totalCents,
     currency: "usd",
     customer: customerId,
+    automatic_payment_methods: { enabled: true },
     capture_method: payLater && rateType === "refundable" ? "manual" : "automatic",
     metadata: {
       vehicle_id: vehicleId,
