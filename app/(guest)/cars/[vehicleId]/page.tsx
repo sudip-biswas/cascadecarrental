@@ -40,7 +40,7 @@ export default async function CarDetailPage({ params, searchParams }: PageProps)
   const [{ data: vehicle }, { data: { user } }] = await Promise.all([
     supabase
       .from("vehicles")
-      .select("*, vehicle_images(*), vehicle_features(*), profiles(id, full_name, avatar_url, host_since, trip_count)")
+      .select("*, vehicle_images(*), vehicle_features(*), profiles(id, full_name, avatar_url, host_since)")
       .eq("id", vehicleId)
       .neq("status", "suspended")
       .single(),
@@ -50,7 +50,7 @@ export default async function CarDetailPage({ params, searchParams }: PageProps)
   if (!vehicle) notFound();
 
   const v = vehicle as unknown as VehicleWithDetails & {
-    profiles: { id: string; full_name: string; avatar_url: string | null; host_since: string | null; trip_count: number };
+    profiles: { id: string; full_name: string; avatar_url: string | null; host_since: string | null };
   };
 
   // Group features by category
