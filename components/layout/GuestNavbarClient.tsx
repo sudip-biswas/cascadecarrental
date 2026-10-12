@@ -37,7 +37,7 @@ export function GuestNavbarClient({ user, profile }: Props) {
       return;
     }
     if (!profile?.is_host) {
-      router.push("/host/onboarding");
+      router.push("/host/vehicles/new");
       return;
     }
     router.push("/host/vehicles");
