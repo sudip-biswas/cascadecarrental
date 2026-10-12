@@ -4,9 +4,10 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar, MapPin, MessageCircle } from "lucide-react";
+import { Calendar, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { TripActionButtons } from "@/components/trips/TripActionButtons";
 
 export const instant = false;
 
@@ -99,6 +100,7 @@ export default async function HostTripsPage() {
                       <span className="text-xs font-semibold text-cascade-900">
                         {formatCurrency(trip.total_cents)}
                       </span>
+                      <TripActionButtons tripId={trip.id} status={trip.status} />
                       <Button size="sm" variant="ghost" asChild className="h-7 px-2">
                         <Link href={`/host/inbox`}>
                           <MessageCircle className="w-3.5 h-3.5" />

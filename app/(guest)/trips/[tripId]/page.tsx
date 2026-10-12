@@ -3,12 +3,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { MapPin, Calendar, MessageCircle, Phone } from "lucide-react";
+import { MapPin, Calendar, MessageCircle } from "lucide-react";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import type { TripWithDetails } from "@/types";
+import { CancelTripButton } from "@/components/trips/CancelTripButton";
+import { ReviewForm } from "@/components/trips/ReviewForm";
 
 export const instant = false;
 
@@ -37,7 +37,9 @@ export default async function TripDetailPage({
 }) {
   const { tripId } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const { data: trip } = await supabase
@@ -55,6 +57,14 @@ export default async function TripDetailPage({
   const cover =
     t.vehicles?.vehicle_images?.find((i: any) => i.is_cover)?.url ??
     t.vehicles?.vehicle_images?.[0]?.url;
+
+  // Check if guest already left a review
+  const { data: existingReview } = await supabase
+    .from("reviews")
+    .select("id")
+    .eq("trip_id", tripId)
+    .eq("reviewer_id", user.id)
+    .maybeSingle();
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-6">
@@ -77,7 +87,13 @@ export default async function TripDetailPage({
       <div className="border border-border rounded-2xl overflow-hidden bg-white">
         {cover && (
           <div className="relative h-48">
-            <Image src={cover} alt="Vehicle" fill className="object-cover" sizes="100vw" />
+            <Image
+              src={cover}
+              alt="Vehicle"
+              fill
+              className="object-cover"
+              sizes="100vw"
+            />
           </div>
         )}
         <div className="p-5 space-y-3">
@@ -114,12 +130,13 @@ export default async function TripDetailPage({
           <div className="flex-1">
             <p className="font-medium text-cascade-900">{t.host?.full_name}</p>
           </div>
-          <Button size="sm" variant="outline" asChild className="gap-2">
-            <Link href={`/messages?host=${t.host?.id}`}>
-              <MessageCircle className="w-3.5 h-3.5" />
-              Message
-            </Link>
-          </Button>
+          <Link
+            href={`/messages?host=${t.host?.id}`}
+            className="inline-flex items-center gap-2 text-sm border border-border rounded-lg px-3 py-1.5 hover:bg-muted transition-colors"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            Message
+          </Link>
         </div>
       </div>
 
@@ -139,7 +156,9 @@ export default async function TripDetailPage({
           </div>
           {t.protection_cost_cents > 0 && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Protection ({t.protection_plan})</span>
+              <span className="text-muted-foreground">
+                Protection ({t.protection_plan})
+              </span>
               <span>{formatCurrency(t.protection_cost_cents)}</span>
             </div>
           )}
@@ -155,11 +174,19 @@ export default async function TripDetailPage({
         </div>
       </div>
 
+      {/* Review form (completed trips without a review) */}
+      {t.status === "completed" && !existingReview && (
+        <ReviewForm
+          tripId={tripId}
+          vehicleId={t.vehicles?.id}
+          revieweeId={t.host_id}
+          vehicleName={`${t.vehicles?.make} ${t.vehicles?.model} ${t.vehicles?.year}`}
+        />
+      )}
+
       {/* Cancel button */}
       {["pending", "approved"].includes(t.status) && (
-        <Button variant="outline" className="w-full text-ember-500 border-ember-500/30 hover:bg-ember-500/10">
-          Cancel trip
-        </Button>
+        <CancelTripButton tripId={tripId} />
       )}
     </div>
   );

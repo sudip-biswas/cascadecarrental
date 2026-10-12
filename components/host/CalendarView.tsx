@@ -13,7 +13,7 @@ import {
   isWithinInterval,
   parseISO,
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { BlockDateModal } from "@/components/host/BlockDateModal";
 
 interface Vehicle {
   id: string;
@@ -55,9 +56,11 @@ interface Props {
   userId: string;
 }
 
-export function HostCalendar({ vehicles, trips, blocked }: Props) {
+export function HostCalendar({ vehicles, trips, blocked: initialBlocked }: Props) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedVehicle, setSelectedVehicle] = useState<string>("all");
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [blockedDates, setBlockedDates] = useState<Blocked[]>(initialBlocked);
 
   const start = startOfMonth(currentMonth);
   const end = endOfMonth(currentMonth);
@@ -86,7 +89,7 @@ export function HostCalendar({ vehicles, trips, blocked }: Props) {
   }
 
   function isDayBlocked(date: Date): boolean {
-    return blocked
+    return blockedDates
       .filter((b) => selectedVehicle === "all" || b.vehicle_id === selectedVehicle)
       .some((b) => {
         try {
@@ -99,6 +102,9 @@ export function HostCalendar({ vehicles, trips, blocked }: Props) {
         }
       });
   }
+
+  const activeVehicleId =
+    selectedVehicle !== "all" ? selectedVehicle : vehicles[0]?.id ?? "";
 
   return (
     <div className="space-y-4">
@@ -124,21 +130,35 @@ export function HostCalendar({ vehicles, trips, blocked }: Props) {
           </Button>
         </div>
 
-        {vehicles.length > 0 && (
-          <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
-            <SelectTrigger className="w-52">
-              <SelectValue placeholder="All vehicles" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All vehicles</SelectItem>
-              {vehicles.map((v) => (
-                <SelectItem key={v.id} value={v.id}>
-                  {v.year} {v.make} {v.model}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        <div className="flex items-center gap-2">
+          {vehicles.length > 0 && (
+            <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
+              <SelectTrigger className="w-52">
+                <SelectValue placeholder="All vehicles" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All vehicles</SelectItem>
+                {vehicles.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.year} {v.make} {v.model}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {vehicles.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setShowBlockModal(true)}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Block dates
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Legend */}
@@ -171,7 +191,12 @@ export function HostCalendar({ vehicles, trips, blocked }: Props) {
         <div className="grid grid-cols-7">
           {paddedDays.map((date, i) => {
             if (!date) {
-              return <div key={`pad-${i}`} className="h-20 border-b border-r border-border/50" />;
+              return (
+                <div
+                  key={`pad-${i}`}
+                  className="h-20 border-b border-r border-border/50"
+                />
+              );
             }
 
             const booked = isDayBooked(date);
@@ -218,6 +243,17 @@ export function HostCalendar({ vehicles, trips, blocked }: Props) {
         <div className="text-center py-8 text-muted-foreground text-sm">
           List your first car to start managing your calendar.
         </div>
+      )}
+
+      {showBlockModal && (
+        <BlockDateModal
+          open={showBlockModal}
+          onClose={() => setShowBlockModal(false)}
+          vehicleId={activeVehicleId}
+          onBlocked={(newBlock) =>
+            setBlockedDates((prev) => [...prev, newBlock])
+          }
+        />
       )}
     </div>
   );
