@@ -42,7 +42,7 @@ export default async function CarDetailPage({ params, searchParams }: PageProps)
       .from("vehicles")
       .select("*, vehicle_images(*), vehicle_features(*), profiles(id, full_name, avatar_url, host_since, trip_count)")
       .eq("id", vehicleId)
-      .eq("status", "listed")
+      .neq("status", "suspended")
       .single(),
     supabase.auth.getUser(),
   ]);
@@ -87,6 +87,13 @@ export default async function CarDetailPage({ params, searchParams }: PageProps)
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      {/* Unlisted notice */}
+      {v.status !== "listed" && (
+        <div className="mb-4 rounded-lg bg-summit-500/10 border border-summit-500/30 px-4 py-3 text-sm text-summit-500 font-medium">
+          This listing is currently unlisted and not visible in search results.
+        </div>
+      )}
+
       {/* Photo gallery */}
       <PhotoGallery
         images={v.vehicle_images ?? []}
