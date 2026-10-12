@@ -56,6 +56,20 @@ export async function POST(req: Request) {
     images,
   } = parsed.data;
 
+  // Duplicate VIN / license plate guard
+  if (vin) {
+    const { data: vinExists } = await supabase
+      .from("vehicles").select("id").eq("vin", vin).maybeSingle();
+    if (vinExists) {
+      return NextResponse.json({ error: "A vehicle with this VIN is already listed on Cascade" }, { status: 409 });
+    }
+  }
+  const { data: plateExists } = await supabase
+    .from("vehicles").select("id").eq("license_plate", licensePlate).eq("host_id", user.id).maybeSingle();
+  if (plateExists) {
+    return NextResponse.json({ error: "You already have a listing with this license plate" }, { status: 409 });
+  }
+
   // Create vehicle
   const { data: vehicle, error } = await supabase
     .from("vehicles")
