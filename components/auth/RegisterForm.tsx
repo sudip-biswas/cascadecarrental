@@ -1,147 +1,132 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import Link from "next/link";
-import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { cn, safeRedirect } from "@/lib/utils";
+import { Field, FormError, OrDivider } from "./Field";
 import { GoogleOAuthButton } from "./GoogleOAuthButton";
-import { Separator } from "@/components/ui/separator";
 
 const schema = z.object({
-  fullName: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  fullName: z.string().trim().min(2, "Add your name, first and last."),
+  email: z.string().trim().email("That doesn't look like an email."),
+  password: z.string().min(8, "Use at least 8 characters."),
 });
 
 type FormData = z.infer<typeof schema>;
 
-interface Props {
-  redirectTo?: string;
+/** 0–4: length, then mixing letters, digits and symbols. */
+function strength(password: string) {
+  if (password.length < 8) return password.length ? 1 : 0;
+  let score = 2;
+  if (/[a-z]/i.test(password) && /\d/.test(password)) score++;
+  if (password.length >= 12 && /[^a-z\d]/i.test(password)) score++;
+  return score;
 }
 
-export function RegisterForm({ redirectTo = "/" }: Props) {
+const strengthLabel = ["", "Too short.", "Fine. A number would help.", "Strong enough.", "Strong."];
+
+export function RegisterForm({ redirectTo = "/" }: { redirectTo?: string }) {
   const router = useRouter();
-  const supabase = createClient();
-  const [loading, setLoading] = useState(false);
+  const next = safeRedirect(redirectTo);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    control,
+    formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
+  const score = strength(useWatch({ control, name: "password" }) ?? "");
+
   async function onSubmit(data: FormData) {
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    setServerError(null);
+    const { data: result, error } = await createClient().auth.signUp({
       email: data.email,
       password: data.password,
       options: {
         data: { full_name: data.fullName },
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${redirectTo}`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     });
-    setLoading(false);
-
     if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success("Check your email to confirm your account!");
-      router.push(`/login?message=check_email`);
+      setServerError(
+        /already registered/i.test(error.message)
+          ? "There's already an account with that email. Sign in instead."
+          : error.message
+      );
+      return;
     }
+    // With email confirmation off, Supabase signs the person straight in.
+    if (result.session) {
+      router.replace(next);
+      router.refresh();
+      return;
+    }
+    router.push(`/login?message=check_email${next === "/" ? "" : `&redirectTo=${encodeURIComponent(next)}`}`);
   }
 
   return (
-    <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-border p-8 space-y-6">
-      <div className="space-y-1 text-center">
-        <h1 className="text-2xl font-bold text-cascade-900">Create account</h1>
-        <p className="text-sm text-muted-foreground">Start your journey with Cascade</p>
-      </div>
-
-      <GoogleOAuthButton redirectTo={redirectTo} />
-
-      <div className="flex items-center gap-3">
-        <Separator className="flex-1" />
-        <span className="text-xs text-muted-foreground">or</span>
-        <Separator className="flex-1" />
-      </div>
-
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="fullName">Full name</Label>
-          <Input
-            id="fullName"
-            type="text"
-            placeholder="Jane Smith"
-            {...register("fullName")}
-          />
-          {errors.fullName && (
-            <p className="text-xs text-destructive">{errors.fullName.message}</p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            placeholder="you@example.com"
-            {...register("email")}
-          />
-          {errors.email && (
-            <p className="text-xs text-destructive">{errors.email.message}</p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            type="password"
-            placeholder="Min. 8 characters"
-            {...register("password")}
-          />
-          {errors.password && (
-            <p className="text-xs text-destructive">{errors.password.message}</p>
-          )}
-        </div>
-
-        <Button
-          type="submit"
-          className="w-full bg-cascade-700 hover:bg-cascade-900 text-white"
-          disabled={loading}
+    <>
+      <GoogleOAuthButton redirectTo={next} />
+      <OrDivider>or with email</OrDivider>
+      <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-3">
+        <Field
+          id="fullName"
+          label="Your name"
+          autoComplete="name"
+          placeholder="First and last"
+          error={errors.fullName?.message}
+          {...register("fullName")}
+        />
+        <Field
+          id="email"
+          label="Email"
+          type="email"
+          autoComplete="email"
+          placeholder="you@example.com"
+          error={errors.email?.message}
+          {...register("email")}
+        />
+        <Field
+          id="password"
+          label="Password"
+          type="password"
+          autoComplete="new-password"
+          error={errors.password?.message}
+          {...register("password")}
         >
-          {loading ? "Creating account..." : "Create account"}
+          {score > 0 && (
+            <>
+              <span className="mt-1.5 grid grid-cols-4 gap-1" aria-hidden>
+                {[1, 2, 3, 4].map((i) => (
+                  <span key={i} className={cn("h-[5px] rounded-[3px]", i <= score ? "bg-ink" : "bg-line")} />
+                ))}
+              </span>
+              <span className="text-[13px] text-slate">{strengthLabel[score]}</span>
+            </>
+          )}
+        </Field>
+        {serverError && <FormError>{serverError}</FormError>}
+        <Button type="submit" size="lg" className="mt-1.5 h-[58px] rounded-[16px]" disabled={isSubmitting}>
+          {isSubmitting ? "Creating account…" : "Create account"}
         </Button>
       </form>
-
-      <p className="text-center text-sm text-muted-foreground">
-        Already have an account?{" "}
+      <p className="mt-1.5 text-center text-[15px] text-slate">
+        Already have one?{" "}
         <Link
-          href={`/login${redirectTo !== "/" ? `?redirectTo=${redirectTo}` : ""}`}
-          className="text-cascade-700 font-medium hover:underline"
+          href={next === "/" ? "/login" : `/login?redirectTo=${encodeURIComponent(next)}`}
+          className="font-bold text-ink hover:text-cobalt"
         >
           Sign in
         </Link>
       </p>
-
-      <p className="text-center text-xs text-muted-foreground">
-        By creating an account, you agree to our{" "}
-        <Link href="/terms" className="underline">
-          Terms
-        </Link>{" "}
-        and{" "}
-        <Link href="/privacy" className="underline">
-          Privacy Policy
-        </Link>
-        .
-      </p>
-    </div>
+    </>
   );
 }

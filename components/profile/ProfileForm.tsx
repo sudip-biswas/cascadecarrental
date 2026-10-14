@@ -1,111 +1,105 @@
 "use client";
 
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 const schema = z.object({
-  full_name: z.string().min(2, "Name must be at least 2 characters"),
-  phone: z.string().optional(),
-  bio: z.string().max(500, "Bio must be under 500 characters").optional(),
+  full_name: z.string().trim().min(2, "Add your name, first and last."),
+  phone: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^[+\d(][\d\s().-]{6,}$/.test(v), "That doesn't look like a phone number."),
+  bio: z.string().trim().max(500, "Keep it under 500 characters."),
 });
 
 type FormData = z.infer<typeof schema>;
 
 interface Props {
-  profile: {
-    id: string;
-    full_name: string;
-    avatar_url: string | null;
-    bio: string | null;
-    phone: string | null;
-  } | null;
-  userEmail: string;
+  profile: { id: string; full_name: string; phone: string | null; bio: string | null };
+  email: string;
 }
 
-export function ProfileForm({ profile, userEmail }: Props) {
-  const [saving, setSaving] = useState(false);
-  const supabase = createClient();
+const box = "flex flex-col gap-0.5 rounded-[16px] px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-ink";
+const labelText = "text-[13px] font-semibold text-slate";
+const control = "w-full bg-transparent text-base font-semibold outline-none placeholder:font-normal placeholder:text-quiet";
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+export function ProfileForm({ profile, email }: Props) {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting, isDirty },
+  } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      full_name: profile?.full_name ?? "",
-      phone: profile?.phone ?? "",
-      bio: profile?.bio ?? "",
+      full_name: profile.full_name,
+      phone: profile.phone ?? "",
+      bio: profile.bio ?? "",
     },
   });
 
-  const onSubmit = async (data: FormData) => {
-    setSaving(true);
-    const { error } = await supabase
+  async function onSubmit(data: FormData) {
+    const { error } = await createClient()
       .from("profiles")
-      .update({ ...data, updated_at: new Date().toISOString() })
-      .eq("id", profile?.id ?? "");
-    setSaving(false);
+      .update({
+        full_name: data.full_name,
+        phone: data.phone || null,
+        bio: data.bio || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", profile.id);
 
     if (error) {
-      toast.error("Failed to save profile");
-    } else {
-      toast.success("Profile updated");
+      toast.error("Couldn't save. Try again.");
+      return;
     }
-  };
+    reset(data);
+    toast.success("Saved");
+  }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      {/* Avatar */}
-      <div className="flex items-center gap-4">
-        <Avatar className="w-16 h-16">
-          <AvatarImage src={profile?.avatar_url ?? undefined} />
-          <AvatarFallback className="text-xl bg-cascade-100 text-cascade-700">
-            {profile?.full_name?.[0]?.toUpperCase() ?? "U"}
-          </AvatarFallback>
-        </Avatar>
-        <div>
-          <p className="text-sm font-medium text-cascade-900">{userEmail}</p>
-          <p className="text-xs text-muted-foreground">Avatar managed via Google OAuth</p>
-        </div>
+    <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-2.5">
+      <label className={cn(box, errors.full_name ? "bg-error-soft" : "bg-board")}>
+        <span className={labelText}>Name</span>
+        <input className={cn(control, "h-7")} autoComplete="name" {...register("full_name")} />
+      </label>
+      {errors.full_name && <p className="px-1 text-[13px] font-semibold text-error">{errors.full_name.message}</p>}
+
+      <div className={cn(box, "bg-board")}>
+        <span className={labelText}>Email</span>
+        <span className="truncate text-base font-semibold text-slate">{email}</span>
       </div>
 
-      {/* Fields */}
-      <div className="space-y-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="full_name">Full name</Label>
-          <Input id="full_name" {...register("full_name")} />
-          {errors.full_name && (
-            <p className="text-xs text-ember-500">{errors.full_name.message}</p>
-          )}
-        </div>
+      <label id="phone" className={cn(box, errors.phone ? "bg-error-soft" : "bg-board")}>
+        <span className={labelText}>Phone, for pick-up day</span>
+        <input
+          className={cn(control, "h-7")}
+          type="tel"
+          autoComplete="tel"
+          placeholder="(206) 555-0100"
+          {...register("phone")}
+        />
+      </label>
+      {errors.phone && <p className="px-1 text-[13px] font-semibold text-error">{errors.phone.message}</p>}
 
-        <div className="space-y-1.5">
-          <Label htmlFor="phone">Phone number</Label>
-          <Input id="phone" type="tel" placeholder="+1 (555) 000-0000" {...register("phone")} />
-        </div>
+      <label className={cn(box, "gap-1", errors.bio ? "bg-error-soft" : "bg-board")}>
+        <span className={labelText}>A line for hosts</span>
+        <textarea
+          rows={2}
+          className={cn(control, "resize-none font-normal")}
+          placeholder="Ski weekends and the odd airport run."
+          {...register("bio")}
+        />
+      </label>
+      {errors.bio && <p className="px-1 text-[13px] font-semibold text-error">{errors.bio.message}</p>}
 
-        <div className="space-y-1.5">
-          <Label htmlFor="bio">Bio</Label>
-          <Textarea
-            id="bio"
-            placeholder="Tell hosts and guests a bit about yourself..."
-            rows={4}
-            {...register("bio")}
-          />
-          {errors.bio && (
-            <p className="text-xs text-ember-500">{errors.bio.message}</p>
-          )}
-        </div>
-      </div>
-
-      <Button type="submit" className="bg-cascade-700 hover:bg-cascade-900 text-white" disabled={saving}>
-        {saving ? "Saving..." : "Save changes"}
+      <Button type="submit" className="mt-1 self-start" disabled={isSubmitting || !isDirty}>
+        {isSubmitting ? "Saving…" : "Save"}
       </Button>
     </form>
   );
