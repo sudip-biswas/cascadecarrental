@@ -1,43 +1,44 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-interface Props {
+interface MarkProps {
+  size?: number;
+  /** On dark backgrounds the tile lifts to graphite so it doesn't vanish. */
+  onDark?: boolean;
   className?: string;
-  size?: "sm" | "md" | "lg";
 }
 
-export function Logo({ className, size = "md" }: Props) {
-  const sizes = {
-    sm: { icon: "w-6 h-6", text: "text-base" },
-    md: { icon: "w-8 h-8", text: "text-xl" },
-    lg: { icon: "w-10 h-10", text: "text-2xl" },
-  };
-
+/** Three stacked bars on a rounded tile. */
+export function LogoMark({ size = 38, onDark = false, className }: MarkProps) {
   return (
-    <Link href="/" className={cn("flex items-center gap-2 shrink-0", className)}>
-      <div
-        className={cn(
-          "bg-cascade-700 rounded-md flex items-center justify-center",
-          sizes[size].icon
-        )}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          className="w-4/6 h-4/6 text-white"
-          aria-hidden="true"
-        >
-          <path
-            d="M3 17H21M5 17V10L12 5L19 10V17M9 17V13H15V17"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </div>
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className={cn("shrink-0", className)}>
+      <rect width="48" height="48" rx="13" fill={onDark ? "#2B2D33" : "#111111"} />
+      <rect x="8" y="10" width="21" height="8" rx="4" fill="#CFE2FF" />
+      <rect x="14" y="20" width="21" height="8" rx="4" fill="#C9EED6" />
+      <rect x="20" y="30" width="20" height="8" rx="4" fill="#FFE7A0" />
+    </svg>
+  );
+}
+
+interface Props {
+  href?: string;
+  size?: "sm" | "md";
+  onDark?: boolean;
+  className?: string;
+}
+
+export function Logo({ href = "/", size = "md", onDark = false, className }: Props) {
+  return (
+    <Link
+      href={href}
+      className={cn("flex shrink-0 items-center gap-2.5", onDark ? "text-white" : "text-ink", className)}
+    >
+      <LogoMark size={size === "md" ? 38 : 32} onDark={onDark} />
       <span
-        className={cn("font-bold text-cascade-900 tracking-tight", sizes[size].text)}
+        className={cn(
+          "font-display font-extrabold tracking-[-0.03em]",
+          size === "md" ? "text-[27px]" : "text-[22px]"
+        )}
       >
         Cascade
       </span>

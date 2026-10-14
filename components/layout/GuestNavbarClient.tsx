@@ -1,130 +1,102 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Menu, Car } from "lucide-react";
-import type { User } from "@supabase/supabase-js";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Search } from "lucide-react";
+import { cn, formatRange, zonedInstant } from "@/lib/utils";
 
-interface Props {
-  user: User | null;
-  profile: { full_name: string; avatar_url: string | null; is_host: boolean } | null;
-}
+/** The search pill in the nav. Shows the current search when there is one. */
+export function NavSearch() {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  if (pathname === "/") return <div className="hidden flex-[1_1_280px] md:block" />;
 
-export function GuestNavbarClient({ user, profile }: Props) {
-  const router = useRouter();
-  const supabase = createClient();
+  const where = params.get("where");
+  const from = params.get("from");
+  const until = params.get("until");
+  const when = from && until ? formatRange(zonedInstant(from), zonedInstant(until)) : null;
+  const label = [where, when].filter(Boolean).join(" · ") || "Search cars";
 
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
+  const query = new URLSearchParams();
+  for (const key of ["where", "from", "until"]) {
+    const value = params.get(key);
+    if (value) query.set(key, value);
   }
-
-  async function handleSwitchToHost() {
-    if (!user) {
-      router.push("/login?redirectTo=/host/vehicles");
-      return;
-    }
-    if (!profile?.is_host) {
-      router.push("/host/vehicles");
-      return;
-    }
-    router.push("/host/vehicles");
-  }
-
-  const initials = profile?.full_name
-    ?.split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2) ?? "?";
+  const qs = query.toString();
 
   return (
-    <div className="flex items-center gap-3">
-      {user ? (
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSwitchToHost}
-            className="hidden sm:flex text-cascade-700 hover:text-cascade-900 font-medium"
-          >
-            Switch to hosting
-          </Button>
+    <Link
+      href={qs ? `/search?${qs}` : "/search"}
+      className="hidden max-w-[520px] flex-[1_1_280px] items-center gap-2.5 rounded-[14px] bg-board px-3.5 py-2.5 text-[15px] font-semibold transition-colors hover:bg-line md:flex"
+    >
+      <Search className="size-[18px] shrink-0" strokeWidth={2} />
+      <span className="truncate">{label}</span>
+    </Link>
+  );
+}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 border border-border rounded-full px-3 py-1.5 hover:shadow-md transition-shadow">
-                <Menu className="w-4 h-4 text-muted-foreground" />
-                <Avatar className="w-7 h-7">
-                  <AvatarImage src={profile?.avatar_url ?? undefined} />
-                  <AvatarFallback className="text-xs bg-cascade-100 text-cascade-700 font-semibold">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <div className="px-3 py-2">
-                <p className="text-sm font-medium text-cascade-900">
-                  {profile?.full_name}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {user.email}
-                </p>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/trips">My trips</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/messages">Messages</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/profile">Profile</Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSwitchToHost}>
-                <Car className="w-4 h-4 mr-2" />
-                Switch to hosting
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </>
-      ) : (
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            asChild
-            className="text-cascade-700 hover:text-cascade-900 font-medium"
-          >
-            <Link href="/login">Sign in</Link>
-          </Button>
-          <Button
-            size="sm"
-            asChild
-            className="bg-cascade-700 hover:bg-cascade-900 text-white hidden sm:flex"
-          >
-            <Link href="/register">Sign up</Link>
-          </Button>
-        </>
-      )}
-    </div>
+const linkClass =
+  "flex items-center gap-1.5 rounded-[12px] px-3.5 py-[11px] text-[15px] font-semibold transition-colors hover:bg-board";
+
+interface Account {
+  initial: string;
+  unread: number;
+}
+
+export function NavLinks({ account }: { account: Account | null }) {
+  const pathname = usePathname();
+  const isActive = (prefix: string) => pathname.startsWith(prefix);
+
+  if (!account) {
+    return (
+      <nav className="ml-auto flex items-center gap-1">
+        <Link href="/host/vehicles/new" className={cn(linkClass, "hidden md:flex")}>
+          List your car
+        </Link>
+        <Link href="/login" className={linkClass}>
+          Sign in
+        </Link>
+        <Link
+          href="/register"
+          className="hidden rounded-[12px] bg-ink px-[18px] py-3 text-[15px] font-bold text-white transition-colors hover:bg-graphite sm:block"
+        >
+          Sign up
+        </Link>
+      </nav>
+    );
+  }
+
+  return (
+    <nav className="ml-auto flex items-center gap-1">
+      <Link
+        href="/trips"
+        aria-current={isActive("/trips") ? "page" : undefined}
+        className={cn(linkClass, "hidden md:flex", isActive("/trips") && "bg-sky hover:bg-sky")}
+      >
+        Trips
+      </Link>
+      <Link
+        href="/messages"
+        aria-current={isActive("/messages") ? "page" : undefined}
+        className={cn(linkClass, "hidden md:flex", isActive("/messages") && "bg-sky hover:bg-sky")}
+      >
+        Inbox
+        {account.unread > 0 && (
+          <span className="rounded-[7px] bg-cobalt px-1.5 py-px text-[12px] font-extrabold text-white">
+            {account.unread}
+          </span>
+        )}
+      </Link>
+      <Link href="/host" className={cn(linkClass, "bg-board hover:bg-line")}>
+        Host
+      </Link>
+      <Link
+        href="/profile"
+        aria-label="Your profile"
+        className="ml-1 hidden size-[42px] items-center justify-center rounded-[13px] bg-peach font-display text-[18px] font-extrabold md:flex"
+      >
+        {account.initial}
+      </Link>
+    </nav>
   );
 }

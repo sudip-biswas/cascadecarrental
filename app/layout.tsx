@@ -1,37 +1,39 @@
-import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Geist, Manrope } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
-const inter = Inter({
-  variable: "--font-sans",
+const geist = Geist({
+  variable: "--font-geist",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
+  weight: ["700", "800"],
 });
 
 export const metadata: Metadata = {
   title: {
-    default: "Cascade Car Rental — Rent a car, not a rental car",
-    template: "%s | Cascade Car Rental",
+    default: "Cascade: rent a car from a local host",
+    template: "%s | Cascade",
   },
   description:
-    "Rent unique cars from local hosts on Cascade. Find the perfect car for any trip — from compact commuters to luxury SUVs.",
-  keywords: ["car rental", "rent a car", "peer to peer car rental", "cascade"],
+    "Rent cars from people around Seattle. See the full price up front, book in a few taps, and pick up from the host.",
+  keywords: ["car rental", "rent a car", "peer to peer car rental", "seattle", "cascade"],
+};
+
+export const viewport: Viewport = {
+  themeColor: "#f3f4f6",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
-    >
+    <html lang="en" className={`${geist.variable} ${manrope.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         {children}
-        <Toaster richColors position="top-right" />
+        <Toaster position="top-center" />
       </body>
     </html>
   );
