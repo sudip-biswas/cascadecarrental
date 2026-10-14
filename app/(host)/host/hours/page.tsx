@@ -1,67 +1,114 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Clock } from "lucide-react";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { Vehicle, VehicleImage } from "@/lib/supabase/types";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { EmptyState, PageTitle, Tile } from "@/components/kit";
+import { CarPhoto, coverUrl } from "@/components/host/bits";
+import { RulesEditor } from "./RulesEditor";
 
 export const instant = false;
-export const metadata = { title: "Hours" };
+export const metadata = { title: "Pickup and hours" };
 
-export default async function HostHoursPage() {
+type CarRow = Pick<
+  Vehicle,
+  | "id"
+  | "make"
+  | "model"
+  | "status"
+  | "location_name"
+  | "location_address"
+  | "min_trip_days"
+  | "max_trip_days"
+  | "advance_notice_hours"
+  | "instant_book"
+> & { vehicle_images: Pick<VehicleImage, "url" | "is_cover" | "position">[] };
+
+export default async function PickupAndHoursPage({ searchParams }: PageProps<"/host/hours">) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login?redirectTo=/host/hours");
 
-  const { data: vehicles } = await supabase
-    .from("vehicles")
-    .select("id, make, model, year, advance_notice_hours, min_trip_days, max_trip_days")
-    .eq("host_id", user.id)
-    .order("created_at", { ascending: false });
+  const [{ car: carParam }, { data }] = await Promise.all([
+    searchParams,
+    // The exact address is private: read it server-side, scoped to this host.
+    createAdminClient()
+      .from("vehicles")
+      .select(
+        "id, make, model, status, location_name, location_address, min_trip_days, max_trip_days, advance_notice_hours, instant_book, vehicle_images(url, is_cover, position)"
+      )
+      .eq("host_id", user.id)
+      .order("created_at", { ascending: true })
+      .overrideTypes<CarRow[], { merge: false }>(),
+  ]);
+  const cars = data ?? [];
+
+  if (cars.length === 0) {
+    return (
+      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
+        <PageTitle title="Pickup and hours" />
+        <EmptyState
+          title="No cars yet"
+          body="Once you list a car, set where guests pick it up and how long they can book it for."
+          action={
+            <Button asChild>
+              <Link href="/host/vehicles/new">List a car</Link>
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  const car = cars.find((c) => c.id === carParam) ?? cars[0];
+  const locked = car.status === "suspended";
 
   return (
-    <div className="p-6 max-w-3xl">
-      <h1 className="text-xl font-bold text-cascade-900 mb-2">Hours &amp; availability</h1>
-      <p className="text-sm text-muted-foreground mb-6">
-        Trip length and advance notice settings per vehicle.
-      </p>
+    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
+      <PageTitle title="Pickup and hours" lead="Where guests collect each car and the rules for booking it." />
 
-      {!vehicles?.length ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
-          <Clock className="w-10 h-10 opacity-30" />
-          <p className="text-sm">No vehicles listed yet.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {vehicles.map((v) => (
-            <div
-              key={v.id}
-              className="bg-white border border-border rounded-xl p-4"
+      {cars.length > 1 && (
+        <nav aria-label="Car" className="flex flex-wrap gap-2">
+          {cars.map((c) => (
+            <Link
+              key={c.id}
+              href={`?car=${c.id}`}
+              aria-current={c.id === car.id ? "true" : undefined}
+              className={cn(
+                "flex h-[46px] items-center gap-2 rounded-[12px] px-2 pr-3.5 text-[15px] font-bold transition-colors",
+                c.id === car.id ? "bg-ink text-white" : "bg-white hover:bg-line"
+              )}
             >
-              <p className="font-medium text-cascade-900 text-sm mb-3">
-                {v.year} {v.make} {v.model}
-              </p>
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground text-xs">Advance notice</p>
-                  <p className="font-medium text-cascade-900 mt-0.5">
-                    {v.advance_notice_hours ?? 0}h
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Min trip</p>
-                  <p className="font-medium text-cascade-900 mt-0.5">
-                    {v.min_trip_days ?? 1} day{(v.min_trip_days ?? 1) !== 1 ? "s" : ""}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Max trip</p>
-                  <p className="font-medium text-cascade-900 mt-0.5">
-                    {v.max_trip_days ? `${v.max_trip_days} days` : "No limit"}
-                  </p>
-                </div>
-              </div>
-            </div>
+              <CarPhoto src={coverUrl(c.vehicle_images)} alt="" sizes="30px" className="h-6 w-[30px] rounded-[6px]" />
+              {c.make} {c.model}
+            </Link>
           ))}
-        </div>
+        </nav>
       )}
+
+      {locked && (
+        <Tile tone="peach" className="text-[15px]">
+          This car is suspended, so its settings can&apos;t be changed right now.
+        </Tile>
+      )}
+
+      <RulesEditor
+        key={car.id}
+        vehicleId={car.id}
+        locked={locked}
+        initial={{
+          location_name: car.location_name,
+          location_address: car.location_address,
+          min_trip_days: car.min_trip_days,
+          max_trip_days: car.max_trip_days,
+          advance_notice_hours: car.advance_notice_hours,
+          instant_book: car.instant_book,
+        }}
+      />
     </div>
   );
 }

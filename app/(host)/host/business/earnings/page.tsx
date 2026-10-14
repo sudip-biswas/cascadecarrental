@@ -1,105 +1,173 @@
 import { redirect } from "next/navigation";
+import { Landmark } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { EarningsChart } from "@/components/host/EarningsChart";
-import { formatCurrency } from "@/lib/utils";
+import { settleTripStatuses } from "@/lib/trips";
+import { HOST_SHARE, hostEarningsCents } from "@/lib/pricing";
+import { formatCurrency, formatDate, formatDateShort, toDateKey, zonedInstant } from "@/lib/utils";
+import { EmptyState, PageTitle, Tag, Tile, TileTitle, toneClass, type Tone } from "@/components/kit";
+import { EarningsChart, type MonthEarnings } from "@/components/host/EarningsChart";
+import { firstName } from "@/components/host/bits";
+import { hostTrips, isOpenRequest, isPaidTrip, type HostTripRow } from "../_lib/trips";
 
 export const instant = false;
-
 export const metadata = { title: "Earnings" };
+
+const MONTHS_SHOWN = 6;
+
+/** "2026-10" keys for the last few months, oldest first, in Pacific time. */
+function recentMonths(now: Date, count: number): string[] {
+  const [year, month] = toDateKey(now).split("-").map(Number);
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(Date.UTC(year, month - 1 - (count - 1 - i), 1));
+    return d.toISOString().slice(0, 7);
+  });
+}
+
+const monthLabel = (key: string) =>
+  formatDate(zonedInstant(`${key}-15`), { month: "short", day: undefined, year: undefined });
+
+function rowStatus(t: HostTripRow): { label: string; tone: Tone } {
+  if (isOpenRequest(t)) return { label: "Waiting on you", tone: "butter" };
+  if (t.status === "completed") return { label: "Earned", tone: "mint" };
+  return { label: "Booked", tone: "sky" };
+}
 
 export default async function EarningsPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login?redirectTo=/host/business/earnings");
 
-  // Get completed trips for earnings
-  const { data: trips } = await supabase
-    .from("trips")
-    .select("total_cents, created_at, starts_at")
-    .eq("host_id", user.id)
-    .in("status", ["completed", "approved", "active"])
-    .eq("payment_status", "captured")
-    .order("starts_at", { ascending: false });
+  await settleTripStatuses(user.id);
+  const trips = await hostTrips(user.id);
 
-  const totalEarnings = (trips ?? []).reduce((sum, t) => sum + t.total_cents * 0.8, 0);
-  const pendingEarnings = (trips ?? [])
-    .filter((t) => new Date(t.starts_at) > new Date())
-    .reduce((sum, t) => sum + t.total_cents * 0.8, 0);
+  const now = new Date();
+  const thisYear = toDateKey(now).slice(0, 4);
+  const paid = trips.filter(isPaidTrip);
+  const requests = trips.filter(isOpenRequest);
+  const earn = (list: HostTripRow[]) => list.reduce((sum, t) => sum + hostEarningsCents(t.subtotal_cents), 0);
 
-  // Build monthly data for chart
-  const monthlyMap: Record<string, number> = {};
-  for (const trip of trips ?? []) {
-    const month = trip.starts_at.slice(0, 7); // "2026-10"
-    monthlyMap[month] = (monthlyMap[month] ?? 0) + trip.total_cents * 0.8;
-  }
+  const earnedThisYear = earn(paid.filter((t) => t.status === "completed" && toDateKey(t.ends_at).startsWith(thisYear)));
+  const bookedAhead = earn(paid.filter((t) => t.status !== "completed"));
+  const average = paid.length ? Math.round(earn(paid) / paid.length) : 0;
+  const ifAccepted = earn(requests);
 
-  const chartData = Object.entries(monthlyMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-12)
-    .map(([month, earnings]) => ({
-      month: new Date(month + "-01").toLocaleDateString("en-US", {
-        month: "short",
-        year: "2-digit",
-      }),
-      earnings: Math.round(earnings / 100),
-    }));
+  const months = recentMonths(now, MONTHS_SHOWN);
+  const chart: MonthEarnings[] = months.map((key) => {
+    const inMonth = paid.filter((t) => toDateKey(t.ends_at).startsWith(key));
+    return {
+      month: monthLabel(key),
+      earned: earn(inMonth.filter((t) => t.status === "completed")),
+      booked: earn(inMonth.filter((t) => t.status !== "completed")),
+    };
+  });
+  const hasChartData = chart.some((m) => m.earned > 0 || m.booked > 0);
+
+  const rows = [...requests, ...paid].sort((a, b) => b.ends_at.localeCompare(a.ends_at)).slice(0, 12);
+
+  const stats: { label: string; value: string; tone: Tone; show: boolean }[] = [
+    { label: `Earned in ${thisYear}`, value: formatCurrency(earnedThisYear), tone: "peach", show: true },
+    { label: "Booked, not finished yet", value: formatCurrency(bookedAhead), tone: "butter", show: true },
+    { label: "If you accept your requests", value: formatCurrency(ifAccepted), tone: "lilac", show: ifAccepted > 0 },
+    { label: "Average per trip", value: average ? formatCurrency(average) : "–", tone: "white", show: true },
+  ];
 
   return (
-    <div className="p-6 max-w-4xl space-y-6">
-      <h1 className="text-xl font-bold text-cascade-900">Earnings</h1>
+    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
+      <PageTitle title="Earnings" />
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          {
-            label: "Total earned",
-            value: formatCurrency(Math.round(totalEarnings)),
-            sub: "All time (after 20% fee)",
-          },
-          {
-            label: "Upcoming earnings",
-            value: formatCurrency(Math.round(pendingEarnings)),
-            sub: "From future booked trips",
-          },
-          {
-            label: "Total trips",
-            value: String(trips?.length ?? 0),
-            sub: "Completed + active",
-          },
-        ].map(({ label, value, sub }) => (
-          <div
-            key={label}
-            className="bg-white border border-border rounded-xl p-4 space-y-1"
-          >
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold text-cascade-900">{value}</p>
-            <p className="text-xs text-muted-foreground">{sub}</p>
-          </div>
-        ))}
+      <Tile tone="ink" className="flex flex-wrap items-center gap-[18px]">
+        <span className="flex size-14 shrink-0 items-center justify-center rounded-[17px] bg-butter text-ink">
+          <Landmark className="size-[26px]" strokeWidth={1.75} />
+        </span>
+        <span className="flex min-w-0 flex-[1_1_280px] flex-col gap-1.5">
+          <span className="font-display text-[22px] leading-tight font-extrabold sm:text-[26px]">
+            Payouts aren&apos;t set up yet
+          </span>
+          <span className="text-[15px] text-[#c9ccd3]">
+            Guests pay Cascade through Stripe. Bank payouts to hosts aren&apos;t switched on yet, so everything you
+            earn is tracked here until they are. You keep {Math.round(HOST_SHARE * 100)}% of each trip&apos;s price;
+            tax and protection aren&apos;t part of it.
+          </span>
+        </span>
+      </Tile>
+
+      <div className="figures grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-3">
+        {stats
+          .filter((s) => s.show)
+          .map((s) => (
+            <div key={s.label} className={`rounded-[26px] p-5 ${toneClass[s.tone]}`}>
+              <div className="text-sm font-semibold opacity-80">{s.label}</div>
+              <div className="font-display text-[40px] leading-tight font-extrabold tracking-[-0.03em] sm:text-[52px]">
+                {s.value}
+              </div>
+            </div>
+          ))}
       </div>
 
-      {/* Chart */}
-      <div className="bg-white border border-border rounded-xl p-6">
-        <h2 className="text-sm font-semibold text-cascade-900 mb-4">
-          Monthly earnings (last 12 months)
-        </h2>
-        {chartData.length > 0 ? (
-          <EarningsChart data={chartData} />
-        ) : (
-          <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
-            No earnings data yet. Complete your first trip to see earnings here.
-          </div>
-        )}
-      </div>
+      {trips.length === 0 ? (
+        <EmptyState
+          title="No trips yet"
+          body="Once guests book your cars, what you earn from each trip shows up here."
+        />
+      ) : (
+        <>
+          <Tile className="flex flex-col gap-4 sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <TileTitle>By month</TileTitle>
+              <span className="flex gap-3.5 text-sm text-slate">
+                <span className="flex items-center gap-1.5">
+                  <span className="size-3 rounded-[4px] bg-ink" />
+                  Earned
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="size-3 rounded-[4px] bg-butter" />
+                  Booked
+                </span>
+              </span>
+            </div>
+            {hasChartData ? (
+              <EarningsChart data={chart} />
+            ) : (
+              <p className="py-10 text-center text-[15px] text-slate">
+                Nothing paid in the last {MONTHS_SHOWN} months yet.
+              </p>
+            )}
+          </Tile>
 
-      {/* Note about payouts */}
-      <div className="bg-cascade-100 rounded-xl p-4 text-sm text-cascade-700">
-        <p className="font-semibold mb-1">About payouts</p>
-        <p>
-          Payouts are sent 1 business day after trip completion via Stripe Connect.
-          Set up your payout account in Profile settings.
-        </p>
-      </div>
+          {rows.length > 0 && (
+            <Tile className="p-2.5 sm:p-2.5">
+              <div className="hidden grid-cols-[1.2fr_1.6fr_1fr_0.8fr] gap-3 px-3.5 py-3 text-[13px] font-bold text-slate sm:grid">
+                <span>Trip ends</span>
+                <span>Trip</span>
+                <span>Status</span>
+                <span className="text-right">You get</span>
+              </div>
+              {rows.map((t, i) => {
+                const status = rowStatus(t);
+                return (
+                  <div
+                    key={t.id}
+                    className={`figures grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 rounded-2xl p-3.5 text-[15px] sm:grid-cols-[1.2fr_1.6fr_1fr_0.8fr] ${
+                      i % 2 === 0 ? "bg-board" : ""
+                    }`}
+                  >
+                    <span className="max-sm:font-bold">{formatDateShort(t.ends_at)}</span>
+                    <span className="order-3 col-span-2 text-slate sm:order-none sm:col-span-1 sm:text-ink">
+                      {firstName(t.guest?.full_name)} · {t.vehicles ? `${t.vehicles.make} ${t.vehicles.model}` : "Car"}
+                    </span>
+                    <span className="order-4 sm:order-none">
+                      <Tag tone={status.tone}>{status.label}</Tag>
+                    </span>
+                    <span className="text-right font-extrabold">{formatCurrency(hostEarningsCents(t.subtotal_cents))}</span>
+                  </div>
+                );
+              })}
+            </Tile>
+          )}
+        </>
+      )}
     </div>
   );
 }

@@ -1,119 +1,147 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
+import { CarFront } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar, MessageCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { formatDate, formatCurrency } from "@/lib/utils";
-import { TripActionButtons } from "@/components/trips/TripActionButtons";
+import { settleTripStatuses } from "@/lib/trips";
+import { hostEarningsCents, tripDays } from "@/lib/pricing";
+import { tripStatus } from "@/lib/trip-status";
+import { cn, formatCurrency, formatDateTime, formatRange, relativeDays } from "@/lib/utils";
+import { PageTitle } from "@/components/kit";
+import { RequestFull } from "@/components/host/RequestCard";
+import { TripTabs, type TripView } from "@/components/host/TripTabs";
+import { firstName } from "@/components/host/bits";
+import {
+  answerBy,
+  isRequest,
+  loadConversationFinder,
+  loadHostTrips,
+  type HostTrip,
+} from "@/components/host/data";
 
 export const instant = false;
+export const metadata = { title: "Trips" };
 
-export const metadata = { title: "Host trips" };
+const VIEWS: TripView[] = ["requests", "upcoming", "active"];
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-summit-500/10 text-summit-500 border-summit-500/30",
-  approved: "bg-cascade-500/10 text-cascade-700 border-cascade-300",
-  active: "bg-alpine-500/10 text-alpine-500 border-alpine-500/30",
-};
-
-export default async function HostTripsPage() {
+export default async function HostTripsPage({ searchParams }: PageProps<"/host/trips">) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login?redirectTo=/host/trips");
 
-  const { data: trips } = await supabase
-    .from("trips")
-    .select(
-      "*, vehicles(make, model, year, vehicle_images(*)), guest:profiles!guest_id(id, full_name, avatar_url)"
-    )
-    .eq("host_id", user.id)
-    .in("status", ["pending", "approved", "active"])
-    .order("starts_at", { ascending: true });
+  await settleTripStatuses(user.id);
+  const [trips, findConversation, { show }] = await Promise.all([
+    loadHostTrips(supabase, user.id, ["pending", "approved", "active"]),
+    loadConversationFinder(supabase, user.id),
+    searchParams,
+  ]);
+
+  const requests = trips.filter(isRequest).sort((a, b) => answerBy(a).getTime() - answerBy(b).getTime());
+  const upcoming = trips.filter((t) => t.status === "approved" && t.payment_status === "captured");
+  const active = trips.filter((t) => t.status === "active");
+  const counts = { requests: requests.length, upcoming: upcoming.length, active: active.length };
+
+  const view: TripView = VIEWS.includes(show as TripView)
+    ? (show as TripView)
+    : requests.length
+      ? "requests"
+      : active.length
+        ? "active"
+        : "upcoming";
 
   return (
-    <div className="p-6 max-w-4xl">
-      <h1 className="text-xl font-bold text-cascade-900 mb-6">Booked trips</h1>
+    <div className="flex flex-col gap-4">
+      <PageTitle title="Trips" action={<TripTabs current={view} counts={counts} />} />
 
-      {!trips?.length ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <p>No upcoming booked trips.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {trips.map((trip: any) => {
-            const cover =
-              trip.vehicles?.vehicle_images?.find((i: any) => i.is_cover)?.url ??
-              trip.vehicles?.vehicle_images?.[0]?.url;
-
-            return (
-              <div
-                key={trip.id}
-                className="bg-white border border-border rounded-xl p-4 flex gap-4"
-              >
-                <div className="relative w-20 h-16 rounded-lg overflow-hidden bg-muted shrink-0">
-                  {cover ? (
-                    <Image src={cover} alt="Vehicle" fill className="object-cover" sizes="80px" />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-2xl">🚗</div>
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-cascade-900 text-sm">
-                        {trip.vehicles?.make} {trip.vehicles?.model}{" "}
-                        {trip.vehicles?.year}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Calendar className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(trip.starts_at, { month: "short", day: "numeric" })} –{" "}
-                          {formatDate(trip.ends_at, { month: "short", day: "numeric", year: "numeric" })}
-                        </span>
-                      </div>
-                    </div>
-                    <Badge
-                      className={`text-xs border ${STATUS_COLORS[trip.status]}`}
-                      variant="outline"
-                    >
-                      {trip.status.charAt(0).toUpperCase() + trip.status.slice(1)}
-                    </Badge>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="w-6 h-6">
-                        <AvatarImage src={trip.guest?.avatar_url ?? undefined} />
-                        <AvatarFallback className="text-[10px] bg-cascade-100 text-cascade-700">
-                          {trip.guest?.full_name?.[0]?.toUpperCase() ?? "G"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-xs text-muted-foreground">
-                        {trip.guest?.full_name}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-cascade-900">
-                        {formatCurrency(trip.total_cents)}
-                      </span>
-                      <TripActionButtons tripId={trip.id} status={trip.status} />
-                      <Button size="sm" variant="ghost" asChild className="h-7 px-2">
-                        <Link href={`/host/inbox`}>
-                          <MessageCircle className="w-3.5 h-3.5" />
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      {view === "requests" && (
+        <>
+          {requests.length === 0 ? (
+            <p className="rounded-[30px] bg-white p-6 text-base text-slate">
+              No requests waiting. When a guest asks to book, you&apos;ll answer here.
+            </p>
+          ) : (
+            requests.map((trip) => <RequestFull key={trip.id} trip={trip} conversation={findConversation(trip)} />)
+          )}
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-4">
+            <UpcomingList trips={upcoming.slice(0, 3)} more={upcoming.length - 3} />
+            <OnTheRoad trips={active} />
+          </div>
+        </>
       )}
+      {view === "upcoming" && <UpcomingList trips={upcoming} />}
+      {view === "active" && <OnTheRoad trips={active} />}
     </div>
+  );
+}
+
+function TripLine({ trip, detail }: { trip: HostTrip; detail: string }) {
+  const status = tripStatus(trip, "host");
+  return (
+    <div className="flex items-center gap-3 rounded-[18px] bg-board p-3.5">
+      <span aria-hidden className={cn("w-2 self-stretch rounded-[4px]", trip.status === "active" ? "bg-cobalt" : "bg-ink")} />
+      <span className="min-w-0 flex-1">
+        <span className="block text-base font-extrabold">
+          {firstName(trip.guest?.full_name)} · {trip.vehicle?.model ?? "Car"}
+        </span>
+        <span className="text-sm text-slate">
+          {detail} · {status.label.toLowerCase()}
+        </span>
+      </span>
+      <span className="figures shrink-0 text-right">
+        <span className="block text-base font-extrabold">{formatCurrency(hostEarningsCents(trip.subtotal_cents))}</span>
+        <span className="text-[13px] text-slate">to you</span>
+      </span>
+    </div>
+  );
+}
+
+function UpcomingList({ trips, more = 0 }: { trips: HostTrip[]; more?: number }) {
+  return (
+    <section className="flex flex-col gap-3 rounded-[30px] bg-white p-5 sm:p-6">
+      <h2 className="text-[26px]">Upcoming</h2>
+      {trips.length === 0 ? (
+        <p className="rounded-[18px] bg-board p-3.5 text-[15px] text-slate">No confirmed trips coming up.</p>
+      ) : (
+        trips.map((t) => (
+          <TripLine
+            key={t.id}
+            trip={t}
+            detail={`${formatRange(t.starts_at, t.ends_at)}, pick-up ${relativeDays(t.starts_at).toLowerCase()}`}
+          />
+        ))
+      )}
+      {more > 0 && (
+        <Link href="/host/trips?show=upcoming" className="text-[15px] font-bold hover:text-cobalt">
+          {more} more
+        </Link>
+      )}
+    </section>
+  );
+}
+
+function OnTheRoad({ trips }: { trips: HostTrip[] }) {
+  if (trips.length === 0) {
+    return (
+      <section className="flex flex-col justify-center gap-3 rounded-[30px] bg-mint p-5 text-ink sm:p-6">
+        <CarFront className="size-9" strokeWidth={1.75} />
+        <h2 className="text-[26px]">Nobody&apos;s on the road</h2>
+        <p className="text-[15px] text-mint-ink">
+          When a trip starts it shows here with the return time and miles allowed.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className="flex flex-col gap-3 rounded-[30px] bg-mint p-5 text-ink sm:p-6">
+      <h2 className="text-[26px]">On the road</h2>
+      {trips.map((t) => (
+        <TripLine
+          key={t.id}
+          trip={t}
+          detail={`back ${formatDateTime(t.ends_at)}, ${t.distance_included_mi * tripDays(t.starts_at, t.ends_at)} mi allowed`}
+        />
+      ))}
+    </section>
   );
 }

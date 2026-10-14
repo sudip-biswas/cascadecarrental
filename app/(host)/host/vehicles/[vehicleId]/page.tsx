@@ -1,273 +1,252 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { MapPin, Star, Calendar } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { hostEarningsCents } from "@/lib/pricing";
+import { formatCurrency, formatPrice, formatRange, pluralize } from "@/lib/utils";
+import type { Vehicle, VehicleImage } from "@/lib/supabase/types";
+import { Fact, Tag } from "@/components/kit";
+import { CarPhoto, coverUrl, firstName, Initial } from "@/components/host/bits";
+import { isRequest, loadHostTrips } from "@/components/host/data";
+import { AddPhotos } from "@/components/host/AddPhotos";
 import { VehicleStatusToggle } from "@/components/host/VehicleStatusToggle";
-import type { VehicleWithImages } from "@/types";
+import { VehicleEditDialog } from "@/components/host/VehicleEditDialog";
+import { DeleteVehicleButton } from "@/components/host/DeleteVehicleButton";
+import { tripStatus } from "@/lib/trip-status";
 
 export const instant = false;
 
-export default async function HostVehicleDetailPage({
-  params,
-}: {
-  params: Promise<{ vehicleId: string }>;
-}) {
+type CarRow = Vehicle & { vehicle_images: VehicleImage[] };
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4 py-1.5 text-base">
+      <span className="text-slate">{label}</span>
+      <span className="text-right font-bold">{value}</span>
+    </div>
+  );
+}
+
+export default async function HostCarPage({ params }: PageProps<"/host/vehicles/[vehicleId]">) {
   const { vehicleId } = await params;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(`/login?redirectTo=/host/vehicles/${vehicleId}`);
 
-  const { data: vehicle } = await supabase
+  // Plate and VIN are private columns: read them server-side, scoped to this host.
+  const { data } = await createAdminClient()
     .from("vehicles")
-    .select("*, vehicle_images(*), vehicle_features(*)")
+    .select("*, vehicle_images(*)")
     .eq("id", vehicleId)
     .eq("host_id", user.id)
-    .single();
+    .maybeSingle();
+  if (!data) notFound();
+  const car = data as unknown as CarRow;
 
-  if (!vehicle) notFound();
+  const [trips, { count: tripRows }] = await Promise.all([
+    loadHostTrips(supabase, user.id, ["pending", "approved", "active", "completed"]),
+    supabase.from("trips").select("id", { count: "exact", head: true }).eq("vehicle_id", vehicleId),
+  ]);
+  const carTrips = trips.filter((t) => t.vehicle_id === vehicleId);
+  const upcoming = carTrips.filter((t) => isRequest(t) || t.status === "approved" || t.status === "active");
+  const paid = carTrips.filter((t) => t.payment_status === "captured" && t.status !== "pending");
+  const earned = paid.reduce((sum, t) => sum + hostEarningsCents(t.subtotal_cents), 0);
 
-  const v = vehicle as any;
-  const images = v.vehicle_images ?? [];
-  const cover = images.find((i: any) => i.is_cover)?.url ?? images[0]?.url;
-
-  // Recent trips for this vehicle
-  const { data: recentTrips } = await supabase
-    .from("trips")
-    .select("id, starts_at, ends_at, total_cents, status, guest:profiles!guest_id(full_name)")
-    .eq("vehicle_id", vehicleId)
-    .order("created_at", { ascending: false })
-    .limit(5);
+  const name = `${car.make} ${car.model}`;
+  const photos = [...car.vehicle_images].sort((a, b) => a.position - b.position);
+  const details = [
+    [car.year, car.trim].filter(Boolean).join(" "),
+    car.color,
+    `plate ${car.license_plate}`,
+    car.vin ? `VIN ending ${car.vin.slice(-4)}` : null,
+  ].filter(Boolean);
 
   return (
-    <div className="p-6 max-w-4xl space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <Link
-            href="/host/vehicles"
-            className="text-sm text-cascade-700 font-medium hover:underline"
-          >
-            ← My listings
-          </Link>
-          <h1 className="text-xl font-bold text-cascade-900 mt-1">
-            {v.year} {v.make} {v.model}
-          </h1>
-          {v.trim && (
-            <p className="text-sm text-muted-foreground">{v.trim}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <Badge
-            variant="outline"
-            className={`border ${
-              v.status === "listed"
-                ? "bg-alpine-500/10 text-alpine-500 border-alpine-500/30"
-                : "bg-ember-500/10 text-ember-500 border-ember-500/30"
-            }`}
-          >
-            {v.status === "listed" ? "Listed" : "Unlisted"}
-          </Badge>
-          <VehicleStatusToggle vehicleId={vehicleId} currentStatus={v.status} />
-        </div>
-      </div>
+    <div className="flex flex-col gap-4">
+      <Link
+        href="/host/vehicles"
+        className="flex items-center gap-2 self-start rounded-[12px] bg-white px-3.5 py-2.5 text-[15px] font-bold transition-colors hover:bg-line"
+      >
+        <ArrowLeft className="size-[18px]" /> Cars
+      </Link>
 
-      {/* Photos */}
-      {images.length > 0 && (
-        <div className="grid grid-cols-3 gap-2 rounded-xl overflow-hidden">
-          {images.slice(0, 3).map((img: any, i: number) => (
-            <div key={img.id} className={`relative ${i === 0 ? "col-span-2 row-span-2" : ""} aspect-[4/3]`}>
-              <Image
-                src={img.url}
-                alt={`Photo ${i + 1}`}
-                fill
-                className="object-cover"
-                sizes="(max-width: 640px) 100vw, 33vw"
-              />
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Details */}
-        <div className="lg:col-span-2 space-y-5">
-          {/* Specs */}
-          <div className="bg-white border border-border rounded-xl p-5 space-y-4">
-            <h2 className="font-semibold text-cascade-900">Vehicle details</h2>
-            <div className="grid grid-cols-2 gap-y-3 text-sm">
-              {[
-                ["Type", v.vehicle_type],
-                ["Fuel", v.fuel_type],
-                ["Transmission", v.transmission],
-                ["Seats", v.seats],
-                ["Color", v.color],
-                ["License plate", v.license_plate],
-                v.mpg && ["MPG", v.mpg],
-                v.range_miles && ["Range (mi)", v.range_miles],
-              ]
-                .filter(Boolean)
-                .map(([label, value]) => (
-                  <div key={label as string}>
-                    <span className="text-muted-foreground">{label}</span>
-                    <p className="font-medium text-cascade-900 capitalize">{value as string}</p>
-                  </div>
-                ))}
-            </div>
-
-            {v.description && (
-              <>
-                <Separator />
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {v.description}
-                </p>
-              </>
+      <section className="flex flex-wrap items-center gap-5 rounded-[32px] bg-white p-3">
+        <CarPhoto
+          src={coverUrl(car.vehicle_images)}
+          alt={name}
+          sizes="360px"
+          priority
+          className="aspect-[4/3] max-w-full flex-[1_1_260px] rounded-[24px] sm:max-w-[360px]"
+        />
+        <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-3.5 p-2">
+          <h1 className="headline text-[clamp(40px,5vw,64px)]">{name}</h1>
+          <p className="text-base text-slate">{details.join(" · ")}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <VehicleStatusToggle vehicleId={car.id} status={car.status} photoCount={photos.length} />
+            {car.status === "listed" && (
+              <Link href={`/cars/${car.id}`} className="rounded-[14px] bg-board px-4 py-[13px] text-[15px] font-bold hover:bg-line">
+                See it as a guest
+              </Link>
             )}
+            <Link
+              href={`/host/calendar?car=${car.id}`}
+              className="rounded-[14px] bg-board px-4 py-[13px] text-[15px] font-bold hover:bg-line"
+            >
+              Calendar
+            </Link>
           </div>
-
-          {/* Location */}
-          <div className="bg-white border border-border rounded-xl p-5 space-y-2">
-            <h2 className="font-semibold text-cascade-900">Location</h2>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <MapPin className="w-4 h-4 text-cascade-500 shrink-0" />
-              <span>{v.location_name}</span>
-            </div>
+          <div className="figures grid max-w-[460px] grid-cols-3 gap-2">
+            <Fact label="Trips" value={paid.length} />
+            <Fact label="Earned" value={formatPrice(earned)} />
+            <Fact label="Rating" value={car.rating_avg ? `★ ${Number(car.rating_avg).toFixed(1)}` : "None yet"} />
           </div>
+        </div>
+      </section>
 
-          {/* Recent trips */}
-          {recentTrips && recentTrips.length > 0 && (
-            <div className="bg-white border border-border rounded-xl p-5 space-y-3">
-              <h2 className="font-semibold text-cascade-900">Recent trips</h2>
-              <div className="space-y-2">
-                {recentTrips.map((trip: any) => (
-                  <div
-                    key={trip.id}
-                    className="flex items-center justify-between text-sm py-2 border-b border-border/50 last:border-0"
-                  >
-                    <div>
-                      <p className="font-medium text-cascade-900">
-                        {(trip.guest as any)?.full_name ?? "Guest"}
-                      </p>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                        <Calendar className="w-3 h-3" />
-                        <span>
-                          {new Date(trip.starts_at).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                          })}{" "}
-                          –{" "}
-                          {new Date(trip.ends_at).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="font-semibold text-cascade-900">
-                      {formatCurrency(trip.total_cents)}
-                    </span>
-                  </div>
-                ))}
-              </div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-4">
+        <section className="flex flex-col gap-3 rounded-[30px] bg-peach p-5 text-ink sm:p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[26px]">Price</h2>
+            <VehicleEditDialog
+              vehicleId={car.id}
+              title="Price"
+              note="Trips already booked keep the price they were booked at."
+              fields={[
+                { column: "daily_rate_cents", label: "Daily rate", value: car.daily_rate_cents, unit: "dollars", min: 1000, max: 100000 },
+                { column: "weekly_discount_pct", label: "Off trips of 7+ days", value: car.weekly_discount_pct, unit: "percent", min: 0, max: 50 },
+                { column: "monthly_discount_pct", label: "Off trips of 30+ days", value: car.monthly_discount_pct, unit: "percent", min: 0, max: 50 },
+              ]}
+            />
+          </div>
+          <p className="figures font-display text-[56px] leading-none font-extrabold tracking-[-0.03em]">
+            {formatPrice(car.daily_rate_cents)}
+            <span className="font-sans text-base font-medium tracking-normal text-peach-ink"> a day</span>
+          </p>
+          <p className="text-sm text-peach-ink">
+            You get {formatPrice(hostEarningsCents(car.daily_rate_cents))} a day after Cascade&apos;s 20% fee.
+          </p>
+          <div className="figures grid grid-cols-2 gap-2">
+            <Fact tone="white" label="Week off" value={`${car.weekly_discount_pct}%`} />
+            <Fact tone="white" label="Month off" value={`${car.monthly_discount_pct}%`} />
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-3 rounded-[30px] bg-sky p-5 text-ink sm:p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[26px]">Miles</h2>
+            <VehicleEditDialog
+              vehicleId={car.id}
+              title="Miles"
+              fields={[
+                { column: "distance_included_mi", label: "Included per day", value: car.distance_included_mi, unit: "miles", min: 0, max: 2000 },
+                { column: "extra_mile_fee_cents", label: "Each extra mile", value: car.extra_mile_fee_cents, unit: "cents", min: 0, max: 500 },
+              ]}
+            />
+          </div>
+          <p className="figures font-display text-[56px] leading-none font-extrabold tracking-[-0.03em]">
+            {car.distance_included_mi}
+            <span className="font-sans text-base font-medium tracking-normal text-sky-ink"> a day included</span>
+          </p>
+          <p className="rounded-[14px] bg-white px-3 py-2.5 text-[15px]">
+            <span className="font-extrabold">{car.extra_mile_fee_cents}¢</span> for each mile after that
+          </p>
+        </section>
+
+        <section className="flex flex-col gap-1.5 rounded-[30px] bg-white p-5 sm:p-6">
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="text-[26px]">Rules</h2>
+            <Link href="/host/hours" className="rounded-[10px] bg-board px-3 py-2 text-sm font-bold hover:bg-line">
+              Edit
+            </Link>
+          </div>
+          <Row label="Trip length" value={`${car.min_trip_days} to ${pluralize(car.max_trip_days, "day")}`} />
+          <Row label="Notice" value={car.advance_notice_hours ? pluralize(car.advance_notice_hours, "hour") : "None"} />
+          <Row label="Instant book" value={car.instant_book ? "On" : "Off, you approve"} />
+          <Row label="Pickup" value={car.location_name} />
+        </section>
+      </div>
+
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-4">
+        <section className="flex flex-col gap-3.5 rounded-[30px] bg-white p-5 sm:p-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-[26px]">Photos · {photos.length}</h2>
+            <AddPhotos vehicleId={car.id} />
+          </div>
+          {photos.length > 0 && <span className="text-sm text-slate">The first one is the cover.</span>}
+          {photos.length === 0 ? (
+            <p className="rounded-[18px] bg-board p-3.5 text-[15px] text-slate">No photos yet. Guests skip cars without them.</p>
+          ) : (
+            <div className="grid grid-cols-4 gap-2">
+              {photos.map((p, i) => (
+                <CarPhoto
+                  key={p.id}
+                  src={p.url}
+                  alt={i === 0 ? "Photo 1, cover" : `Photo ${i + 1}`}
+                  sizes="120px"
+                  className={`aspect-square rounded-[14px] ${i === 0 ? "ring-3 ring-ink" : ""}`}
+                />
+              ))}
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Right: Pricing + Stats */}
-        <div className="space-y-4">
-          <div className="bg-white border border-border rounded-xl p-5 space-y-3">
-            <h2 className="font-semibold text-cascade-900">Pricing</h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Daily rate</span>
-                <span className="font-semibold">
-                  {formatCurrency(v.daily_rate_cents)}
+        <section className="flex flex-col gap-3 rounded-[30px] bg-white p-5 sm:p-6">
+          <h2 className="text-[26px]">Coming up</h2>
+          {upcoming.map((t) => {
+            const guest = firstName(t.guest?.full_name);
+            const status = tripStatus(t, "host");
+            const request = isRequest(t);
+            return (
+              <Link
+                key={t.id}
+                href={request ? "/host/trips" : "/host/trips?show=upcoming"}
+                className={`flex items-center gap-3 rounded-[18px] p-3.5 transition-colors ${request ? "bg-butter hover:bg-[#ffdf80]" : "bg-board hover:bg-line"}`}
+              >
+                <Initial name={guest} tone="white" className="size-11 rounded-[14px] text-[18px]" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-base font-extrabold">
+                    {guest} · {status.label.toLowerCase()}
+                  </span>
+                  <span className="figures text-sm text-slate">
+                    {formatRange(t.starts_at, t.ends_at)} · {formatCurrency(hostEarningsCents(t.subtotal_cents))} to you
+                  </span>
                 </span>
-              </div>
-              {v.weekly_discount_pct > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Weekly discount</span>
-                  <span>{v.weekly_discount_pct}%</span>
-                </div>
-              )}
-              {v.monthly_discount_pct > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Monthly discount</span>
-                  <span>{v.monthly_discount_pct}%</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Included miles/day</span>
-                <span>{v.distance_included_mi ?? "Unlimited"}</span>
-              </div>
-              {v.extra_mile_fee_cents > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Extra mile fee</span>
-                  <span>{formatCurrency(v.extra_mile_fee_cents)}</span>
-                </div>
-              )}
-              <Separator />
-              <div className="flex justify-between text-cascade-700">
-                <span className="text-muted-foreground">Your earnings/day</span>
-                <span className="font-semibold">
-                  {formatCurrency(Math.round(v.daily_rate_cents * 0.8))}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white border border-border rounded-xl p-5 space-y-3">
-            <h2 className="font-semibold text-cascade-900">Stats</h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total trips</span>
-                <span className="font-semibold">{v.trip_count ?? 0}</span>
-              </div>
-              {v.rating_avg ? (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rating</span>
-                  <div className="flex items-center gap-1">
-                    <Star className="w-3.5 h-3.5 fill-summit-500 text-summit-500" />
-                    <span className="font-semibold">
-                      {(v.rating_avg as number).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-xs">No ratings yet</p>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white border border-border rounded-xl p-5 space-y-2">
-            <h2 className="font-semibold text-cascade-900">Trip settings</h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Min trip</span>
-                <span>{v.min_trip_days ?? 1} day{(v.min_trip_days ?? 1) !== 1 ? "s" : ""}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Max trip</span>
-                <span>{v.max_trip_days ? `${v.max_trip_days} days` : "No limit"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Advance notice</span>
-                <span>{v.advance_notice_hours ?? 0}h</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Instant book</span>
-                <span>{v.instant_book ? "On" : "Off"}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+                <ChevronRight className="size-5 shrink-0" />
+              </Link>
+            );
+          })}
+          <p className="rounded-[18px] bg-board p-3.5 text-[15px] text-slate">
+            {upcoming.length ? "Nothing else booked." : "Nothing booked yet."}{" "}
+            <Link href={`/host/calendar?car=${car.id}`} className="font-bold text-ink hover:text-cobalt">
+              Block days
+            </Link>{" "}
+            you need the car.
+          </p>
+        </section>
       </div>
+
+      <section className="flex flex-wrap items-center gap-3 rounded-[30px] bg-white px-5 py-5 sm:px-6">
+        {tripRows ? (
+          <>
+            <p className="flex-[1_1_260px] text-[15px] text-slate">
+              Done hosting it? Unlisting hides it from search and keeps its trip history. Cars with trips can&apos;t be deleted.
+            </p>
+            <Tag tone="board" className="text-sm">
+              {pluralize(tripRows, "booking")} on record
+            </Tag>
+          </>
+        ) : (
+          <>
+            <p className="flex-[1_1_260px] text-[15px] text-slate">
+              Selling the car, or done hosting it? Unlisting keeps it here. Deleting can&apos;t be undone.
+            </p>
+            <DeleteVehicleButton vehicleId={car.id} name={name} />
+          </>
+        )}
+      </section>
     </div>
   );
 }

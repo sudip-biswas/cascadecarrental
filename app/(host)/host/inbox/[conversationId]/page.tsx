@@ -1,62 +1,65 @@
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { ConversationList } from "@/components/messaging/ConversationList";
+import { InboxShell } from "@/components/messaging/InboxShell";
 import { MessageThread } from "@/components/messaging/MessageThread";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ThreadHeader } from "@/components/messaging/ThreadHeader";
+import { listConversations, openConversation } from "@/components/messaging/inbox";
+import { HOST_REPLIES } from "@/components/messaging/replies";
 
 export const instant = false;
+export const metadata = { title: "Inbox" };
 
-export default async function HostConversationPage({
-  params,
-}: {
-  params: Promise<{ conversationId: string }>;
-}) {
+export default async function HostConversationPage({ params }: PageProps<"/host/inbox/[conversationId]">) {
   const { conversationId } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect(`/login?redirectTo=${encodeURIComponent(`/host/inbox/${conversationId}`)}`);
 
-  const { data: conv } = await supabase
-    .from("conversations")
-    .select(
-      "*, guest:profiles!guest_id(id, full_name, avatar_url), messages(*)"
-    )
-    .eq("id", conversationId)
-    .eq("host_id", user.id)
-    .single();
+  const conversation = await openConversation(supabase, conversationId, user.id);
+  if (!conversation) notFound();
+  if (conversation.role === "guest") redirect(`/messages/${conversationId}`);
 
-  if (!conv) notFound();
-
-  const c = conv as any;
-  const guest = c.guest;
-  const messages = (c.messages ?? []).sort(
-    (a: any, b: any) =>
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
+  const conversations = await listConversations(supabase, user.id, "host");
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col max-w-2xl">
-      {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-border bg-white">
-        <Link href="/host/inbox" className="text-cascade-700 text-sm hover:underline">
-          ←
-        </Link>
-        <Avatar className="w-8 h-8">
-          <AvatarImage src={guest?.avatar_url ?? undefined} />
-          <AvatarFallback className="text-xs bg-cascade-100 text-cascade-700 font-semibold">
-            {guest?.full_name?.[0]?.toUpperCase() ?? "G"}
-          </AvatarFallback>
-        </Avatar>
-        <p className="font-semibold text-cascade-900 text-sm">{guest?.full_name}</p>
-      </div>
-
-      <MessageThread
-        conversationId={conversationId}
-        initialMessages={messages}
-        currentUserId={user.id}
-        recipientId={guest?.id}
-        recipientName={guest?.full_name ?? "Guest"}
-        recipientAvatar={guest?.avatar_url ?? null}
+    // Edge to edge on phones, where the thread is the whole screen.
+    <div className="-mx-4 -mt-6 -mb-12 sm:-mx-7 sm:-mt-7 md:m-0">
+      <InboxShell
+        threadOpen
+        className="md:h-[calc(100dvh-140px)] md:min-h-[560px] lg:h-[calc(100dvh-76px)]"
+        list={
+          <ConversationList
+            conversations={conversations}
+            activeId={conversationId}
+            viewer="host"
+            basePath="/host/inbox"
+            className="h-full overflow-y-auto"
+            empty="No other conversations."
+          />
+        }
+        thread={
+          <MessageThread
+            key={conversationId}
+            conversationId={conversationId}
+            initialMessages={conversation.messages}
+            currentUserId={user.id}
+            otherName={conversation.other.full_name}
+            basePath="/host/inbox"
+            quickReplies={conversation.trip ? HOST_REPLIES : []}
+            className="h-[calc(100dvh-64px)] rounded-none md:h-auto md:rounded-[28px]"
+            header={
+              <ThreadHeader
+                otherName={conversation.other.full_name}
+                trip={conversation.trip}
+                viewer="host"
+                backHref="/host/inbox"
+              />
+            }
+          />
+        }
       />
     </div>
   );

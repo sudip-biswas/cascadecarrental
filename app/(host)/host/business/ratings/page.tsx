@@ -1,132 +1,162 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { Star } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { formatDate } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/server";
+import { tripDays } from "@/lib/pricing";
+import { formatDate, pluralize } from "@/lib/utils";
+import type { Review } from "@/lib/supabase/types";
+import { EmptyState, PageTitle, Tile, TileTitle } from "@/components/kit";
+import { Initial, firstName } from "@/components/host/bits";
+import { ReplyForm } from "./ReplyForm";
 
 export const instant = false;
+export const metadata = { title: "Ratings" };
 
-export const metadata = { title: "Ratings & reviews" };
+type ReviewRow = Pick<
+  Review,
+  | "id"
+  | "created_at"
+  | "reviewer_id"
+  | "rating_overall"
+  | "rating_cleanliness"
+  | "rating_accuracy"
+  | "rating_value"
+  | "body"
+  | "host_reply"
+> & {
+  reviewer: { full_name: string | null } | null;
+  trips: { starts_at: string; ends_at: string } | null;
+  vehicles: { make: string; model: string } | null;
+};
 
-export default async function HostRatingsPage() {
+function average(values: (number | null)[]): number | null {
+  const set = values.filter((v): v is number => v !== null);
+  return set.length ? set.reduce((a, b) => a + b, 0) / set.length : null;
+}
+
+function Stars({ value, size = 26 }: { value: number; size?: number }) {
+  return (
+    <span className="flex gap-1" role="img" aria-label={`${value.toFixed(1)} out of 5`}>
+      {Array.from({ length: 5 }, (_, i) => (
+        <Star
+          key={i}
+          style={{ width: size, height: size }}
+          strokeWidth={0}
+          className={i < Math.round(value) ? "fill-ink" : "fill-ink/15"}
+        />
+      ))}
+    </span>
+  );
+}
+
+export default async function RatingsPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login?redirectTo=/host/business/ratings");
 
-  // Get reviews for host's vehicles
-  const { data: vehicles } = await supabase
-    .from("vehicles")
-    .select("id")
-    .eq("host_id", user.id);
+  const [{ data }, { count: carCount }] = await Promise.all([
+    supabase
+      .from("reviews")
+      .select(
+        "id, created_at, reviewer_id, rating_overall, rating_cleanliness, rating_accuracy, rating_value, body, host_reply, reviewer:profiles!reviewer_id(full_name), trips(starts_at, ends_at), vehicles(make, model)"
+      )
+      .eq("reviewee_id", user.id)
+      .order("created_at", { ascending: false })
+      .overrideTypes<ReviewRow[], { merge: false }>(),
+    supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("host_id", user.id),
+  ]);
+  const reviews = data ?? [];
 
-  const vehicleIds = vehicles?.map((v) => v.id) ?? [];
+  if (reviews.length === 0) {
+    return (
+      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
+        <PageTitle title="Ratings" />
+        <EmptyState
+          icon={<Star />}
+          title="No reviews yet"
+          body="Guests can review a trip once it's over. Their ratings and comments show up here, and you can reply."
+        />
+      </div>
+    );
+  }
 
-  const { data: reviewsRaw } =
-    vehicleIds.length > 0
-      ? await supabase
-          .from("reviews")
-          .select("*, reviewer:profiles!reviewer_id(full_name, avatar_url), vehicles(make, model, year)")
-          .in("vehicle_id", vehicleIds)
-          .order("created_at", { ascending: false })
-      : { data: [] };
-
-  type ReviewRow = {
-    id: string;
-    created_at: string;
-    rating_overall: number;
-    body: string | null;
-    host_reply: string | null;
-    reviewer: { full_name: string; avatar_url: string | null } | null;
-    vehicles: { make: string; model: string; year: number } | null;
-  };
-  const reviews = reviewsRaw as ReviewRow[] | null;
-
-  const avgRating =
-    reviews && reviews.length > 0
-      ? reviews.reduce((sum, r) => sum + r.rating_overall, 0) / reviews.length
-      : 0;
+  const overall = average(reviews.map((r) => r.rating_overall)) ?? 0;
+  const parts = [
+    { label: "Clean", value: average(reviews.map((r) => r.rating_cleanliness)) },
+    { label: "As described", value: average(reviews.map((r) => r.rating_accuracy)) },
+    { label: "Value", value: average(reviews.map((r) => r.rating_value)) },
+  ].filter((p): p is { label: string; value: number } => p.value !== null);
+  const multipleCars = (carCount ?? 0) > 1;
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
-      <h1 className="text-xl font-bold text-cascade-900">Ratings & reviews</h1>
+    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
+      <PageTitle title="Ratings" />
 
-      {/* Summary */}
-      <div className="bg-white border border-border rounded-xl p-6 flex items-center gap-6">
-        <div className="text-center">
-          <p className="text-5xl font-bold text-cascade-900">
-            {avgRating > 0 ? avgRating.toFixed(2) : "—"}
-          </p>
-          <div className="flex justify-center mt-1">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Star
-                key={i}
-                className={`w-4 h-4 ${
-                  i < Math.round(avgRating)
-                    ? "fill-summit-500 text-summit-500"
-                    : "text-border"
-                }`}
-              />
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-4">
+        <Tile tone="butter" className="flex flex-col gap-2.5 sm:p-[26px]">
+          <span className="text-[15px] font-semibold">{multipleCars ? "Your cars' rating" : "Your car's rating"}</span>
+          <span className="flex flex-wrap items-baseline gap-3">
+            <span className="font-display text-[72px] leading-none font-extrabold tracking-[-0.03em] text-ink sm:text-[96px]">
+              {overall.toFixed(1)}
+            </span>
+            <span className="text-base">from {pluralize(reviews.length, "review")}</span>
+          </span>
+          <Stars value={overall} />
+        </Tile>
+
+        {parts.length > 0 && (
+          <Tile className="figures flex flex-col justify-center gap-3.5 sm:p-[26px]">
+            {parts.map((p) => (
+              <div key={p.label} className="grid grid-cols-[110px_1fr_36px] items-center gap-3 text-[15px]">
+                <span className="font-semibold">{p.label}</span>
+                <span className="h-3 overflow-hidden rounded-[6px] bg-line">
+                  <span className="block h-full rounded-[6px] bg-ink" style={{ width: `${(p.value / 5) * 100}%` }} />
+                </span>
+                <span className="text-right font-extrabold">{p.value.toFixed(1)}</span>
+              </div>
             ))}
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            {reviews?.length ?? 0} reviews
-          </p>
-        </div>
+          </Tile>
+        )}
       </div>
 
-      {/* Reviews list */}
-      {!reviews?.length ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          No reviews yet. Complete your first trip to receive reviews.
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {(reviews as any[]).map((review) => (
-            <div key={review.id} className="bg-white border border-border rounded-xl p-5 space-y-3">
+      <Tile className="flex flex-col gap-4 sm:p-6">
+        <TileTitle>What guests said</TileTitle>
+        {reviews.map((r) => {
+          const name = firstName(r.reviewer?.full_name);
+          const context = r.trips
+            ? `${pluralize(tripDays(r.trips.starts_at, r.trips.ends_at), "day")} in ${formatDate(r.trips.starts_at, {
+                month: "long",
+                day: undefined,
+                year: undefined,
+              })}`
+            : formatDate(r.created_at);
+          return (
+            <article key={r.id} className="flex flex-col gap-3 rounded-[22px] bg-board p-[18px]">
               <div className="flex items-center gap-3">
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={review.reviewer?.avatar_url ?? undefined} />
-                  <AvatarFallback className="text-xs bg-cascade-100 text-cascade-700">
-                    {review.reviewer?.full_name?.[0]?.toUpperCase() ?? "G"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-cascade-900">
-                    {review.reviewer?.full_name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {review.vehicles?.make} {review.vehicles?.model} ·{" "}
-                    {formatDate(review.created_at)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-0.5">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      className={`w-3.5 h-3.5 ${
-                        i < review.rating_overall
-                          ? "fill-summit-500 text-summit-500"
-                          : "text-border"
-                      }`}
-                    />
-                  ))}
-                </div>
+                <Initial name={name} seed={r.reviewer_id} className="size-11 rounded-[14px] text-[18px]" />
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-base font-extrabold">
+                    {name} · ★ {r.rating_overall}
+                  </span>
+                  <span className="text-sm text-slate">
+                    {multipleCars && r.vehicles ? `${r.vehicles.make} ${r.vehicles.model} · ` : ""}
+                    {context}
+                  </span>
+                </span>
               </div>
-
-              {review.body && (
-                <p className="text-sm text-muted-foreground">{review.body}</p>
-              )}
-
-              {review.host_reply && (
-                <div className="bg-cascade-100 rounded-lg p-3 text-sm">
-                  <p className="font-medium text-cascade-900 mb-1">Your response</p>
-                  <p className="text-muted-foreground">{review.host_reply}</p>
+              {r.body && <p className="text-[17px] leading-normal">&ldquo;{r.body}&rdquo;</p>}
+              {r.host_reply ? (
+                <div className="rounded-2xl bg-white px-3.5 py-3 text-[15px]">
+                  <span className="font-extrabold">You replied:</span> {r.host_reply}
                 </div>
+              ) : (
+                <ReplyForm reviewId={r.id} guestName={name} />
               )}
-            </div>
-          ))}
-        </div>
-      )}
+            </article>
+          );
+        })}
+      </Tile>
     </div>
   );
 }

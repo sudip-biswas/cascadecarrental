@@ -1,128 +1,109 @@
 "use client";
 
 import { useState } from "react";
-import { format, addDays } from "date-fns";
 import { toast } from "sonner";
-import { CalendarIcon } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { pluralize, toDateKey, zonedInstant } from "@/lib/utils";
+import { addDays, daysBetween } from "./days";
 
 interface Props {
   open: boolean;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
   vehicleId: string;
-  onBlocked: (block: { id: string; vehicle_id: string; blocked_from: string; blocked_to: string; reason: string | null }) => void;
+  carName: string;
+  /** Pacific date keys, both days included. */
+  from: string;
+  to: string;
+  onBlocked: () => void;
 }
 
-export function BlockDateModal({ open, onClose, vehicleId, onBlocked }: Props) {
-  const today = format(new Date(), "yyyy-MM-dd");
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(format(addDays(new Date(), 1), "yyyy-MM-dd"));
-  const [reason, setReason] = useState("");
-  const [loading, setLoading] = useState(false);
+/** Confirms a block of whole days, with an optional note only the host sees. */
+export function BlockDateModal({ open, onOpenChange, vehicleId, carName, from: initialFrom, to: initialTo, onBlocked }: Props) {
+  const today = toDateKey(new Date());
+  const [from, setFrom] = useState(initialFrom);
+  const [to, setTo] = useState(initialTo);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  const days = from && to && to >= from ? daysBetween(from, to) + 1 : 0;
+
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (to < from) {
-      toast.error("End date must be after start date");
+    if (!days) {
+      toast.error("The last day can't be before the first.");
       return;
     }
-    setLoading(true);
+    setSaving(true);
     const res = await fetch(`/api/vehicles/${vehicleId}/block`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        blocked_from: new Date(from).toISOString(),
-        blocked_to: new Date(to + "T23:59:59").toISOString(),
-        reason: reason.trim() || undefined,
+        // Whole Pacific days: midnight on the first day to midnight after the last.
+        blocked_from: zonedInstant(from, "00:00").toISOString(),
+        blocked_to: zonedInstant(addDays(to, 1), "00:00").toISOString(),
+        reason: note.trim() || undefined,
       }),
     });
-    setLoading(false);
+    const body: { error?: string } = await res.json().catch(() => ({}));
+    setSaving(false);
 
-    if (res.ok) {
-      const { id } = await res.json();
-      onBlocked({
-        id,
-        vehicle_id: vehicleId,
-        blocked_from: new Date(from).toISOString(),
-        blocked_to: new Date(to + "T23:59:59").toISOString(),
-        reason: reason.trim() || null,
-      });
-      toast.success("Dates blocked");
-      onClose();
-    } else {
-      const { error } = await res.json().catch(() => ({ error: "Unknown error" }));
-      toast.error(error ?? "Failed to block dates");
+    if (!res.ok) {
+      toast.error(body.error ?? "Couldn't block those days. Try again.");
+      return;
     }
+    toast.success(`${pluralize(days, "day")} blocked. Nobody can book them.`);
+    setNote("");
+    onBlocked();
+    onOpenChange(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-sm">
+    <Dialog open={open} onOpenChange={(o) => !saving && onOpenChange(o)}>
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <CalendarIcon className="w-4 h-4 text-cascade-700" />
-            Block dates
-          </DialogTitle>
+          <DialogTitle>Block days</DialogTitle>
+          <DialogDescription className="text-[15px] text-slate">
+            {carName} won&apos;t show as available on these days.
+          </DialogDescription>
         </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+        <form onSubmit={submit} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="block-from">From</Label>
-              <Input
-                id="block-from"
-                type="date"
-                value={from}
-                min={today}
-                onChange={(e) => setFrom(e.target.value)}
-                required
-              />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="block-from" className="text-sm font-semibold text-slate">
+                First day
+              </Label>
+              <Input id="block-from" type="date" value={from} min={today} onChange={(e) => setFrom(e.target.value)} required />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="block-to">To</Label>
-              <Input
-                id="block-to"
-                type="date"
-                value={to}
-                min={from}
-                onChange={(e) => setTo(e.target.value)}
-                required
-              />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="block-to" className="text-sm font-semibold text-slate">
+                Last day
+              </Label>
+              <Input id="block-to" type="date" value={to} min={from || today} onChange={(e) => setTo(e.target.value)} required />
             </div>
           </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="block-reason">Reason (optional)</Label>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="block-note" className="text-sm font-semibold text-slate">
+              Note, only you see it
+            </Label>
             <Input
-              id="block-reason"
-              placeholder="e.g. Personal use, maintenance..."
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
+              id="block-note"
+              placeholder="Using it myself"
+              value={note}
               maxLength={200}
+              onChange={(e) => setNote(e.target.value)}
             />
           </div>
-
-          <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="secondary" disabled={saving} onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              className="bg-cascade-700 hover:bg-cascade-900 text-white"
-              disabled={loading}
-            >
-              {loading ? "Blocking..." : "Block dates"}
+            <Button type="submit" disabled={saving || !days}>
+              {saving ? "Blocking…" : days ? `Block ${pluralize(days, "day")}` : "Block days"}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
