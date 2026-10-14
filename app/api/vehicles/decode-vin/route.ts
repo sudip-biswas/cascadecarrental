@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { VIN_PATTERN } from "@/lib/listing-limits";
+
+interface NhtsaResult {
+  Variable: string;
+  Value: string | null;
+}
 
 // Map NHTSA values to our schema enums
 function mapFuelType(nhtsaFuel: string): string {
@@ -29,22 +36,25 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const vin = searchParams.get("vin")?.trim().toUpperCase();
 
-  if (!vin || vin.length !== 17) {
-    return NextResponse.json({ error: "VIN must be 17 characters" }, { status: 400 });
+  if (!vin || !VIN_PATTERN.test(vin)) {
+    return NextResponse.json({ error: "A VIN is 17 letters and numbers" }, { status: 400 });
   }
 
-  // Check for duplicate in our DB
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Log in first" }, { status: 401 });
 
-  const { data: existing } = await supabase
+  // RLS hides other hosts' unlisted cars, so check across everyone.
+  const { data: existing } = await createAdminClient()
     .from("vehicles")
     .select("id")
     .eq("vin", vin)
     .maybeSingle();
 
   if (existing) {
-    return NextResponse.json({ error: "A vehicle with this VIN is already listed on Cascade" }, { status: 409 });
+    return NextResponse.json({ error: "A car with this VIN is already on Cascade" }, { status: 409 });
   }
 
   // Call NHTSA free API
@@ -53,16 +63,16 @@ export async function GET(req: Request) {
   try {
     nhtsaRes = await fetch(nhtsaUrl, { next: { revalidate: 86400 } });
   } catch {
-    return NextResponse.json({ error: "Could not reach NHTSA API" }, { status: 502 });
+    return NextResponse.json({ error: "Couldn't look up the VIN. Fill in the details yourself." }, { status: 502 });
   }
 
   if (!nhtsaRes.ok) {
-    return NextResponse.json({ error: "NHTSA decode failed" }, { status: 502 });
+    return NextResponse.json({ error: "Couldn't look up the VIN. Fill in the details yourself." }, { status: 502 });
   }
 
-  const { Results } = await nhtsaRes.json();
+  const { Results } = (await nhtsaRes.json()) as { Results?: NhtsaResult[] };
   const get = (variable: string): string =>
-    Results?.find((r: any) => r.Variable === variable)?.Value?.trim() ?? "";
+    Results?.find((r) => r.Variable === variable)?.Value?.trim() ?? "";
 
   const make = get("Make");
   const model = get("Model");
@@ -75,7 +85,7 @@ export async function GET(req: Request) {
   const doorsRaw = get("Doors");
 
   if (!make || !model || !yearStr) {
-    return NextResponse.json({ error: "VIN not recognized — please fill in details manually" }, { status: 422 });
+    return NextResponse.json({ error: "We don't recognise that VIN. Fill in the details yourself." }, { status: 422 });
   }
 
   return NextResponse.json({

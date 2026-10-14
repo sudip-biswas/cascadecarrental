@@ -6,6 +6,7 @@
 -- Enable extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "earthdistance" CASCADE;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 -- =============================================================
 -- PROFILES (extends auth.users)
@@ -28,7 +29,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 
 -- Trigger: auto-create profile on user signup
 CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   INSERT INTO profiles (id, full_name, avatar_url)
   VALUES (
@@ -63,7 +64,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
   transmission          TEXT NOT NULL DEFAULT 'automatic',
   seats                 SMALLINT NOT NULL DEFAULT 5,
   doors                 SMALLINT,
-  mpg                   SMALLINT,
+  mpg                   SMALLINT CHECK (mpg IS NULL OR mpg BETWEEN 1 AND 150),
   range_miles           SMALLINT,
   location_name         TEXT NOT NULL,
   location_lat          DOUBLE PRECISION NOT NULL DEFAULT 47.6062,
@@ -161,14 +162,21 @@ CREATE TABLE IF NOT EXISTS trips (
   stripe_payment_intent_id    TEXT UNIQUE,
   stripe_charge_id            TEXT,
   payment_status              TEXT NOT NULL DEFAULT 'pending'
-                              CHECK (payment_status IN ('pending', 'authorized', 'captured', 'refunded', 'failed')),
+                              CHECK (payment_status IN ('pending', 'authorized', 'captured', 'refunded', 'voided', 'failed')),
   pay_later                   BOOLEAN NOT NULL DEFAULT false,
   status                      TEXT NOT NULL DEFAULT 'pending'
                               CHECK (status IN ('pending', 'approved', 'active', 'completed', 'cancelled_guest', 'cancelled_host')),
   cancellation_reason         TEXT,
   cancelled_at                TIMESTAMPTZ,
+  approved_at                 TIMESTAMPTZ,
   created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT trips_ends_after_start CHECK (ends_at > starts_at),
+  -- No two live trips on the same car at the same time.
+  CONSTRAINT trips_no_overlap EXCLUDE USING gist (
+    vehicle_id WITH =,
+    tstzrange(starts_at, ends_at, '[)') WITH &&
+  ) WHERE (status NOT IN ('cancelled_guest', 'cancelled_host'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_trips_vehicle_id ON trips(vehicle_id);
@@ -181,7 +189,7 @@ CREATE INDEX IF NOT EXISTS idx_trips_vehicle_dates ON trips(vehicle_id, starts_a
 
 -- Trigger: update vehicle stats after trip completion
 CREATE OR REPLACE FUNCTION update_vehicle_stats()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF NEW.status = 'completed' AND (OLD.status IS NULL OR OLD.status != 'completed') THEN
     UPDATE vehicles SET
@@ -259,7 +267,7 @@ CREATE INDEX IF NOT EXISTS idx_reviews_reviewee_id ON reviews(reviewee_id);
 
 -- Trigger: update vehicle rating after review
 CREATE OR REPLACE FUNCTION update_vehicle_rating()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   UPDATE vehicles SET
     rating_avg = (
@@ -297,16 +305,37 @@ ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
 
 -- PROFILES
 CREATE POLICY "profiles_select_public" ON profiles FOR SELECT USING (true);
-CREATE POLICY "profiles_update_own" ON profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "profiles_insert_own" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "profiles_update_own" ON profiles FOR UPDATE
+  USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+-- Profiles are created by handle_new_user. Users edit their details, never their flags.
+REVOKE INSERT, UPDATE ON profiles FROM anon, authenticated;
+GRANT UPDATE (full_name, avatar_url, bio, phone, updated_at) ON profiles TO authenticated;
 
 -- VEHICLES
 CREATE POLICY "vehicles_select_listed" ON vehicles FOR SELECT
   USING (status = 'listed' OR host_id = auth.uid());
 CREATE POLICY "vehicles_insert_own" ON vehicles FOR INSERT
-  WITH CHECK (host_id = auth.uid());
+  WITH CHECK (host_id = auth.uid() AND status <> 'suspended');
+-- A suspended car stays suspended until Cascade lifts it.
 CREATE POLICY "vehicles_update_own" ON vehicles FOR UPDATE
-  USING (host_id = auth.uid());
+  USING (host_id = auth.uid() AND status <> 'suspended')
+  WITH CHECK (host_id = auth.uid() AND status <> 'suspended');
+-- Ratings and trip counts come from triggers.
+REVOKE INSERT, UPDATE ON vehicles FROM anon, authenticated;
+GRANT INSERT (
+  host_id, make, model, trim, year, color, license_plate, vin, vehicle_type, fuel_type,
+  transmission, seats, doors, mpg, range_miles, location_name, location_lat, location_lng,
+  location_address, daily_rate_cents, weekly_discount_pct, monthly_discount_pct,
+  distance_included_mi, extra_mile_fee_cents, min_trip_days, max_trip_days,
+  advance_notice_hours, instant_book, description, status
+) ON vehicles TO authenticated;
+GRANT UPDATE (
+  make, model, trim, year, color, license_plate, vin, vehicle_type, fuel_type,
+  transmission, seats, doors, mpg, range_miles, location_name, location_lat, location_lng,
+  location_address, daily_rate_cents, weekly_discount_pct, monthly_discount_pct,
+  distance_included_mi, extra_mile_fee_cents, min_trip_days, max_trip_days,
+  advance_notice_hours, instant_book, description, status, updated_at
+) ON vehicles TO authenticated;
 CREATE POLICY "vehicles_delete_own" ON vehicles FOR DELETE
   USING (host_id = auth.uid());
 
@@ -354,10 +383,8 @@ CREATE POLICY "vehicle_availability_delete_own" ON vehicle_availability FOR DELE
 -- TRIPS
 CREATE POLICY "trips_select_participant" ON trips FOR SELECT
   USING (guest_id = auth.uid() OR host_id = auth.uid());
-CREATE POLICY "trips_insert_guest" ON trips FOR INSERT
-  WITH CHECK (guest_id = auth.uid());
-CREATE POLICY "trips_update_participant" ON trips FOR UPDATE
-  USING (guest_id = auth.uid() OR host_id = auth.uid());
+-- Trips are created and changed only by the server (service role), which
+-- checks availability, payment and who is asking.
 
 -- CONVERSATIONS
 CREATE POLICY "conversations_select_participant" ON conversations FOR SELECT
@@ -380,12 +407,57 @@ CREATE POLICY "messages_insert_participant" ON messages FOR INSERT
     )
   );
 
+-- Recipients can mark messages read, and change nothing else.
+CREATE POLICY "messages_mark_read" ON messages FOR UPDATE
+  USING (
+    sender_id <> auth.uid() AND EXISTS (
+      SELECT 1 FROM conversations c WHERE c.id = conversation_id
+      AND (c.guest_id = auth.uid() OR c.host_id = auth.uid())
+    )
+  );
+REVOKE UPDATE ON messages FROM anon, authenticated;
+GRANT UPDATE (read_at) ON messages TO authenticated;
+
 -- REVIEWS
 CREATE POLICY "reviews_select_public" ON reviews FOR SELECT USING (true);
 CREATE POLICY "reviews_insert_reviewer" ON reviews FOR INSERT
-  WITH CHECK (reviewer_id = auth.uid());
+  WITH CHECK (
+    reviewer_id = auth.uid() AND EXISTS (
+      SELECT 1 FROM trips t
+      WHERE t.id = trip_id
+        AND t.guest_id = auth.uid()
+        AND t.status = 'completed'
+        AND t.vehicle_id = reviews.vehicle_id
+        AND t.host_id = reviews.reviewee_id
+    )
+  );
 CREATE POLICY "reviews_update_host_reply" ON reviews FOR UPDATE
   USING (reviewee_id = auth.uid());
+-- Hosts can reply, not change the rating.
+REVOKE UPDATE ON reviews FROM anon, authenticated;
+GRANT UPDATE (host_reply, host_replied_at) ON reviews TO authenticated;
+
+-- PRIVATE COLUMNS
+-- Phone numbers, Stripe ids, plates, VINs, exact addresses and block notes
+-- are hidden from the public API. Owners read them through the server.
+REVOKE SELECT ON profiles FROM anon, authenticated;
+GRANT SELECT (
+  id, full_name, avatar_url, bio, is_host, host_since,
+  driving_license_verified, identity_verified, created_at, updated_at
+) ON profiles TO anon, authenticated;
+
+REVOKE SELECT ON vehicles FROM anon, authenticated;
+GRANT SELECT (
+  id, host_id, make, model, trim, year, color, vehicle_type, fuel_type, transmission,
+  seats, doors, mpg, range_miles, location_name, location_lat, location_lng,
+  daily_rate_cents, weekly_discount_pct, monthly_discount_pct, distance_included_mi,
+  extra_mile_fee_cents, min_trip_days, max_trip_days, advance_notice_hours, instant_book,
+  description, status, rating_avg, trip_count, created_at, updated_at
+) ON vehicles TO anon, authenticated;
+
+REVOKE SELECT ON vehicle_availability FROM anon, authenticated;
+GRANT SELECT (id, vehicle_id, blocked_from, blocked_to, created_at)
+  ON vehicle_availability TO anon, authenticated;
 
 -- =============================================================
 -- SUPABASE STORAGE BUCKET
@@ -393,5 +465,5 @@ CREATE POLICY "reviews_update_host_reply" ON reviews FOR UPDATE
 -- Run this in Storage section OR uncomment here:
 -- INSERT INTO storage.buckets (id, name, public) VALUES ('vehicle-images', 'vehicle-images', true);
 -- CREATE POLICY "vehicle_images_public_read" ON storage.objects FOR SELECT USING (bucket_id = 'vehicle-images');
--- CREATE POLICY "vehicle_images_auth_upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'vehicle-images' AND auth.role() = 'authenticated');
+-- CREATE POLICY "vehicle_images_auth_upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'vehicle-images' AND auth.uid()::text = (storage.foldername(name))[1]);
 -- CREATE POLICY "vehicle_images_owner_delete" ON storage.objects FOR DELETE USING (bucket_id = 'vehicle-images' AND auth.uid()::text = (storage.foldername(name))[1]);

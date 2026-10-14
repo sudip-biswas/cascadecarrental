@@ -1,66 +1,66 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getStripe } from "@/lib/stripe/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { guestCancellation } from "@/lib/cancellation";
+import { CANCEL_REASON } from "@/lib/trip-status";
+import { settleCancellation } from "@/lib/trips";
 
-export async function POST(
-  _req: Request,
-  { params }: { params: Promise<{ tripId: string }> }
-) {
+function fail(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+/**
+ * Guests get money back by the cancellation terms. A host cancelling always
+ * refunds the guest in full.
+ */
+export async function POST(_req: Request, { params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = await params;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return fail("Unauthorized", 401);
 
-  // Fetch trip — user must be guest or host
-  const { data: trip, error: fetchError } = await supabase
-    .from("trips")
-    .select("id, status, guest_id, host_id, stripe_payment_intent_id, rate_type")
-    .eq("id", tripId)
-    .single();
-
-  if (fetchError || !trip) {
-    return NextResponse.json({ error: "Trip not found" }, { status: 404 });
-  }
+  const admin = createAdminClient();
+  const { data: trip } = await admin.from("trips").select("*").eq("id", tripId).single();
+  if (!trip) return fail("Trip not found", 404);
 
   const isGuest = trip.guest_id === user.id;
   const isHost = trip.host_id === user.id;
+  if (!isGuest && !isHost) return fail("Forbidden", 403);
 
-  if (!isGuest && !isHost) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  if (!["pending", "approved"].includes(trip.status)) {
-    return NextResponse.json(
-      { error: "Trip cannot be cancelled in its current state" },
-      { status: 400 }
-    );
-  }
-
-  const newStatus = isGuest ? "cancelled_guest" : "cancelled_host";
-
-  // Cancel Stripe PaymentIntent (release auth hold) if it exists
-  if (trip.stripe_payment_intent_id) {
-    try {
-      const stripe = getStripe();
-      await stripe.paymentIntents.cancel(trip.stripe_payment_intent_id);
-    } catch {
-      // Payment may already be cancelled — proceed with DB update
+  let refundCents: number;
+  if (isGuest) {
+    const terms = guestCancellation(trip);
+    if (!terms.canCancel) return fail(terms.summary, 409);
+    refundCents = terms.refundCents;
+  } else {
+    if (trip.status !== "pending" && trip.status !== "approved") {
+      return fail("This trip can't be cancelled.", 409);
     }
+    refundCents = trip.total_cents;
   }
 
-  const { error: updateError } = await supabase
+  let paymentStatus;
+  try {
+    paymentStatus = await settleCancellation(trip, refundCents);
+  } catch {
+    return fail("Couldn't reach the payment provider. Nothing was changed, try again.", 502);
+  }
+
+  const now = new Date().toISOString();
+  const status = isGuest ? "cancelled_guest" : "cancelled_host";
+  const { error } = await admin
     .from("trips")
     .update({
-      status: newStatus,
-      cancelled_at: new Date().toISOString(),
+      status,
+      payment_status: paymentStatus,
+      cancellation_reason: isGuest ? CANCEL_REASON.byGuest : CANCEL_REASON.byHost,
+      cancelled_at: now,
+      updated_at: now,
     })
     .eq("id", tripId);
+  if (error) return fail("Failed to cancel trip", 500);
 
-  if (updateError) {
-    return NextResponse.json({ error: "Failed to cancel trip" }, { status: 500 });
-  }
-
-  return NextResponse.json({ status: newStatus });
+  return NextResponse.json({ status, refundCents: paymentStatus === "refunded" ? refundCents : 0 });
 }

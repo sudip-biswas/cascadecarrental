@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -10,7 +11,8 @@ export async function GET(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: true });
 
-  const { data } = await supabase
+  // Plates are a private column, readable only with the admin client.
+  const { data } = await createAdminClient()
     .from("vehicles")
     .select("id")
     .eq("license_plate", plate)
@@ -19,7 +21,7 @@ export async function GET(req: Request) {
 
   if (data) {
     return NextResponse.json(
-      { error: "You already have a listing with this license plate" },
+      { error: "You already have a car with this plate" },
       { status: 409 }
     );
   }

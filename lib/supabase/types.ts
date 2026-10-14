@@ -302,11 +302,12 @@ export type Database = {
           protection_cost_cents: number;
           stripe_payment_intent_id: string | null;
           stripe_charge_id: string | null;
-          payment_status: "pending" | "authorized" | "captured" | "refunded" | "failed";
+          payment_status: "pending" | "authorized" | "captured" | "refunded" | "voided" | "failed";
           pay_later: boolean;
           status: "pending" | "approved" | "active" | "completed" | "cancelled_guest" | "cancelled_host";
           cancellation_reason: string | null;
           cancelled_at: string | null;
+          approved_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -329,11 +330,12 @@ export type Database = {
           protection_cost_cents?: number;
           stripe_payment_intent_id?: string | null;
           stripe_charge_id?: string | null;
-          payment_status?: "pending" | "authorized" | "captured" | "refunded" | "failed";
+          payment_status?: "pending" | "authorized" | "captured" | "refunded" | "voided" | "failed";
           pay_later?: boolean;
           status?: "pending" | "approved" | "active" | "completed" | "cancelled_guest" | "cancelled_host";
           cancellation_reason?: string | null;
           cancelled_at?: string | null;
+          approved_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -356,11 +358,12 @@ export type Database = {
           protection_cost_cents?: number;
           stripe_payment_intent_id?: string | null;
           stripe_charge_id?: string | null;
-          payment_status?: "pending" | "authorized" | "captured" | "refunded" | "failed";
+          payment_status?: "pending" | "authorized" | "captured" | "refunded" | "voided" | "failed";
           pay_later?: boolean;
           status?: "pending" | "approved" | "active" | "completed" | "cancelled_guest" | "cancelled_host";
           cancellation_reason?: string | null;
           cancelled_at?: string | null;
+          approved_at?: string | null;
           updated_at?: string;
         };
         Relationships: [
@@ -537,3 +540,13 @@ export type Database = {
     Enums: Record<string, never>;
   };
 };
+
+type Tables = Database["public"]["Tables"];
+export type Profile = Tables["profiles"]["Row"];
+export type Vehicle = Tables["vehicles"]["Row"];
+export type VehicleImage = Tables["vehicle_images"]["Row"];
+export type Trip = Tables["trips"]["Row"];
+export type TripStatus = Trip["status"];
+export type PaymentStatus = Trip["payment_status"];
+export type Review = Tables["reviews"]["Row"];
+export type Message = Tables["messages"]["Row"];

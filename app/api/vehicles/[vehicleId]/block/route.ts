@@ -2,94 +2,84 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 
-const createSchema = z.object({
-  blocked_from: z.string().datetime(),
-  blocked_to: z.string().datetime(),
-  reason: z.string().max(200).optional(),
-});
+const createSchema = z
+  .object({
+    blocked_from: z.string().datetime({ offset: true }),
+    blocked_to: z.string().datetime({ offset: true }),
+    reason: z.string().trim().max(200).optional(),
+  })
+  .refine((b) => new Date(b.blocked_to) > new Date(b.blocked_from), {
+    message: "The end has to be after the start",
+  });
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ vehicleId: string }> }
-) {
-  const { vehicleId } = await params;
+function fail(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+/** Only the car's host may block or unblock its dates. RLS enforces the same. */
+async function ownCar(vehicleId: string) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return { supabase, error: fail("Unauthorized", 401) };
 
-  // Verify ownership
   const { data: vehicle } = await supabase
     .from("vehicles")
-    .select("id, host_id")
+    .select("id")
     .eq("id", vehicleId)
-    .single();
+    .eq("host_id", user.id)
+    .maybeSingle();
+  if (!vehicle) return { supabase, error: fail("Forbidden", 403) };
+  return { supabase, error: null };
+}
 
-  if (!vehicle || vehicle.host_id !== user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+export async function POST(req: Request, { params }: { params: Promise<{ vehicleId: string }> }) {
+  const { vehicleId } = await params;
+  const { supabase, error: denied } = await ownCar(vehicleId);
+  if (denied) return denied;
 
-  const body = await req.json().catch(() => ({}));
-  const parsed = createSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 });
-  }
+  const parsed = createSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return fail("Pick a start and end date.", 400);
+  const { blocked_from, blocked_to, reason } = parsed.data;
+
+  // Blocking can't take dates away from a guest who already has them.
+  const { data: trips } = await supabase
+    .from("trips")
+    .select("id")
+    .eq("vehicle_id", vehicleId)
+    .in("status", ["pending", "approved", "active"])
+    .lt("starts_at", blocked_to)
+    .gt("ends_at", blocked_from)
+    .limit(1);
+  if (trips?.length) return fail("A guest has the car on some of those days. Pick other days.", 409);
 
   const { data: block, error } = await supabase
     .from("vehicle_availability")
-    .insert({
-      vehicle_id: vehicleId,
-      blocked_from: parsed.data.blocked_from,
-      blocked_to: parsed.data.blocked_to,
-      reason: parsed.data.reason ?? null,
-    })
+    .insert({ vehicle_id: vehicleId, blocked_from, blocked_to, reason: reason || null })
     .select("id")
     .single();
-
-  if (error) {
-    return NextResponse.json({ error: "Failed to create block" }, { status: 500 });
-  }
+  if (error) return fail("Failed to block those days.", 500);
 
   return NextResponse.json({ id: block.id }, { status: 201 });
 }
 
-export async function DELETE(
-  req: Request,
-  { params }: { params: Promise<{ vehicleId: string }> }
-) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ vehicleId: string }> }) {
   const { vehicleId } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { supabase, error: denied } = await ownCar(vehicleId);
+  if (denied) return denied;
 
-  const { searchParams } = new URL(req.url);
-  const blockId = searchParams.get("blockId");
-  if (!blockId) return NextResponse.json({ error: "blockId required" }, { status: 400 });
+  const blockId = new URL(req.url).searchParams.get("blockId");
+  if (!blockId) return fail("blockId required", 400);
 
-  // Verify ownership via join
-  const { data: block } = await supabase
-    .from("vehicle_availability")
-    .select("id, vehicles!inner(host_id)")
-    .eq("id", blockId)
-    .eq("vehicle_id", vehicleId)
-    .single();
-
-  const blockAny = block as any;
-  if (!block || blockAny.vehicles?.host_id !== user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("vehicle_availability")
     .delete()
-    .eq("id", blockId);
-
-  if (error) {
-    return NextResponse.json({ error: "Failed to delete block" }, { status: 500 });
-  }
+    .eq("id", blockId)
+    .eq("vehicle_id", vehicleId)
+    .select("id");
+  if (error) return fail("Failed to unblock those days.", 500);
+  if (!data.length) return fail("That block is already gone.", 404);
 
   return NextResponse.json({ success: true });
 }

@@ -1,7 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { safeRedirect } from "@/lib/utils";
 
-const PROTECTED_GUEST_PATHS = ["/trips", "/messages", "/profile", "/checkout"];
+const PROTECTED_GUEST_PATHS = ["/trips", "/messages", "/profile"];
+const CHECKOUT_PATH = /^\/cars\/[^/]+\/checkout/;
 const PROTECTED_HOST_PATHS = ["/host"];
 const AUTH_PATHS = ["/login", "/register"];
 
@@ -36,22 +38,21 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Redirect logged-in users away from auth pages
+  // Signed-in users skip the auth pages and carry on where they were headed.
   if (user && AUTH_PATHS.some((p) => pathname.startsWith(p))) {
-    return NextResponse.redirect(new URL("/", request.url));
+    const next = safeRedirect(request.nextUrl.searchParams.get("redirectTo"));
+    return NextResponse.redirect(new URL(next, request.url));
   }
 
-  // Protect guest routes
-  if (!user && PROTECTED_GUEST_PATHS.some((p) => pathname.startsWith(p))) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirectTo", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
+  const isProtected =
+    PROTECTED_GUEST_PATHS.some((p) => pathname.startsWith(p)) ||
+    PROTECTED_HOST_PATHS.some((p) => pathname.startsWith(p)) ||
+    CHECKOUT_PATH.test(pathname);
 
-  // Protect host routes
-  if (!user && PROTECTED_HOST_PATHS.some((p) => pathname.startsWith(p))) {
+  if (!user && isProtected) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirectTo", pathname);
+    // Keep the query so booking dates survive the trip through login.
+    loginUrl.searchParams.set("redirectTo", pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 

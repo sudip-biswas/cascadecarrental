@@ -1,78 +1,85 @@
 import { NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { getStripe } from "@/lib/stripe/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { stripe } from "@/lib/stripe/server";
+import { CANCEL_REASON } from "@/lib/trip-status";
+import { applyPaymentIntent, capturePayment, settleCancellation } from "@/lib/trips";
 
 const schema = z.object({
   action: z.enum(["approve", "reject"]),
 });
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ tripId: string }> }
-) {
+function fail(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+/** The host accepts or declines a booking request. */
+export async function PATCH(req: Request, { params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = await params;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return fail("Unauthorized", 401);
 
-  const body = await req.json().catch(() => ({}));
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-  }
-
+  const parsed = schema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return fail("Invalid action", 400);
   const { action } = parsed.data;
 
-  // Fetch trip — user must be the host
-  const { data: trip } = await supabase
+  const admin = createAdminClient();
+  const { data: trip } = await admin
     .from("trips")
-    .select("id, status, host_id, stripe_payment_intent_id")
+    .select("id, status, host_id, payment_status, stripe_payment_intent_id")
     .eq("id", tripId)
     .single();
 
-  if (!trip) return NextResponse.json({ error: "Trip not found" }, { status: 404 });
-  if (trip.host_id !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  if (trip.status !== "pending") {
-    return NextResponse.json({ error: "Only pending trips can be approved or rejected" }, { status: 400 });
-  }
+  if (!trip) return fail("Trip not found", 404);
+  if (trip.host_id !== user.id) return fail("Forbidden", 403);
+  if (trip.status !== "pending") return fail("This request has already been answered.", 409);
 
-  if (action === "approve") {
-    // Capture the Stripe payment hold
-    if (trip.stripe_payment_intent_id) {
-      try {
-        const stripe = getStripe();
-        await stripe.paymentIntents.capture(trip.stripe_payment_intent_id);
-      } catch {
-        // Capture may fail if card declined — still update status
-      }
-    }
+  const now = new Date().toISOString();
 
-    await supabase
-      .from("trips")
-      .update({ status: "approved", payment_status: "captured" })
-      .eq("id", tripId);
-  } else {
-    // Reject = cancel by host
-    if (trip.stripe_payment_intent_id) {
-      try {
-        const stripe = getStripe();
-        await stripe.paymentIntents.cancel(trip.stripe_payment_intent_id);
-      } catch {
-        // Already cancelled
-      }
-    }
-
-    await supabase
+  if (action === "reject") {
+    const paymentStatus = await settleCancellation(trip, 0);
+    await admin
       .from("trips")
       .update({
         status: "cancelled_host",
-        cancelled_at: new Date().toISOString(),
+        payment_status: paymentStatus,
+        cancellation_reason: CANCEL_REASON.declined,
+        cancelled_at: now,
+        updated_at: now,
       })
       .eq("id", tripId);
+    return NextResponse.json({ status: "cancelled_host" });
   }
 
-  return NextResponse.json({ success: true });
+  if (trip.payment_status !== "authorized") {
+    return fail("The guest hasn't finished paying yet.", 409);
+  }
+
+  let pi: Stripe.PaymentIntent;
+  try {
+    pi = await capturePayment(trip);
+  } catch {
+    // A double tap finds it already charged; a lapsed hold finds it cancelled.
+    // Anything else is worth a retry.
+    pi = await stripe.paymentIntents.retrieve(trip.stripe_payment_intent_id!);
+    if (pi.status !== "succeeded" && pi.status !== "canceled") {
+      return fail("Couldn't charge the guest's card. Try again in a minute.", 502);
+    }
+  }
+
+  const updated = await applyPaymentIntent(pi);
+  if (updated?.status !== "approved") {
+    return fail(
+      pi.status === "canceled"
+        ? "The card hold has expired, so the request was closed."
+        : "This request was cancelled before you accepted it.",
+      409
+    );
+  }
+  return NextResponse.json({ status: "approved" });
 }

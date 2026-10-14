@@ -1,133 +1,168 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { LIMITS, VIN_PATTERN } from "@/lib/listing-limits";
 
-const schema = z.object({
-  make: z.string().min(1),
-  model: z.string().min(1),
-  year: z.number().int().min(1990).max(new Date().getFullYear() + 1),
-  trim: z.string().optional(),
-  color: z.string().optional(),
-  licensePlate: z.string().min(1),
-  vin: z.string().optional(),
-  vehicleType: z.string().min(1),
-  fuelType: z.string().min(1),
-  transmission: z.string().min(1),
-  seats: z.number().int().min(2).max(12),
-  mpg: z.string().optional(),
-  description: z.string().optional(),
-  locationName: z.string().min(1),
-  locationLat: z.number(),
-  locationLng: z.number(),
-  dailyRateCents: z.number().int().min(1000),
-  weeklyDiscountPct: z.number().int().min(0).max(50).default(0),
-  monthlyDiscountPct: z.number().int().min(0).max(50).default(0),
-  distanceIncludedMi: z.number().int().min(0).default(200),
-  extraMileFeeCents: z.number().int().min(0).default(20),
-  minTripDays: z.number().int().min(1).default(1),
-  maxTripDays: z.number().int().min(1).default(30),
-  advanceNoticeHours: z.number().int().min(0).default(1),
-  instantBook: z.boolean().default(true),
-  images: z.array(
-    z.object({
-      url: z.string().url(),
-      isCover: z.boolean(),
-      position: z.number().int(),
-    })
-  ).default([]),
-});
+const STORAGE_PREFIX = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/vehicle-images/`;
+
+const text = (max: number) => z.string().trim().max(max);
+const optionalText = (max: number) =>
+  text(max).optional().transform((v) => v || null);
+
+const schema = z
+  .object({
+    make: text(40).min(1, "Add the make"),
+    model: text(60).min(1, "Add the model"),
+    year: z.number().int().min(LIMITS.yearMin).max(LIMITS.yearMax),
+    trim: optionalText(40),
+    color: optionalText(30),
+    licensePlate: text(LIMITS.plateMax).min(1, "Add the plate").transform((v) => v.toUpperCase()),
+    vin: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .optional()
+      .transform((v) => v || null)
+      .refine((v) => v === null || VIN_PATTERN.test(v), "A VIN is 17 letters and numbers"),
+    vehicleType: z.enum(["sedan", "suv", "truck", "van", "sports", "luxury", "electric"]),
+    fuelType: z.enum(["gasoline", "hybrid", "electric", "diesel"]),
+    transmission: z.enum(["automatic", "manual"]),
+    seats: z.number().int().min(LIMITS.seatsMin).max(LIMITS.seatsMax),
+    mpg: z.preprocess(
+      (v) => (v === "" || v == null ? undefined : v),
+      z.coerce
+        .number()
+        .int()
+        .min(LIMITS.mpgMin, "MPG has to be between 1 and 150")
+        .max(LIMITS.mpgMax, "MPG has to be between 1 and 150")
+        .optional()
+    ),
+    description: optionalText(1000),
+    locationName: text(80).min(1, "Add the pickup area"),
+    locationAddress: optionalText(200),
+    locationLat: z.number().min(-90).max(90),
+    locationLng: z.number().min(-180).max(180),
+    dailyRateCents: z.number().int().min(LIMITS.rateMinCents).max(LIMITS.rateMaxCents),
+    weeklyDiscountPct: z.number().int().min(0).max(LIMITS.discountMaxPct).default(0),
+    monthlyDiscountPct: z.number().int().min(0).max(LIMITS.discountMaxPct).default(0),
+    distanceIncludedMi: z.number().int().min(0).max(LIMITS.milesMax).default(200),
+    extraMileFeeCents: z.number().int().min(0).max(LIMITS.extraMileMaxCents).default(20),
+    minTripDays: z.number().int().min(1).max(LIMITS.minTripMax).default(1),
+    maxTripDays: z.number().int().min(1).max(LIMITS.maxTripMax).default(30),
+    advanceNoticeHours: z.number().int().min(0).max(LIMITS.noticeMaxHours).default(1),
+    instantBook: z.boolean().default(true),
+    /** In display order. The first one is the cover. */
+    images: z.array(z.object({ url: z.string().url() })).max(LIMITS.photosMax).default([]),
+  })
+  .refine((v) => v.maxTripDays >= v.minTripDays, {
+    message: "Longest trip can't be shorter than the shortest",
+    path: ["maxTripDays"],
+  });
+
+function fail(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
 
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return fail("Log in to list a car.", 401);
 
-  const body = await req.json();
-  const parsed = schema.safeParse(body);
+  const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
+    const issue = parsed.error.issues[0];
+    return NextResponse.json(
+      { error: issue?.message ?? "Check the listing details", issues: parsed.error.issues },
+      { status: 400 }
+    );
+  }
+  const v = parsed.data;
+
+  // Photos must be ones this host uploaded through /api/uploads.
+  const ownPrefix = `${STORAGE_PREFIX}${user.id}/`;
+  if (v.images.some((img) => !img.url.startsWith(ownPrefix))) {
+    return fail("Upload photos from this page", 400);
   }
 
-  const {
-    make, model, year, trim, color, licensePlate, vin, vehicleType, fuelType,
-    transmission, seats, mpg, description, locationName, locationLat, locationLng,
-    dailyRateCents, weeklyDiscountPct, monthlyDiscountPct, distanceIncludedMi,
-    extraMileFeeCents, minTripDays, maxTripDays, advanceNoticeHours, instantBook,
-    images,
-  } = parsed.data;
-
-  // Duplicate VIN / license plate guard
-  if (vin) {
-    const { data: vinExists } = await supabase
-      .from("vehicles").select("id").eq("vin", vin).maybeSingle();
-    if (vinExists) {
-      return NextResponse.json({ error: "A vehicle with this VIN is already listed on Cascade" }, { status: 409 });
-    }
+  // RLS hides other hosts' unlisted cars, so check VINs across everyone.
+  const admin = createAdminClient();
+  if (v.vin) {
+    const { data: vinExists } = await admin.from("vehicles").select("id").eq("vin", v.vin).maybeSingle();
+    if (vinExists) return fail("A car with this VIN is already on Cascade", 409);
   }
-  const { data: plateExists } = await supabase
-    .from("vehicles").select("id").eq("license_plate", licensePlate).eq("host_id", user.id).maybeSingle();
-  if (plateExists) {
-    return NextResponse.json({ error: "You already have a listing with this license plate" }, { status: 409 });
-  }
+  const { data: plateExists } = await admin
+    .from("vehicles")
+    .select("id")
+    .eq("license_plate", v.licensePlate)
+    .eq("host_id", user.id)
+    .maybeSingle();
+  if (plateExists) return fail("You already have a car with this plate", 409);
 
-  // Create vehicle
   const { data: vehicle, error } = await supabase
     .from("vehicles")
     .insert({
       host_id: user.id,
-      make,
-      model,
-      year,
-      trim: trim || null,
-      color: color || null,
-      license_plate: licensePlate,
-      vin: vin || null,
-      vehicle_type: vehicleType,
-      fuel_type: fuelType,
-      transmission,
-      seats,
-      mpg: mpg ? parseInt(mpg) : null,
-      description: description || null,
-      location_name: locationName,
-      location_lat: locationLat,
-      location_lng: locationLng,
-      daily_rate_cents: dailyRateCents,
-      weekly_discount_pct: weeklyDiscountPct,
-      monthly_discount_pct: monthlyDiscountPct,
-      distance_included_mi: distanceIncludedMi,
-      extra_mile_fee_cents: extraMileFeeCents,
-      min_trip_days: minTripDays,
-      max_trip_days: maxTripDays,
-      advance_notice_hours: advanceNoticeHours,
-      instant_book: instantBook,
-      status: images.length >= 3 ? "listed" : "unlisted",
+      make: v.make,
+      model: v.model,
+      year: v.year,
+      trim: v.trim,
+      color: v.color,
+      license_plate: v.licensePlate,
+      vin: v.vin,
+      vehicle_type: v.vehicleType,
+      fuel_type: v.fuelType,
+      transmission: v.transmission,
+      seats: v.seats,
+      mpg: v.mpg ?? null,
+      description: v.description,
+      location_name: v.locationName,
+      location_address: v.locationAddress,
+      location_lat: v.locationLat,
+      location_lng: v.locationLng,
+      daily_rate_cents: v.dailyRateCents,
+      weekly_discount_pct: v.weeklyDiscountPct,
+      monthly_discount_pct: v.monthlyDiscountPct,
+      distance_included_mi: v.distanceIncludedMi,
+      extra_mile_fee_cents: v.extraMileFeeCents,
+      min_trip_days: v.minTripDays,
+      max_trip_days: v.maxTripDays,
+      advance_notice_hours: v.advanceNoticeHours,
+      instant_book: v.instantBook,
+      status: v.images.length >= LIMITS.photosToList ? "listed" : "unlisted",
     })
-    .select()
+    .select("id")
     .single();
 
   if (error || !vehicle) {
-    return NextResponse.json({ error: error?.message ?? "Failed to create vehicle" }, { status: 500 });
+    // 23505: the VIN is unique across Cascade.
+    return error?.code === "23505"
+      ? fail("A car with this VIN is already on Cascade", 409)
+      : fail("Couldn't save the listing. Try again.", 500);
   }
 
-  // Insert images
-  if (images.length > 0) {
-    await supabase.from("vehicle_images").insert(
-      images.map((img) => ({
+  if (v.images.length > 0) {
+    const { error: imagesError } = await supabase.from("vehicle_images").insert(
+      v.images.map((img, i) => ({
         vehicle_id: vehicle.id,
-        storage_path: img.url,
+        storage_path: img.url.slice(STORAGE_PREFIX.length),
         url: img.url,
-        position: img.position,
-        is_cover: img.isCover,
+        position: i,
+        is_cover: i === 0,
       }))
     );
+    if (imagesError) {
+      await supabase.from("vehicles").delete().eq("id", vehicle.id);
+      return fail("Couldn't save the photos. Try again.", 500);
+    }
   }
 
-  // Ensure host flag is set
-  await supabase
+  // Profile flags aren't writable by users, so set this with the service role.
+  await admin
     .from("profiles")
     .update({ is_host: true, host_since: new Date().toISOString() })
     .eq("id", user.id)
     .is("host_since", null);
 
-  return NextResponse.json({ vehicleId: vehicle.id });
+  return NextResponse.json({ vehicleId: vehicle.id, listed: v.images.length >= LIMITS.photosToList });
 }

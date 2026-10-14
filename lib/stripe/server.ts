@@ -19,4 +19,5 @@ export const stripe = {
   get paymentIntents() { return getStripe().paymentIntents; },
   get webhooks() { return getStripe().webhooks; },
   get charges() { return getStripe().charges; },
+  get refunds() { return getStripe().refunds; },
 };
