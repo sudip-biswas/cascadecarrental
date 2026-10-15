@@ -6,6 +6,7 @@ import { HOST_SHARE, hostEarningsCents } from "@/lib/pricing";
 import { cn, formatCurrency, formatPrice } from "@/lib/utils";
 import type { Errors, WizardData } from "../data";
 import { LIMITS } from "@/lib/listing-limits";
+import { suggestDailyRate } from "@/lib/suggested-rate";
 
 interface Props {
   data: WizardData;
@@ -17,6 +18,9 @@ const digits = (raw: string) => Number(raw.replace(/\D/g, "").slice(0, 6)) || 0;
 
 export function StepPrice({ data, errors, onChange }: Props) {
   const rate = data.dailyRateCents;
+  const suggested = suggestDailyRate(data.vehicleType, data.year);
+  const isSuggested = rate === suggested;
+
   const step = (delta: number) =>
     onChange({
       dailyRateCents: Math.min(LIMITS.rateMaxCents, Math.max(LIMITS.rateMinCents, Math.round(rate / 100) * 100 + delta)),
@@ -51,6 +55,22 @@ export function StepPrice({ data, errors, onChange }: Props) {
         </div>
         {errors.dailyRateCents && (
           <p className="text-center text-[13px] font-semibold text-error">{errors.dailyRateCents}</p>
+        )}
+        {isSuggested ? (
+          <p className="text-center text-[13px] text-slate">
+            Suggested for your {data.vehicleType} — adjust anytime
+          </p>
+        ) : (
+          <p className="text-center text-[13px] text-slate">
+            Suggested for your {data.vehicleType}:{" "}
+            <button
+              type="button"
+              onClick={() => onChange({ dailyRateCents: suggested })}
+              className="font-semibold text-ink underline underline-offset-2"
+            >
+              {formatPrice(suggested)}/day
+            </button>
+          </p>
         )}
       </Tile>
 

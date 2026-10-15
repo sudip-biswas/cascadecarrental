@@ -15,6 +15,7 @@ import {
   type WizardData,
 } from "../data";
 import { LIMITS } from "@/lib/listing-limits";
+import { suggestDailyRate } from "@/lib/suggested-rate";
 
 interface Props {
   data: WizardData;
@@ -76,15 +77,18 @@ export function StepCar({ data, errors, onChange, onConflict }: Props) {
         setEditing(true);
         return;
       }
+      const resolvedType = json.vehicleType ?? data.vehicleType;
+      const resolvedYear = json.year ?? data.year;
       onChange({
         make: json.make,
         model: json.model ?? data.model,
-        year: json.year ?? data.year,
+        year: resolvedYear,
         trim: json.trim ?? "",
         ...(json.fuelType ? { fuelType: json.fuelType } : {}),
         ...(json.transmission ? { transmission: json.transmission } : {}),
         ...(json.seats && json.seats <= LIMITS.seatsMax ? { seats: json.seats } : {}),
         ...(json.vehicleType ? { vehicleType: json.vehicleType } : {}),
+        dailyRateCents: suggestDailyRate(resolvedType, resolvedYear),
       });
       setLookup("done");
       setEditing(false);
