@@ -27,7 +27,7 @@ export function AddressAutocomplete({ value, error, onSelect, onClear, onChange 
   useEffect(() => { setQuery(value); }, [value]);
 
   const search = useCallback(async (q: string) => {
-    if (q.length < 3) { setSuggestions([]); setOpen(false); return; }
+    if (q.length < 2) { setSuggestions([]); setOpen(false); return; }
     setLoading(true);
     try {
       const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
