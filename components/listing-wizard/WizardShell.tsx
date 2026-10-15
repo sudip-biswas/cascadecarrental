@@ -145,8 +145,8 @@ export function ListingWizard() {
       body: JSON.stringify({
         ...fields,
         mpg: fields.mpg.trim() || undefined,
-        locationLat: SEATTLE.lat,
-        locationLng: SEATTLE.lng,
+        locationLat: data.locationLat ?? SEATTLE.lat,
+        locationLng: data.locationLng ?? SEATTLE.lng,
         images,
       }),
     }).catch(() => null);

@@ -54,6 +54,8 @@ export interface WizardData {
   // 4 Rules
   locationName: string;
   locationAddress: string;
+  locationLat: number | null;
+  locationLng: number | null;
   minTripDays: number;
   maxTripDays: number;
   advanceNoticeHours: number;
@@ -82,6 +84,8 @@ export const DEFAULT_DATA: WizardData = {
   extraMileFeeCents: 20,
   locationName: "",
   locationAddress: "",
+  locationLat: null,
+  locationLng: null,
   minTripDays: 1,
   maxTripDays: 30,
   advanceNoticeHours: 1,

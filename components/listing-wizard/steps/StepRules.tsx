@@ -4,6 +4,8 @@ import { Tile, TileTitle } from "@/components/kit";
 import { BoxInput, FieldBox, NoticeSelect, RuleRow, Stepper, Toggle, formatDays } from "../controls";
 import type { Errors, WizardData } from "../data";
 import { LIMITS } from "@/lib/listing-limits";
+import { AddressAutocomplete } from "../AddressAutocomplete";
+import type { GeocodeSuggestion } from "@/app/api/geocode/route";
 
 interface Props {
   data: WizardData;
@@ -12,28 +14,35 @@ interface Props {
 }
 
 export function StepRules({ data, errors, onChange }: Props) {
+  function handleAddressSelect(s: GeocodeSuggestion) {
+    onChange({
+      locationAddress: s.label,
+      locationName: data.locationName || s.shortName,
+      locationLat: s.lat,
+      locationLng: s.lng,
+    });
+  }
+
   return (
     <>
       <Tile className="flex flex-col gap-2.5">
         <TileTitle className="mb-1">Pickup spot</TileTitle>
-        <FieldBox label="Area guests see, like a neighbourhood or the airport" error={errors.locationName}>
+        <AddressAutocomplete
+          value={data.locationAddress}
+          error={!data.locationAddress && errors.locationName ? errors.locationName : undefined}
+          onChange={(raw) => onChange({ locationAddress: raw, locationLat: null, locationLng: null })}
+          onSelect={handleAddressSelect}
+          onClear={() => onChange({ locationAddress: "", locationName: "", locationLat: null, locationLng: null })}
+        />
+        <FieldBox label="Name shown to guests (auto-filled, edit if needed)" error={errors.locationName}>
           <BoxInput
             value={data.locationName}
             maxLength={80}
-            placeholder="SeaTac"
+            placeholder="e.g. SeaTac Airport, Capitol Hill…"
             onChange={(e) => onChange({ locationName: e.target.value })}
           />
         </FieldBox>
-        <FieldBox label="Exact address (optional)">
-          <BoxInput
-            value={data.locationAddress}
-            maxLength={200}
-            autoComplete="street-address"
-            placeholder="Street, city, ZIP"
-            onChange={(e) => onChange({ locationAddress: e.target.value })}
-          />
-        </FieldBox>
-        <p className="px-1 text-sm text-slate">The address isn&apos;t shown on your listing. Guests only see the area.</p>
+        <p className="px-1 text-sm text-slate">The full address is private. Guests only see the name above.</p>
       </Tile>
 
       <Tile tone="sky" className="flex flex-col gap-2.5 text-ink">
