@@ -17,6 +17,7 @@ import {
   type ProtectionPlan,
   type RateType,
 } from "@/lib/pricing";
+import { carPath } from "@/lib/site";
 import { cn, formatCurrency, formatDateTime, formatPrice, formatRange, pluralize, zonedInstant } from "@/lib/utils";
 import { Container, Divider, Fact, Tile, TileTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
@@ -175,7 +176,7 @@ function CheckoutLayout({
     ? "Instant book: your card is charged now and the car is yours."
     : `Your card is held now and only charged if ${hostName} accepts. If they say no or don't answer, the hold is released.`;
   const cover = coverOf(vehicle);
-  const carUrl = `/cars/${vehicle.id}?from=${from}&until=${until}`;
+  const carUrl = `${carPath(vehicle)}?from=${from}&until=${until}`;
 
   // The Payment Element needs to know the amount to offer the right payment methods.
   useEffect(() => {

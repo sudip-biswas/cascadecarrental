@@ -45,3 +45,10 @@ Point a webhook at `/api/webhooks/stripe` with these events:
 - Weekly (7+ days) and monthly (30+ days) discounts come from the car's settings.
 - Hosts earn 80% of the rental subtotal. Tax and protection aren't part of it.
 - Payouts to hosts (Stripe Connect) aren't built yet.
+
+## Search engines
+
+- Canonical links, the sitemap and robots.txt all name https://www.cascadecarrental.com (`lib/site.ts`). Preview deployments are noindex.
+- Car pages live at `/cars/<year-make-model-place>-<id>`. Old `/cars/<id>` links forward there.
+- The Seattle pages (`/seattle` and `/seattle/<slug>`) come from `lib/rentals.ts`. A page with no cars stays out of the index until one is listed.
+- Signed-in pages (trips, inbox, profile, host tools, checkout) and search results are noindex.

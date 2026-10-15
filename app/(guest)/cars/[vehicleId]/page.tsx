@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
+import { cache } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import {
   Check,
   Cog,
@@ -15,16 +17,19 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { unavailableRanges } from "@/lib/trips";
 import { PROTECTION_DAILY_CENTS } from "@/lib/pricing";
+import { rentalPageFor } from "@/lib/rentals";
+import { NO_INDEX, OPEN_GRAPH, absoluteUrl, carIdFromSlug, carPath } from "@/lib/site";
 import { VEHICLE_PUBLIC, type PublicVehicle } from "@/lib/supabase/columns";
 import type { VehicleImage } from "@/lib/supabase/types";
-import { HANDOVER_TIME, cn, formatCurrency, formatDate, pluralize } from "@/lib/utils";
+import { HANDOVER_TIME, cn, formatCurrency, formatDate, formatPrice, pluralize } from "@/lib/utils";
 import { Tag, Tile, TileTitle, toneClass, type Tone } from "@/components/kit";
 import { Button } from "@/components/ui/button";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { PhotoGallery } from "@/components/vehicle/PhotoGallery";
 import { CarBooking } from "@/components/vehicle/BookingSidebar";
 import { fuelLabel, typeLabel } from "@/components/search/categories";
 import { daysBetween, readDates } from "@/components/search/dates";
-import { firstName } from "@/components/search/vehicle";
+import { coverImage, firstName } from "@/components/search/vehicle";
 
 export const instant = false;
 
@@ -46,11 +51,42 @@ type ReviewRow = {
 const CAR_SELECT =
   `${VEHICLE_PUBLIC}, vehicle_images(*), vehicle_features(category, feature), host:profiles!host_id(id, full_name, avatar_url, host_since)`;
 
-export async function generateMetadata({ params }: PageProps<"/cars/[vehicleId]">) {
-  const { vehicleId } = await params;
+/** Shared by the page and its metadata, so the car is read once per request. */
+const getCar = cache(async (id: string) => {
   const supabase = await createClient();
-  const { data: v } = await supabase.from("vehicles").select("make, model, year").eq("id", vehicleId).maybeSingle();
-  return { title: v ? `${v.year} ${v.make} ${v.model}` : "Car not found" };
+  const { data } = await supabase.from("vehicles").select(CAR_SELECT).eq("id", id).neq("status", "suspended").maybeSingle();
+  return data as unknown as CarRow | null;
+});
+
+/** "5 seats, gas, automatic, 200 mi a day included. $50 a day, instant book." */
+function summary(car: CarRow) {
+  const specs = [
+    `${car.seats} seats`,
+    fuelLabel(car.fuel_type).toLowerCase(),
+    car.transmission === "manual" ? "manual" : "automatic",
+    `${car.distance_included_mi} mi a day included`,
+  ].join(", ");
+  const price = `${formatPrice(car.daily_rate_cents)} a day${car.instant_book ? ", instant book" : ""}`;
+  return `${specs}. ${price}.`;
+}
+
+export async function generateMetadata({ params }: PageProps<"/cars/[vehicleId]">): Promise<Metadata> {
+  const id = carIdFromSlug((await params).vehicleId);
+  const car = id ? await getCar(id) : null;
+  if (!car) return { title: "Car not found", ...NO_INDEX };
+
+  const title = `${car.year} ${car.make} ${car.model} for rent in ${car.location_name}`;
+  const host = firstName(car.host?.full_name);
+  const description = `Rent this ${car.year} ${car.make} ${car.model}${host ? ` from ${host}` : ""} in ${car.location_name}. ${summary(car)}`;
+  const cover = coverImage(car.vehicle_images);
+  return {
+    title,
+    description,
+    alternates: { canonical: carPath(car) },
+    openGraph: { ...OPEN_GRAPH, title, description, url: carPath(car), ...(cover && { images: [{ url: cover.url, alt: title }] }) },
+    // Unlisted cars are only visible to their owner.
+    ...(car.status === "listed" ? {} : NO_INDEX),
+  };
 }
 
 function Spec({ icon: Icon, tone, title, body }: { icon: LucideIcon; tone: Tone; title: string; body: string }) {
@@ -89,26 +125,31 @@ function Stars({ value }: { value: number }) {
 }
 
 export default async function CarPage({ params, searchParams }: PageProps<"/cars/[vehicleId]">) {
-  const { vehicleId } = await params;
+  const slug = (await params).vehicleId;
+  const vehicleId = carIdFromSlug(slug);
+  if (!vehicleId) notFound();
   const query = await searchParams;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const dates = readDates(one(query.from), one(query.until));
   const rate = one(query.rate) === "refundable" ? "refundable" : "non_refundable";
 
   const supabase = await createClient();
-  const [{ data }, { data: auth }] = await Promise.all([
-    supabase.from("vehicles").select(CAR_SELECT).eq("id", vehicleId).neq("status", "suspended").maybeSingle(),
-    supabase.auth.getUser(),
-  ]);
-  if (!data) notFound();
-  const car = data as unknown as CarRow;
+  const [car, { data: auth }] = await Promise.all([getCar(vehicleId), supabase.auth.getUser()]);
+  if (!car) notFound();
+
+  // Old links used the bare id, and a car's name or place can change.
+  const path = carPath(car);
+  if (`/cars/${slug}` !== path) {
+    const qs = new URLSearchParams(Object.entries(query).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : []))).toString();
+    permanentRedirect(qs ? `${path}?${qs}` : path);
+  }
   const user = auth.user;
   const isOwner = user?.id === car.host_id;
 
-  const [{ data: reviewData }, { count: hostCars }, unavailable] = await Promise.all([
+  const [{ data: reviewData, count: reviewCount }, { count: hostCars }, unavailable] = await Promise.all([
     supabase
       .from("reviews")
-      .select("id, created_at, rating_overall, body, host_reply, reviewer:profiles!reviewer_id(full_name)")
+      .select("id, created_at, rating_overall, body, host_reply, reviewer:profiles!reviewer_id(full_name)", { count: "exact" })
       .eq("vehicle_id", vehicleId)
       .order("created_at", { ascending: false })
       .limit(10),
@@ -129,6 +170,75 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
 
   const isElectric = car.fuel_type === "electric";
   const fuelNote = isElectric ? "Return it as charged as you got it" : "Return it as full as you got it";
+
+  const rentalPage = rentalPageFor(car);
+  const structured = [
+    {
+      "@context": "https://schema.org",
+      "@type": ["Product", "Car"],
+      name: `${car.year} ${name}${car.trim ? ` ${car.trim}` : ""}`,
+      description: car.description || summary(car),
+      url: absoluteUrl(path),
+      image: [...car.vehicle_images].sort((a, b) => a.position - b.position).map((img) => img.url),
+      brand: { "@type": "Brand", name: car.make },
+      model: car.model,
+      vehicleModelDate: String(car.year),
+      color: car.color || undefined,
+      bodyType: typeLabel(car.vehicle_type),
+      fuelType: fuelLabel(car.fuel_type),
+      vehicleTransmission: car.transmission === "manual" ? "Manual" : "Automatic",
+      seatingCapacity: car.seats,
+      numberOfDoors: car.doors || undefined,
+      offers: {
+        "@type": "Offer",
+        url: absoluteUrl(path),
+        price: (car.daily_rate_cents / 100).toFixed(2),
+        priceCurrency: "USD",
+        priceSpecification: {
+          "@type": "UnitPriceSpecification",
+          price: (car.daily_rate_cents / 100).toFixed(2),
+          priceCurrency: "USD",
+          unitCode: "DAY",
+          referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitCode: "DAY" },
+        },
+        businessFunction: "http://purl.org/goodrelations/v1#LeaseOut",
+        availability: car.status === "listed" ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+        areaServed: { "@type": "City", name: "Seattle" },
+        availableAtOrFrom: { "@type": "Place", name: car.location_name },
+      },
+      ...(reviewCount && car.rating_avg
+        ? {
+            aggregateRating: {
+              "@type": "AggregateRating",
+              ratingValue: car.rating_avg.toFixed(2),
+              reviewCount,
+              bestRating: 5,
+              worstRating: 1,
+            },
+            // Google wants a named author, so unnamed reviews stay out of the markup.
+            review: reviews
+              .filter((r) => firstName(r.reviewer?.full_name))
+              .map((r) => ({
+                "@type": "Review",
+                author: { "@type": "Person", name: firstName(r.reviewer?.full_name) },
+                datePublished: r.created_at.slice(0, 10),
+                reviewRating: { "@type": "Rating", ratingValue: r.rating_overall, bestRating: 5, worstRating: 1 },
+                reviewBody: r.body || undefined,
+              })),
+          }
+        : {}),
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { name: "Cascade", path: "/" },
+        { name: "Car rental in Seattle", path: "/seattle" },
+        ...(rentalPage ? [{ name: rentalPage.h1, path: `/seattle/${rentalPage.slug}` }] : []),
+        { name: `${car.year} ${name}`, path },
+      ].map((crumb, i) => ({ "@type": "ListItem", position: i + 1, name: crumb.name, item: absoluteUrl(crumb.path) })),
+    },
+  ];
 
   const features = Object.entries(
     car.vehicle_features.reduce<Record<string, string[]>>((acc, f) => {
@@ -326,6 +436,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-5 px-4 pt-0 sm:px-6 sm:pt-5 lg:pb-16">
+      <JsonLd data={structured} />
       <PhotoGallery images={car.vehicle_images} vehicleName={`${car.year} ${name}`} backHref={backHref} />
 
       {isOwner ? (

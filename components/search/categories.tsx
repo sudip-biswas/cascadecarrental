@@ -10,8 +10,8 @@ export interface TripCategory {
   blurb: string;
   icon: LucideIcon;
   tone: Tone;
-  /** The search filters this trip maps to. */
-  params: Record<string, string>;
+  /** Its Seattle rental page, /seattle/[page]. */
+  page: string;
 }
 
 export const TRIP_CATEGORIES: TripCategory[] = [
@@ -21,15 +21,15 @@ export const TRIP_CATEGORIES: TripCategory[] = [
     blurb: "Cars parked near the airport",
     icon: PlaneLanding,
     tone: "mint",
-    params: { near: "sea" },
+    page: "airport-car-rental",
   },
   {
     key: "mountains",
     title: "Up to the mountains",
-    blurb: "SUVs and trucks for Rainier and the passes",
+    blurb: "SUVs for Rainier and the passes",
     icon: Mountain,
     tone: "butter",
-    params: { type: "suv,truck" },
+    page: "suv-rental",
   },
   {
     key: "week",
@@ -37,7 +37,7 @@ export const TRIP_CATEGORIES: TripCategory[] = [
     blurb: "Hosts who discount long trips",
     icon: CalendarRange,
     tone: "peach",
-    params: { discount: "week" },
+    page: "monthly-car-rental",
   },
   {
     key: "electric",
@@ -45,7 +45,7 @@ export const TRIP_CATEGORIES: TripCategory[] = [
     blurb: "EVs and hybrids",
     icon: Zap,
     tone: "lilac",
-    params: { fuel: "electric,hybrid" },
+    page: "electric-car-rental",
   },
 ];
 

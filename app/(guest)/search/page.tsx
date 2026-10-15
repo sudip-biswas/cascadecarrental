@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import { CalendarSearch, SearchX } from "lucide-react";
@@ -9,52 +10,22 @@ import { SearchForm } from "@/components/search/SearchForm";
 import { VehicleCard } from "@/components/search/VehicleCard";
 import { VehicleGridSkeleton } from "@/components/search/VehicleCardSkeleton";
 import { availableFor } from "@/components/search/availability";
-import { SEA_BOUNDS } from "@/components/search/categories";
 import { FILTER_KEYS, hasFilters, parseSearchParams, type SearchFilters } from "@/components/search/params";
-import { LISTED_VEHICLE_SELECT, tripTotalCents, type ListedVehicle } from "@/components/search/vehicle";
+import { listedCars } from "@/components/search/listings";
+import { tripTotalCents } from "@/components/search/vehicle";
 import { formatRange, pluralize, zonedInstant } from "@/lib/utils";
 
 export const instant = false;
 
-export const metadata = { title: "Find a car" };
-
-/** Enough for every car in a young marketplace; filtered further for dates below. */
-const MAX_RESULTS = 200;
-
-function escapeLike(value: string) {
-  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
-}
+// Filtered and dated views are endless, so search stays out of the index and
+// the Seattle pages are the ones that rank. Crawlers still follow its links.
+export const metadata: Metadata = {
+  title: "Find a car",
+  robots: { index: false, follow: true },
+};
 
 async function loadCars(filters: SearchFilters) {
-  const supabase = await createClient();
-  let query = supabase.from("vehicles").select(LISTED_VEHICLE_SELECT).eq("status", "listed");
-
-  if (filters.types.length) query = query.in("vehicle_type", filters.types);
-  if (filters.fuels.length) query = query.in("fuel_type", filters.fuels);
-  if (filters.minSeats) query = query.gte("seats", filters.minSeats);
-  if (filters.maxPrice) query = query.lte("daily_rate_cents", filters.maxPrice * 100);
-  if (filters.instant) query = query.eq("instant_book", true);
-  if (filters.weekDiscount) query = query.gt("weekly_discount_pct", 0);
-  if (filters.where) query = query.ilike("location_name", `%${escapeLike(filters.where)}%`);
-  if (filters.nearSea) {
-    query = query
-      .gte("location_lat", SEA_BOUNDS.minLat)
-      .lte("location_lat", SEA_BOUNDS.maxLat)
-      .gte("location_lng", SEA_BOUNDS.minLng)
-      .lte("location_lng", SEA_BOUNDS.maxLng);
-  }
-
-  query =
-    filters.sort === "rating"
-      ? query.order("rating_avg", { ascending: false, nullsFirst: false })
-      : filters.sort === "newest"
-        ? query.order("created_at", { ascending: false })
-        : query.order("daily_rate_cents", { ascending: true });
-
-  const { data, error } = await query.limit(MAX_RESULTS);
-  if (error) throw error;
-
-  let cars = data as unknown as ListedVehicle[];
+  let cars = await listedCars(await createClient(), filters);
   if (filters.dates) {
     const { from, until } = filters.dates;
     cars = await availableFor(cars, from, until);
@@ -67,11 +38,11 @@ async function loadCars(filters: SearchFilters) {
 }
 
 function heading(count: number, filters: SearchFilters) {
-  const place = filters.where ? ` near ${filters.where}` : filters.nearSea ? " near SEA" : "";
+  const place = filters.where ? ` near ${filters.where}` : filters.nearSea ? " near SEA" : " in Seattle";
   const when = filters.dates
     ? `, ${formatRange(zonedInstant(filters.dates.from), zonedInstant(filters.dates.until))}`
     : "";
-  return `${pluralize(count, "car")}${place}${when}`;
+  return `${pluralize(count, "car")} for rent${place}${when}`;
 }
 
 /** The current URL with the filters dropped, keeping where and when. */

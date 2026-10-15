@@ -31,7 +31,7 @@ function Field({ label, value, tone }: { label: string; value?: DateKey; tone: "
       )}
     >
       <span className="text-[13px] font-semibold text-slate">{label}</span>
-      <span className={cn("truncate text-base font-bold", !value && "text-quiet")}>
+      <span className={cn("truncate text-base font-bold", !value && "text-slate")}>
         {value ? formatDay(zonedInstant(value)) : "Add date"}
       </span>
     </span>
@@ -71,7 +71,6 @@ export function TripDatesPicker({
         <button
           type="button"
           className={cn("group grid w-full grid-cols-2 gap-2 rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ink", className)}
-          aria-label="Choose trip dates"
         >
           <Field label="Pick-up" value={from} tone={tone} />
           <Field label="Return" value={until} tone={tone} />

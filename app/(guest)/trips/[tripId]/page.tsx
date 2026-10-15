@@ -4,13 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { applyPaymentIntent, settleTripStatuses } from "@/lib/trips";
+import { NO_INDEX } from "@/lib/site";
 import { type TripRow, TRIP_SELECT } from "../_lib/trip-row";
 import { BookedView } from "../_components/booked-view";
 import { TripView } from "../_components/trip-view";
 
 export const instant = false;
 
-export const metadata: Metadata = { title: "Your trip" };
+export const metadata: Metadata = { title: "Your trip", ...NO_INDEX };
 
 export default async function TripPage({ params, searchParams }: PageProps<"/trips/[tripId]">) {
   const { tripId } = await params;

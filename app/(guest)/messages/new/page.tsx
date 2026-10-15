@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { NO_INDEX } from "@/lib/site";
 import { Container } from "@/components/kit";
 import { MessageThread } from "@/components/messaging/MessageThread";
 import { ThreadHeader } from "@/components/messaging/ThreadHeader";
@@ -7,7 +8,7 @@ import { toThreadTrip, type ConversationRow, type Person } from "@/components/me
 import { GUEST_REPLIES, HOST_REPLIES } from "@/components/messaging/replies";
 
 export const instant = false;
-export const metadata = { title: "New message" };
+export const metadata = { title: "New message", ...NO_INDEX };
 
 type TripRow = NonNullable<ConversationRow["trip"]> & {
   guest_id: string;

@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hostEarningsCents } from "@/lib/pricing";
+import { carPath } from "@/lib/site";
 import { formatCurrency, formatPrice, formatRange, pluralize } from "@/lib/utils";
 import type { Vehicle, VehicleImage } from "@/lib/supabase/types";
 import { Fact, Tag } from "@/components/kit";
@@ -87,7 +88,7 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
           <div className="flex flex-wrap items-center gap-2">
             <VehicleStatusToggle vehicleId={car.id} status={car.status} photoCount={photos.length} />
             {car.status === "listed" && (
-              <Link href={`/cars/${car.id}`} className="rounded-[14px] bg-board px-4 py-[13px] text-[15px] font-bold hover:bg-line">
+              <Link href={carPath(car)} className="rounded-[14px] bg-board px-4 py-[13px] text-[15px] font-bold hover:bg-line">
                 See it as a guest
               </Link>
             )}

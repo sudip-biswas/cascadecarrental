@@ -1,4 +1,5 @@
 import { computePricing } from "@/lib/pricing";
+import { carPath } from "@/lib/site";
 import { formatPrice } from "@/lib/utils";
 import { VEHICLE_PUBLIC, type PublicVehicle } from "@/lib/supabase/columns";
 import type { VehicleImage } from "@/lib/supabase/types";
@@ -33,9 +34,9 @@ export function tripTotalCents(vehicle: PublicVehicle, from: DateKey, until: Dat
   }).totalCents;
 }
 
-export function carHref(vehicleId: string, dates?: { from: DateKey; until: DateKey } | null) {
-  if (!dates) return `/cars/${vehicleId}`;
-  return `/cars/${vehicleId}?${new URLSearchParams(dates).toString()}`;
+export function carHref(vehicle: PublicVehicle, dates?: { from: DateKey; until: DateKey } | null) {
+  if (!dates) return carPath(vehicle);
+  return `${carPath(vehicle)}?${new URLSearchParams(dates).toString()}`;
 }
 
 /** "$151": totals on cards are rounded to the dollar. Checkout shows the cents. */

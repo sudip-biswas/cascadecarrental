@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { settleTripStatuses } from "@/lib/trips";
 import { isAbandoned, tripStatus } from "@/lib/trip-status";
 import { cn, formatCurrency, formatDateTime, formatRange, relativeDays } from "@/lib/utils";
+import { NO_INDEX } from "@/lib/site";
 import { Container, EmptyState, Fact, Tag } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { type TripRow, TRIP_SELECT, carName, hostFirstName, paidLabel, tripGroup } from "./_lib/trip-row";
@@ -13,7 +14,7 @@ import { CarPhoto } from "./_components/parts";
 
 export const instant = false;
 
-export const metadata: Metadata = { title: "Your trips" };
+export const metadata: Metadata = { title: "Your trips", ...NO_INDEX };
 
 const TABS = [
   { id: "upcoming", label: "Upcoming" },

@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { SignOutButton } from "@/components/profile/SignOutButton";
 import { cn, formatDate, pluralize } from "@/lib/utils";
+import { NO_INDEX } from "@/lib/site";
 
 export const instant = false;
-export const metadata = { title: "Your profile" };
+export const metadata = { title: "Your profile", ...NO_INDEX };
 
 export default async function ProfilePage() {
   const supabase = await createClient();

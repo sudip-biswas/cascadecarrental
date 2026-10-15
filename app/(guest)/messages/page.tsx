@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { NO_INDEX } from "@/lib/site";
 import { Container } from "@/components/kit";
 import { ConversationList } from "@/components/messaging/ConversationList";
 import { InboxShell, NoThread } from "@/components/messaging/InboxShell";
 import { listConversations } from "@/components/messaging/inbox";
 
 export const instant = false;
-export const metadata = { title: "Inbox" };
+export const metadata = { title: "Inbox", ...NO_INDEX };
 
 export default async function MessagesPage() {
   const supabase = await createClient();

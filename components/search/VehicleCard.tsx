@@ -49,7 +49,7 @@ function Rating({ vehicle }: { vehicle: ListedVehicle }) {
 }
 
 export function VehicleCard({ vehicle, dates, layout = "tile", priority }: Props) {
-  const href = carHref(vehicle.id, dates);
+  const href = carHref(vehicle, dates);
   const name = `${vehicle.make} ${vehicle.model}`;
   const total = dates ? tripTotalCents(vehicle, dates.from, dates.until) : null;
   const isNew = vehicle.trip_count === 0;

@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { NO_INDEX } from "@/lib/site";
 import { Container } from "@/components/kit";
 import { ConversationList } from "@/components/messaging/ConversationList";
 import { InboxShell } from "@/components/messaging/InboxShell";
@@ -9,7 +10,7 @@ import { listConversations, openConversation } from "@/components/messaging/inbo
 import { GUEST_REPLIES } from "@/components/messaging/replies";
 
 export const instant = false;
-export const metadata = { title: "Inbox" };
+export const metadata = { title: "Inbox", ...NO_INDEX };
 
 export default async function ConversationPage({ params }: PageProps<"/messages/[conversationId]">) {
   const { conversationId } = await params;

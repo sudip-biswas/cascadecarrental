@@ -1,9 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getHostNav } from "@/lib/account";
+import { NO_INDEX } from "@/lib/site";
 import { HostSidebar } from "@/components/layout/HostSidebar";
 import { HostTopbar } from "@/components/layout/HostTopbar";
 import { PhoneTabs } from "@/components/layout/PhoneTabs";
+
+/** Private pages: nothing here belongs in search results. */
+export const metadata = NO_INDEX;
 
 export const instant = false;
 

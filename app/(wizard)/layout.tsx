@@ -1,5 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { NO_INDEX } from "@/lib/site";
+
+/** Private pages: nothing here belongs in search results. */
+export const metadata = NO_INDEX;
 
 export const instant = false;
 

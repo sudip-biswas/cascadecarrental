@@ -1,16 +1,47 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, Check, KeyRound, Route, Undo2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { HOST_SHARE } from "@/lib/pricing";
+import { RENTING_FAQ } from "@/lib/rentals";
+import { OPEN_GRAPH, SITE_NAME, SITE_URL, absoluteUrl, carPath } from "@/lib/site";
 import { cn, formatPrice } from "@/lib/utils";
 import { Container, toneClass } from "@/components/kit";
+import { Faq } from "@/components/seo/Faq";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { SearchForm } from "@/components/search/SearchForm";
 import { VehicleCard } from "@/components/search/VehicleCard";
 import { TRIP_CATEGORIES } from "@/components/search/categories";
 import { LISTED_VEHICLE_SELECT, coverImage, firstName, type ListedVehicle } from "@/components/search/vehicle";
 
 export const instant = false;
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+  openGraph: { ...OPEN_GRAPH, url: "/" },
+};
+
+const ORGANIZATION = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": `${SITE_URL}/#organization`,
+    name: SITE_NAME,
+    legalName: "Cascade Car Rental",
+    url: SITE_URL,
+    logo: absoluteUrl("/logo.png"),
+    description: "Peer-to-peer car rental in Seattle: rent a car from a local host.",
+    areaServed: { "@type": "City", name: "Seattle", containedInPlace: { "@type": "State", name: "Washington" } },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_NAME,
+    url: SITE_URL,
+    publisher: { "@id": `${SITE_URL}/#organization` },
+  },
+];
 
 const STEPS = [
   { icon: CalendarDays, title: "Request", body: "Pick dates and pay. On request-to-book cars your card is only held until the host says yes." },
@@ -42,7 +73,7 @@ function HeroCar({ car }: { car: ListedVehicle }) {
   if (!cover) return null;
   const host = firstName(car.host?.full_name);
   return (
-    <Link href={`/cars/${car.id}`} className="relative block min-w-0 flex-[1_1_380px]">
+    <Link href={carPath(car)} className="relative block min-w-0 flex-[1_1_380px]">
       <span className="relative block aspect-[1/0.86] overflow-hidden rounded-[32px]">
         <Image
           src={cover.url}
@@ -83,6 +114,7 @@ export default async function HomePage() {
 
   return (
     <>
+      <JsonLd data={ORGANIZATION} />
       <section className="bg-sky pt-8 pb-12 sm:pt-12 sm:pb-16">
         <Container className="flex flex-wrap items-center gap-8">
           <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-7">
@@ -98,10 +130,10 @@ export default async function HomePage() {
       <Container className="pt-12 sm:pt-14">
         <h2 className="headline mb-4 text-[28px] leading-[1.12] sm:mb-5 sm:text-[44px]">What&apos;s the trip?</h2>
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-[repeat(auto-fit,minmax(250px,1fr))] sm:gap-4 sm:overflow-visible sm:px-0">
-          {TRIP_CATEGORIES.map(({ key, title, blurb, icon: Icon, tone, params }) => (
+          {TRIP_CATEGORIES.map(({ key, title, blurb, icon: Icon, tone, page }) => (
             <Link
               key={key}
-              href={`/search?${new URLSearchParams(params).toString()}`}
+              href={`/seattle/${page}`}
               className={cn(
                 "flex w-[150px] shrink-0 flex-col justify-between gap-6 rounded-[22px] p-3.5 transition-[filter] hover:brightness-[0.97] sm:min-h-[230px] sm:w-auto sm:rounded-[28px] sm:p-6",
                 toneClass[tone]
@@ -125,7 +157,7 @@ export default async function HomePage() {
         <div className="mb-4 flex flex-wrap items-end justify-between gap-4 sm:mb-5">
           <h2 className="headline text-[28px] leading-[1.12] sm:text-[44px]">Near Seattle</h2>
           <Link
-            href="/search"
+            href="/seattle"
             className="flex items-center gap-1.5 rounded-[12px] bg-white px-4 py-3 text-base font-bold transition-colors hover:bg-line"
           >
             See all cars
@@ -238,6 +270,10 @@ export default async function HomePage() {
           </div>
         </Container>
       </section>
+
+      <Container className="py-14 sm:py-[72px]">
+        <Faq items={RENTING_FAQ} title="Renting a car on Cascade" />
+      </Container>
     </>
   );
 }

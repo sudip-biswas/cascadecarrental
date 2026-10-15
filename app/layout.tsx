@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Manrope } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { INDEXABLE, OPEN_GRAPH, SITE_NAME, SITE_URL } from "@/lib/site";
 
 const geist = Geist({
   variable: "--font-geist",
@@ -14,14 +15,20 @@ const manrope = Manrope({
   weight: ["700", "800"],
 });
 
+const DESCRIPTION =
+  "Rent cars from people around Seattle. See the full price up front, book in a few taps, and pick up from the host.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: "Cascade: rent a car from a local host",
+    default: "Cascade: rent a car from a local host in Seattle",
     template: "%s | Cascade",
   },
-  description:
-    "Rent cars from people around Seattle. See the full price up front, book in a few taps, and pick up from the host.",
-  keywords: ["car rental", "rent a car", "peer to peer car rental", "seattle", "cascade"],
+  description: DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: { ...OPEN_GRAPH, description: DESCRIPTION },
+  twitter: { card: "summary_large_image" },
+  robots: INDEXABLE ? undefined : { index: false, follow: false },
 };
 
 export const viewport: Viewport = {

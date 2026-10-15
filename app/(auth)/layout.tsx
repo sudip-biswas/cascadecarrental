@@ -1,3 +1,8 @@
+import { NO_INDEX } from "@/lib/site";
+
+/** Private pages: nothing here belongs in search results. */
+export const metadata = NO_INDEX;
+
 /** Sign-in pages: two big tiles side by side, stacked on phones. */
 export default function AuthLayout({ children }: LayoutProps<"/">) {
   return (

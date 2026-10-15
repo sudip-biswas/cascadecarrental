@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { CalendarX } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { tripDays } from "@/lib/pricing";
+import { NO_INDEX, carIdFromSlug, carPath } from "@/lib/site";
 import { pluralize, toDateKey, zonedInstant } from "@/lib/utils";
 import { Container, EmptyState } from "@/components/kit";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { CheckoutForm, type CheckoutVehicle } from "@/components/checkout/Checko
 
 export const instant = false;
 
-export const metadata: Metadata = { title: "Checkout" };
+export const metadata: Metadata = { title: "Checkout", ...NO_INDEX };
 
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -20,19 +21,19 @@ function param(value: string | string[] | undefined) {
 }
 
 export default async function CheckoutPage({ params, searchParams }: PageProps<"/cars/[vehicleId]/checkout">) {
-  const { vehicleId } = await params;
+  const vehicleId = carIdFromSlug((await params).vehicleId);
+  if (!vehicleId) notFound();
   const query = await searchParams;
   const from = param(query.from);
   const until = param(query.until);
   const initialRate = query.rate === "refundable" ? "refundable" : "non_refundable";
-  const carUrl = `/cars/${vehicleId}`;
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    const here = `${carUrl}/checkout${from && until ? `?from=${from}&until=${until}` : ""}`;
+    const here = `/cars/${vehicleId}/checkout${from && until ? `?from=${from}&until=${until}` : ""}`;
     redirect(`/login?redirectTo=${encodeURIComponent(here)}`);
   }
 
@@ -73,7 +74,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
           body={problem?.body}
           action={
             <Button asChild>
-              <Link href={carUrl}>Back to the {vehicle.model}</Link>
+              <Link href={carPath(vehicle)}>Back to the {vehicle.model}</Link>
             </Button>
           }
         />
