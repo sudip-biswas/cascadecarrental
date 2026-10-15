@@ -67,6 +67,11 @@ export function LoginForm({ redirectTo = "/" }: { redirectTo?: string }) {
           type="password"
           autoComplete="current-password"
           error={errors.password?.message}
+          aside={
+            <Link href="/forgot-password" className="font-semibold text-cobalt hover:underline">
+              Forgot?
+            </Link>
+          }
           {...register("password")}
         />
         {serverError && <FormError>{serverError}</FormError>}
