@@ -11,6 +11,12 @@ function escapeLike(value: string) {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
+/**
+ * ~50 km radius expressed in degrees.
+ * At Seattle's latitude (~47.5°N) 1° lng ≈ 75 km, 1° lat ≈ 111 km.
+ */
+const SEARCH_RADIUS = { lat: 0.45, lng: 0.60 };
+
 /** Listed cars matching the filters, before any date check. */
 export async function listedCars(supabase: SupabaseClient<Database>, filters: Partial<SearchFilters>) {
   let query = supabase.from("vehicles").select(LISTED_VEHICLE_SELECT).eq("status", "listed");
@@ -21,7 +27,19 @@ export async function listedCars(supabase: SupabaseClient<Database>, filters: Pa
   if (filters.maxPrice) query = query.lte("daily_rate_cents", filters.maxPrice * 100);
   if (filters.instant) query = query.eq("instant_book", true);
   if (filters.weekDiscount) query = query.gt("weekly_discount_pct", 0);
-  if (filters.where) query = query.ilike("location_name", `%${escapeLike(filters.where)}%`);
+
+  if (filters.lat != null && filters.lng != null) {
+    // Precise pick from autocomplete — search by proximity bounding box
+    query = query
+      .gte("location_lat", filters.lat - SEARCH_RADIUS.lat)
+      .lte("location_lat", filters.lat + SEARCH_RADIUS.lat)
+      .gte("location_lng", filters.lng - SEARCH_RADIUS.lng)
+      .lte("location_lng", filters.lng + SEARCH_RADIUS.lng);
+  } else if (filters.where) {
+    // Manual text entry — fall back to location_name substring match
+    query = query.ilike("location_name", `%${escapeLike(filters.where)}%`);
+  }
+
   if (filters.nearSea) {
     query = query
       .gte("location_lat", SEA_BOUNDS.minLat)

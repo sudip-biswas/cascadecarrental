@@ -4,6 +4,9 @@ export type SortKey = "price" | "rating" | "newest";
 
 export interface SearchFilters {
   where: string | null;
+  /** Lat/lng set when the user picked from the autocomplete dropdown. */
+  lat: number | null;
+  lng: number | null;
   dates: { from: DateKey; until: DateKey } | null;
   types: string[];
   fuels: string[];
@@ -34,8 +37,12 @@ export function parseSearchParams(raw: RawParams): SearchFilters {
   const sort = one(raw.sort);
   // Older links used a comma list of seat counts; the smallest one is the floor.
   const seats = list(raw.seats).map((s) => positiveInt(s)).filter((n): n is number => n !== null);
+  const lat = parseFloat(one(raw.lat) ?? "");
+  const lng = parseFloat(one(raw.lng) ?? "");
   return {
     where: one(raw.where)?.trim() || null,
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
     dates: readDates(one(raw.from), one(raw.until)),
     types: list(raw.type),
     fuels: list(raw.fuel),

@@ -22,6 +22,7 @@ interface Props {
 export function SearchForm({ where = "", from, until, keep, size = "lg", className }: Props) {
   const router = useRouter();
   const [place, setPlace] = useState(where);
+  const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
   const [dates, setDates] = useState<{ from?: DateKey; until?: DateKey }>({ from, until });
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -46,15 +47,23 @@ export function SearchForm({ where = "", from, until, keep, size = "lg", classNa
 
   function handleInput(raw: string) {
     setPlace(raw);
+    setGeo(null); // user typed manually — clear any picked geo
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchSuggestions(raw), 300);
   }
 
-  function buildParams(placeName: string) {
+  function buildParams(placeName: string, pickedGeo: { lat: number; lng: number } | null) {
     const params = new URLSearchParams(keep);
     const trimmed = placeName.trim();
     if (trimmed) params.set("where", trimmed);
     else params.delete("where");
+    if (pickedGeo) {
+      params.set("lat", String(pickedGeo.lat));
+      params.set("lng", String(pickedGeo.lng));
+    } else {
+      params.delete("lat");
+      params.delete("lng");
+    }
     if (dates.from && dates.until) {
       params.set("from", dates.from);
       params.set("until", dates.until);
@@ -67,16 +76,16 @@ export function SearchForm({ where = "", from, until, keep, size = "lg", classNa
 
   function pick(s: GeocodeSuggestion) {
     setPlace(s.shortName);
+    setGeo({ lat: s.lat, lng: s.lng });
     setSuggestions([]);
     setOpen(false);
-    const params = buildParams(s.shortName);
-    router.push(`/search?${params.toString()}`);
+    // Do NOT navigate here — wait for the user to click Search
   }
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     setOpen(false);
-    const params = buildParams(place);
+    const params = buildParams(place, geo);
     const qs = params.toString();
     router.push(qs ? `/search?${qs}` : "/search");
   }
