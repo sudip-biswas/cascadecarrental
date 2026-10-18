@@ -10,7 +10,7 @@ import type { Vehicle, VehicleImage } from "@/lib/supabase/types";
 import { Fact, Tag } from "@/components/kit";
 import { CarPhoto, coverUrl, firstName, Initial } from "@/components/host/bits";
 import { isRequest, loadHostTrips } from "@/components/host/data";
-import { AddPhotos } from "@/components/host/AddPhotos";
+import { PhotoManager } from "@/components/host/PhotoManager";
 import { VehicleStatusToggle } from "@/components/host/VehicleStatusToggle";
 import { VehicleEditDialog } from "@/components/host/VehicleEditDialog";
 import { DeleteVehicleButton } from "@/components/host/DeleteVehicleButton";
@@ -171,27 +171,8 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
       </div>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-4">
-        <section className="flex flex-col gap-3.5 rounded-[30px] bg-white p-5 sm:p-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-[26px]">Photos · {photos.length}</h2>
-            <AddPhotos vehicleId={car.id} />
-          </div>
-          {photos.length > 0 && <span className="text-sm text-slate">The first one is the cover.</span>}
-          {photos.length === 0 ? (
-            <p className="rounded-[18px] bg-board p-3.5 text-[15px] text-slate">No photos yet. Guests skip cars without them.</p>
-          ) : (
-            <div className="grid grid-cols-4 gap-2">
-              {photos.map((p, i) => (
-                <CarPhoto
-                  key={p.id}
-                  src={p.url}
-                  alt={i === 0 ? "Photo 1, cover" : `Photo ${i + 1}`}
-                  sizes="120px"
-                  className={`aspect-square rounded-[14px] ${i === 0 ? "ring-3 ring-ink" : ""}`}
-                />
-              ))}
-            </div>
-          )}
+        <section className="rounded-[30px] bg-white p-5 sm:p-6">
+          <PhotoManager vehicleId={car.id} initialPhotos={car.vehicle_images} />
         </section>
 
         <section className="flex flex-col gap-3 rounded-[30px] bg-white p-5 sm:p-6">
