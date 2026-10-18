@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ExternalLink } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 /** Starts Stripe Connect Express onboarding by POSTing to /api/connect/onboard. */
@@ -15,7 +16,8 @@ export function ConnectPayoutsButton() {
       const { url, error } = await res.json();
       if (error) throw new Error(error);
       window.location.href = url;
-    } catch {
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong. Try again.");
       setLoading(false);
     }
   }
