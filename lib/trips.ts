@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database, Trip } from "@/lib/supabase/types";
 import { stripe } from "@/lib/stripe/server";
 import { CANCEL_REASON } from "@/lib/trip-status";
+import { hostEarningsCents } from "@/lib/pricing";
 
 type TripUpdate = Database["public"]["Tables"]["trips"]["Update"];
 
@@ -232,6 +233,40 @@ export async function settleCancellation(
 }
 
 /**
+ * Transfers the host's share of a completed trip to their Stripe Connect
+ * account. Idempotent — Stripe deduplicates on the idempotency key.
+ */
+async function payoutHost(trip: {
+  id: string;
+  host_id: string;
+  subtotal_cents: number;
+  stripe_charge_id: string | null;
+}) {
+  const admin = createAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("stripe_account_id")
+    .eq("id", trip.host_id)
+    .single();
+
+  if (!profile?.stripe_account_id) return; // host hasn't connected their bank yet
+
+  const amount = hostEarningsCents(trip.subtotal_cents);
+  if (amount <= 0) return;
+
+  await stripe.transfers.create(
+    {
+      amount,
+      currency: "usd",
+      destination: profile.stripe_account_id,
+      transfer_group: trip.id,
+      ...(trip.stripe_charge_id ? { source_transaction: trip.stripe_charge_id } : {}),
+    },
+    { idempotencyKey: `payout-${trip.id}` }
+  );
+}
+
+/**
  * Moves a person's trips along as time passes: paid trips start and finish,
  * requests nobody answered before pick-up are dropped, and so are checkouts
  * that never got paid.
@@ -241,13 +276,24 @@ export async function settleTripStatuses(userId: string) {
   const now = new Date().toISOString();
   const mine = `guest_id.eq.${userId},host_id.eq.${userId}`;
 
-  await admin
+  // Fetch trips to complete so we can trigger payouts after the status update
+  const { data: toComplete } = await admin
     .from("trips")
-    .update({ status: "completed", updated_at: now })
+    .select("id, host_id, subtotal_cents, stripe_charge_id")
     .in("status", ["approved", "active"])
     .eq("payment_status", "captured")
     .lte("ends_at", now)
     .or(mine);
+
+  if (toComplete?.length) {
+    await admin
+      .from("trips")
+      .update({ status: "completed", updated_at: now })
+      .in("id", toComplete.map((t) => t.id));
+
+    // Fire payouts in the background; errors are non-fatal
+    await Promise.allSettled(toComplete.map(payoutHost));
+  }
 
   await admin
     .from("trips")

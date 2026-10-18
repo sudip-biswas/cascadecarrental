@@ -1,12 +1,15 @@
 import { redirect } from "next/navigation";
-import { Landmark } from "lucide-react";
+import { CheckCircle2, Landmark } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { settleTripStatuses } from "@/lib/trips";
 import { HOST_SHARE, hostEarningsCents } from "@/lib/pricing";
 import { formatCurrency, formatDate, formatDateShort, toDateKey, zonedInstant } from "@/lib/utils";
 import { EmptyState, PageTitle, Tag, Tile, TileTitle, toneClass, type Tone } from "@/components/kit";
 import { EarningsChart, type MonthEarnings } from "@/components/host/EarningsChart";
 import { firstName } from "@/components/host/bits";
+import { ConnectPayoutsButton, ManagePayoutsButton } from "@/components/host/ConnectPayoutsButton";
+import { stripe } from "@/lib/stripe/server";
 import { hostTrips, isOpenRequest, isPaidTrip, type HostTripRow } from "../_lib/trips";
 
 export const instant = false;
@@ -32,12 +35,36 @@ function rowStatus(t: HostTripRow): { label: string; tone: Tone } {
   return { label: "Booked", tone: "sky" };
 }
 
-export default async function EarningsPage() {
+/** Check if a Connect Express account has completed onboarding. */
+async function connectStatus(accountId: string | null): Promise<"none" | "pending" | "active"> {
+  if (!accountId) return "none";
+  try {
+    const acct = await stripe.accounts.retrieve(accountId);
+    if (acct.charges_enabled && acct.payouts_enabled) return "active";
+    return "pending"; // account exists but onboarding not yet complete
+  } catch {
+    return "none";
+  }
+}
+
+export default async function EarningsPage({ searchParams }: PageProps<"/host/business/earnings">) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?redirectTo=/host/business/earnings");
+
+  const raw = await searchParams;
+  const justConnected = raw.payout_setup === "done";
+  const needsRefresh  = raw.payout_setup === "refresh";
+
+  const { data: profile } = await createAdminClient()
+    .from("profiles")
+    .select("stripe_account_id")
+    .eq("id", user.id)
+    .single();
+
+  const payoutStatus = await connectStatus(profile?.stripe_account_id ?? null);
 
   await settleTripStatuses(user.id);
   const trips = await hostTrips(user.id);
@@ -77,21 +104,54 @@ export default async function EarningsPage() {
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
       <PageTitle title="Earnings" />
 
-      <Tile tone="ink" className="flex flex-wrap items-center gap-[18px]">
-        <span className="flex size-14 shrink-0 items-center justify-center rounded-[17px] bg-butter text-ink">
-          <Landmark className="size-[26px]" strokeWidth={1.75} />
-        </span>
-        <span className="flex min-w-0 flex-[1_1_280px] flex-col gap-1.5">
-          <span className="font-display text-[22px] leading-tight font-extrabold sm:text-[26px]">
-            Payouts aren&apos;t set up yet
+      {payoutStatus === "active" ? (
+        <Tile tone="mint" className="flex flex-wrap items-center gap-[18px]">
+          <span className="flex size-14 shrink-0 items-center justify-center rounded-[17px] bg-white/40 text-ink">
+            <CheckCircle2 className="size-[26px]" strokeWidth={1.75} />
           </span>
-          <span className="text-[15px] text-[#c9ccd3]">
-            Guests pay Cascade through Stripe. Bank payouts to hosts aren&apos;t switched on yet, so everything you
-            earn is tracked here until they are. You keep {Math.round(HOST_SHARE * 100)}% of each trip&apos;s price;
-            tax and protection aren&apos;t part of it.
+          <span className="flex min-w-0 flex-[1_1_280px] flex-col gap-1.5">
+            <span className="font-display text-[22px] leading-tight font-extrabold sm:text-[26px]">
+              {justConnected ? "Bank account connected!" : "Payouts active"}
+            </span>
+            <span className="text-[15px]">
+              You keep {Math.round(HOST_SHARE * 100)}% of each trip&apos;s price (excluding tax and protection).
+              Transfers are sent every Monday.
+            </span>
           </span>
-        </span>
-      </Tile>
+          <ManagePayoutsButton />
+        </Tile>
+      ) : payoutStatus === "pending" ? (
+        <Tile tone="butter" className="flex flex-wrap items-center gap-[18px]">
+          <span className="flex size-14 shrink-0 items-center justify-center rounded-[17px] bg-white/40 text-ink">
+            <Landmark className="size-[26px]" strokeWidth={1.75} />
+          </span>
+          <span className="flex min-w-0 flex-[1_1_280px] flex-col gap-1.5">
+            <span className="font-display text-[22px] leading-tight font-extrabold sm:text-[26px]">
+              {needsRefresh ? "Link expired — continue setup" : "Finish connecting your bank"}
+            </span>
+            <span className="text-[15px]">
+              Your Stripe account was created but onboarding isn&apos;t complete yet. Click below to continue.
+            </span>
+          </span>
+          <ConnectPayoutsButton />
+        </Tile>
+      ) : (
+        <Tile tone="ink" className="flex flex-wrap items-center gap-[18px]">
+          <span className="flex size-14 shrink-0 items-center justify-center rounded-[17px] bg-butter text-ink">
+            <Landmark className="size-[26px]" strokeWidth={1.75} />
+          </span>
+          <span className="flex min-w-0 flex-[1_1_280px] flex-col gap-1.5">
+            <span className="font-display text-[22px] leading-tight font-extrabold sm:text-[26px]">
+              Connect your bank to get paid
+            </span>
+            <span className="text-[15px] text-[#c9ccd3]">
+              You keep {Math.round(HOST_SHARE * 100)}% of each trip&apos;s price. Connect a bank account through
+              Stripe and earnings are transferred automatically when each trip ends.
+            </span>
+          </span>
+          <ConnectPayoutsButton />
+        </Tile>
+      )}
 
       <div className="figures grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-3">
         {stats

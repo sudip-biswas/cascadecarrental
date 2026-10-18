@@ -20,4 +20,7 @@ export const stripe = {
   get webhooks() { return getStripe().webhooks; },
   get charges() { return getStripe().charges; },
   get refunds() { return getStripe().refunds; },
+  get accounts() { return getStripe().accounts; },
+  get accountLinks() { return getStripe().accountLinks; },
+  get transfers() { return getStripe().transfers; },
 };
