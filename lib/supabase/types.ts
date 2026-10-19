@@ -66,6 +66,10 @@ export type Database = {
           name: string;
           avatar_url: string | null;
           host_since: string | null;
+          bio: string | null;
+          trip_count: number;
+          rating: number | null;
+          rating_count: number;
           created_at: string;
         };
         Insert: {
@@ -74,6 +78,10 @@ export type Database = {
           name: string;
           avatar_url?: string | null;
           host_since?: string | null;
+          bio?: string | null;
+          trip_count?: number;
+          rating?: number | null;
+          rating_count?: number;
           created_at?: string;
         };
         Update: {
@@ -82,6 +90,10 @@ export type Database = {
           name?: string;
           avatar_url?: string | null;
           host_since?: string | null;
+          bio?: string | null;
+          trip_count?: number;
+          rating?: number | null;
+          rating_count?: number;
         };
         Relationships: [
           {

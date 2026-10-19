@@ -17,7 +17,7 @@ export default async function PersonasPage() {
   const admin = createAdminClient();
 
   const [{ data: personas }, { data: vehicles }] = await Promise.all([
-    admin.from("host_personas").select("id, name, host_since").eq("owner_id", user.id).order("created_at"),
+    admin.from("host_personas").select("id, name, avatar_url, host_since, bio, trip_count, rating, rating_count").eq("owner_id", user.id).order("created_at"),
     admin.from("vehicles").select("id, make, model, year, persona_id").eq("host_id", user.id).neq("status", "suspended").order("make"),
   ]);
 
