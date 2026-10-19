@@ -37,7 +37,7 @@ type CarRow = PublicVehicle & {
   vehicle_images: VehicleImage[];
   vehicle_features: { category: string; feature: string }[];
   host: { id: string; full_name: string; avatar_url: string | null; host_since: string | null } | null;
-  persona: { name: string; avatar_url: string | null; host_since: string | null; bio: string | null; trip_count: number; rating: number | null; rating_count: number } | null;
+  persona: { id: string; name: string; avatar_url: string | null; host_since: string | null; bio: string | null; trip_count: number; rating: number | null; rating_count: number } | null;
 };
 
 type ReviewRow = {
@@ -50,7 +50,7 @@ type ReviewRow = {
 };
 
 const CAR_SELECT =
-  `${VEHICLE_PUBLIC}, vehicle_images(*), vehicle_features(category, feature), host:profiles!host_id(id, full_name, avatar_url, host_since), persona:host_personas!persona_id(name, avatar_url, host_since, bio, trip_count, rating, rating_count)`;
+  `${VEHICLE_PUBLIC}, vehicle_images(*), vehicle_features(category, feature), host:profiles!host_id(id, full_name, avatar_url, host_since), persona:host_personas!persona_id(id, name, avatar_url, host_since, bio, trip_count, rating, rating_count)`;
 
 /** Shared by the page and its metadata, so the car is read once per request. */
 const getCar = cache(async (id: string) => {
@@ -172,6 +172,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
   const hostRating = car.persona?.rating ?? null;
   const hostRatingCount = car.persona?.rating_count ?? 0;
   const hostTripCount = car.persona?.trip_count ?? 0;
+  const hostProfileHref = car.persona?.id ? `/hosts/${car.persona.id}` : null;
   const days = dates ? daysBetween(dates.from, dates.until) : null;
   const backParams = new URLSearchParams(dates ?? {}).toString();
   const backHref = backParams ? `/search?${backParams}` : "/search";
@@ -311,22 +312,31 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
       </div>
 
       <div className="flex flex-wrap items-start gap-4 rounded-[24px] bg-white p-4 sm:p-[18px]">
-        {hostAvatar ? (
-          <img
-            src={hostAvatar}
-            alt={host}
-            className="size-16 shrink-0 rounded-[18px] object-cover sm:size-20 sm:rounded-[22px]"
-          />
+        {hostProfileHref ? (
+          <Link href={hostProfileHref} className="shrink-0 transition-opacity hover:opacity-80">
+            {hostAvatar ? (
+              <img src={hostAvatar} alt={host} className="size-16 rounded-[18px] object-cover sm:size-20 sm:rounded-[22px]" />
+            ) : (
+              <span aria-hidden className="flex size-16 items-center justify-center rounded-[18px] bg-mint font-display text-[26px] font-extrabold sm:size-20 sm:rounded-[22px]">
+                {host[0].toUpperCase()}
+              </span>
+            )}
+          </Link>
+        ) : hostAvatar ? (
+          <img src={hostAvatar} alt={host} className="size-16 shrink-0 rounded-[18px] object-cover sm:size-20 sm:rounded-[22px]" />
         ) : (
-          <span
-            aria-hidden
-            className="flex size-16 shrink-0 items-center justify-center rounded-[18px] bg-mint font-display text-[26px] font-extrabold sm:size-20 sm:rounded-[22px]"
-          >
+          <span aria-hidden className="flex size-16 shrink-0 items-center justify-center rounded-[18px] bg-mint font-display text-[26px] font-extrabold sm:size-20 sm:rounded-[22px]">
             {host[0].toUpperCase()}
           </span>
         )}
         <span className="flex min-w-0 flex-[1_1_200px] flex-col gap-1">
-          <span className="font-display text-[22px] font-extrabold sm:text-[24px]">Hosted by {host}</span>
+          {hostProfileHref ? (
+            <Link href={hostProfileHref} className="font-display text-[22px] font-extrabold hover:underline sm:text-[24px]">
+              Hosted by {host}
+            </Link>
+          ) : (
+            <span className="font-display text-[22px] font-extrabold sm:text-[24px]">Hosted by {host}</span>
+          )}
           <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[14px] text-slate">
             {hostRating != null && (
               <span className="flex items-center gap-1 font-semibold text-ink">

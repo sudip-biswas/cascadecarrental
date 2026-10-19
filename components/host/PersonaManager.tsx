@@ -175,11 +175,13 @@ export function PersonaManager({
   const [saving, setSaving] = useState(false);
 
   async function uploadAvatar(personaId: string, file: File): Promise<string | null> {
-    const ext = file.name.split(".").pop() ?? "jpg";
-    const path = `${personaId}.${ext}`;
-    const { error } = await supabase.storage.from("persona-avatars").upload(path, file, { upsert: true });
-    if (error) { toast.error("Photo upload failed — persona saved without it."); return null; }
-    return supabase.storage.from("persona-avatars").getPublicUrl(path).data.publicUrl;
+    const form = new FormData();
+    form.append("file", file);
+    form.append("personaId", personaId);
+    const res = await fetch("/api/admin/upload-avatar", { method: "POST", body: form });
+    const { url, error } = await res.json();
+    if (error || !url) { toast.error("Photo upload failed — persona saved without it."); return null; }
+    return url as string;
   }
 
   function parseForm(f: FormValues) {
@@ -223,14 +225,16 @@ export function PersonaManager({
     const parsed = parseForm(editForm);
     if (!parsed.name) return;
     setSaving(true);
-    let avatar_url: string | null | undefined = undefined;
-    if (editAvatarFile) {
-      avatar_url = await uploadAvatar(editingId, editAvatarFile);
-    }
-    const update = { ...parsed, ...(avatar_url !== undefined ? { avatar_url } : {}) };
+    // Only update avatar_url if a new file was picked AND upload succeeded.
+    // A null result (failed upload) must NOT overwrite an existing avatar_url.
+    const uploadedUrl = editAvatarFile ? await uploadAvatar(editingId, editAvatarFile) : undefined;
+    const update = { ...parsed, ...(uploadedUrl ? { avatar_url: uploadedUrl } : {}) };
     const { error } = await supabase.from("host_personas").update(update).eq("id", editingId);
     if (error) { toast.error("Couldn't save."); setSaving(false); return; }
-    setPersonas((p) => p.map((x) => x.id === editingId ? { ...x, ...parsed, ...(avatar_url !== undefined ? { avatar_url } : {}) } : x));
+    setPersonas((p) => p.map((x) => x.id === editingId
+      ? { ...x, ...parsed, ...(uploadedUrl ? { avatar_url: uploadedUrl } : {}) }
+      : x
+    ));
     setEditingId(null); setEditAvatarFile(null);
     toast.success("Saved.");
     setSaving(false);
