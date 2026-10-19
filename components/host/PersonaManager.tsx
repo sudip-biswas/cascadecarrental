@@ -98,6 +98,57 @@ function Input({ value, onChange, placeholder, type = "text" }: { value: string;
   );
 }
 
+function PersonaForm({ form, setForm, setAvatarFile, currentAvatar }: {
+  form: FormValues;
+  setForm: (f: FormValues) => void;
+  avatarFile: File | null;
+  setAvatarFile: (f: File | null) => void;
+  currentAvatar: string | null;
+}) {
+  const set = (k: keyof FormValues) => (v: string) => setForm({ ...form, [k]: v });
+  return (
+    <div className="flex flex-wrap gap-4">
+      <AvatarUpload current={currentAvatar} name={form.name || "?"} onFile={setAvatarFile} />
+      <div className="flex flex-1 flex-col gap-3">
+        <div className="grid grid-cols-[1fr_auto] gap-3">
+          <div className="flex flex-col gap-1">
+            <FieldLabel>Display name *</FieldLabel>
+            <Input value={form.name} onChange={set("name")} placeholder="e.g. Sarah M." />
+          </div>
+          <div className="flex flex-col gap-1">
+            <FieldLabel>Hosting since</FieldLabel>
+            <Input type="date" value={form.host_since} onChange={set("host_since")} />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <FieldLabel>Bio</FieldLabel>
+          <textarea
+            value={form.bio}
+            onChange={(e) => set("bio")(e.target.value)}
+            placeholder="Hi! I'm a car enthusiast based in Seattle…"
+            rows={2}
+            className="rounded-[10px] border border-line bg-board px-3 py-2 text-[15px] resize-none focus:outline-none focus:ring-2 focus:ring-ink"
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="flex flex-col gap-1">
+            <FieldLabel>Trips</FieldLabel>
+            <Input type="number" value={form.trip_count} onChange={set("trip_count")} placeholder="0" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <FieldLabel>Rating (0–5)</FieldLabel>
+            <Input type="number" value={form.rating} onChange={set("rating")} placeholder="4.9" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <FieldLabel>No. of ratings</FieldLabel>
+            <Input type="number" value={form.rating_count} onChange={set("rating_count")} placeholder="0" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PersonaManager({
   userId,
   initialPersonas,
@@ -208,55 +259,6 @@ export function PersonaManager({
   }
 
   const assignedTo = (personaId: string) => vehicles.filter((v) => assignments[v.id] === personaId);
-
-  function PersonaForm({ form, setForm, avatarFile, setAvatarFile, currentAvatar }: {
-    form: FormValues; setForm: (f: FormValues) => void;
-    avatarFile: File | null; setAvatarFile: (f: File | null) => void;
-    currentAvatar: string | null;
-  }) {
-    const set = (k: keyof FormValues) => (v: string) => setForm({ ...form, [k]: v });
-    return (
-      <div className="flex flex-wrap gap-4">
-        <AvatarUpload current={currentAvatar} name={form.name || "?"} onFile={setAvatarFile} />
-        <div className="flex flex-1 flex-col gap-3">
-          <div className="grid grid-cols-[1fr_auto] gap-3">
-            <div className="flex flex-col gap-1">
-              <FieldLabel>Display name *</FieldLabel>
-              <Input value={form.name} onChange={set("name")} placeholder="e.g. Sarah M." />
-            </div>
-            <div className="flex flex-col gap-1">
-              <FieldLabel>Hosting since</FieldLabel>
-              <Input type="date" value={form.host_since} onChange={set("host_since")} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1">
-            <FieldLabel>Bio</FieldLabel>
-            <textarea
-              value={form.bio}
-              onChange={(e) => set("bio")(e.target.value)}
-              placeholder="Hi! I'm a car enthusiast based in Seattle…"
-              rows={2}
-              className="rounded-[10px] border border-line bg-board px-3 py-2 text-[15px] resize-none focus:outline-none focus:ring-2 focus:ring-ink"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="flex flex-col gap-1">
-              <FieldLabel>Trips</FieldLabel>
-              <Input type="number" value={form.trip_count} onChange={set("trip_count")} placeholder="0" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <FieldLabel>Rating (0–5)</FieldLabel>
-              <Input type="number" value={form.rating} onChange={set("rating")} placeholder="4.9" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <FieldLabel>No. of ratings</FieldLabel>
-              <Input type="number" value={form.rating_count} onChange={set("rating_count")} placeholder="0" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-3">
