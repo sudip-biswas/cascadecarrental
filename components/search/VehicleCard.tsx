@@ -53,7 +53,7 @@ export function VehicleCard({ vehicle, dates, layout = "tile", priority }: Props
   const name = `${vehicle.make} ${vehicle.model}`;
   const total = dates ? tripTotalCents(vehicle, dates.from, dates.until) : null;
   const isNew = vehicle.trip_count === 0;
-  const host = firstName(vehicle.host?.full_name);
+  const host = firstName(vehicle.persona?.name ?? vehicle.host?.full_name);
 
   if (layout === "compact") {
     return (

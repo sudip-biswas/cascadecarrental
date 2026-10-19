@@ -59,6 +59,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      host_personas: {
+        Row: {
+          id: string;
+          owner_id: string;
+          name: string;
+          avatar_url: string | null;
+          host_since: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          owner_id: string;
+          name: string;
+          avatar_url?: string | null;
+          host_since?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          owner_id?: string;
+          name?: string;
+          avatar_url?: string | null;
+          host_since?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "host_personas_owner_id_fkey";
+            columns: ["owner_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       vehicles: {
         Row: {
           id: string;
@@ -91,6 +125,7 @@ export type Database = {
           advance_notice_hours: number;
           instant_book: boolean;
           description: string | null;
+          persona_id: string | null;
           status: "listed" | "unlisted" | "suspended";
           rating_avg: number | null;
           trip_count: number;
@@ -128,6 +163,7 @@ export type Database = {
           advance_notice_hours?: number;
           instant_book?: boolean;
           description?: string | null;
+          persona_id?: string | null;
           status?: "listed" | "unlisted" | "suspended";
           rating_avg?: number | null;
           trip_count?: number;
@@ -165,6 +201,7 @@ export type Database = {
           advance_notice_hours?: number;
           instant_book?: boolean;
           description?: string | null;
+          persona_id?: string | null;
           status?: "listed" | "unlisted" | "suspended";
           rating_avg?: number | null;
           trip_count?: number;
@@ -176,6 +213,13 @@ export type Database = {
             columns: ["host_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "vehicles_persona_id_fkey";
+            columns: ["persona_id"];
+            isOneToOne: false;
+            referencedRelation: "host_personas";
             referencedColumns: ["id"];
           }
         ];

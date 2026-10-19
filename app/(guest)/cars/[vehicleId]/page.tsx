@@ -37,6 +37,7 @@ type CarRow = PublicVehicle & {
   vehicle_images: VehicleImage[];
   vehicle_features: { category: string; feature: string }[];
   host: { id: string; full_name: string; avatar_url: string | null; host_since: string | null } | null;
+  persona: { name: string; avatar_url: string | null; host_since: string | null } | null;
 };
 
 type ReviewRow = {
@@ -49,7 +50,7 @@ type ReviewRow = {
 };
 
 const CAR_SELECT =
-  `${VEHICLE_PUBLIC}, vehicle_images(*), vehicle_features(category, feature), host:profiles!host_id(id, full_name, avatar_url, host_since)`;
+  `${VEHICLE_PUBLIC}, vehicle_images(*), vehicle_features(category, feature), host:profiles!host_id(id, full_name, avatar_url, host_since), persona:host_personas!persona_id(name, avatar_url, host_since)`;
 
 /** Shared by the page and its metadata, so the car is read once per request. */
 const getCar = cache(async (id: string) => {
@@ -163,7 +164,9 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
   const reviews = (reviewData ?? []) as unknown as ReviewRow[];
 
   const name = `${car.make} ${car.model}`;
-  const host = firstName(car.host?.full_name) ?? "the host";
+  const displayName = car.persona?.name ?? car.host?.full_name;
+  const host = firstName(displayName) ?? "the host";
+  const hostSince = car.persona?.host_since ?? car.host?.host_since;
   const days = dates ? daysBetween(dates.from, dates.until) : null;
   const backParams = new URLSearchParams(dates ?? {}).toString();
   const backHref = backParams ? `/search?${backParams}` : "/search";
@@ -313,7 +316,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
           <span className="font-display text-[22px] font-extrabold sm:text-[24px]">Hosted by {host}</span>
           <span className="text-[15px] text-slate">
             {[
-              car.host?.host_since ? `Hosting since ${formatDate(car.host.host_since, { day: undefined, month: "long" })}` : null,
+              hostSince ? `Hosting since ${formatDate(hostSince, { day: undefined, month: "long" })}` : null,
               hostCars ? pluralize(hostCars, "car") : null,
             ]
               .filter(Boolean)

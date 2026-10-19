@@ -9,10 +9,11 @@ import { daysBetween, type DateKey } from "./dates";
 export type ListedVehicle = PublicVehicle & {
   vehicle_images: VehicleImage[];
   host: { full_name: string } | null;
+  persona: { name: string } | null;
 };
 
 /** Columns those pages select. */
-export const LISTED_VEHICLE_SELECT = `${VEHICLE_PUBLIC}, vehicle_images(*), host:profiles!host_id(full_name)`;
+export const LISTED_VEHICLE_SELECT = `${VEHICLE_PUBLIC}, vehicle_images(*), host:profiles!host_id(full_name), persona:host_personas!persona_id(name)`;
 
 export function coverImage(images: VehicleImage[] | null | undefined) {
   if (!images?.length) return null;
