@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Plus,
   Route,
+  Shield,
   Star,
   TrendingUp,
   type LucideIcon,
@@ -27,7 +28,7 @@ interface Item {
   badge?: number;
 }
 
-export function HostSidebar({ requests, unread }: { requests: number; unread: number }) {
+export function HostSidebar({ requests, unread, isAdmin = false }: { requests: number; unread: number; isAdmin?: boolean }) {
   const pathname = usePathname();
   const items: Item[] = [
     { href: "/host", label: "Today", icon: LayoutGrid, match: (p) => p === "/host", badge: requests },
@@ -40,6 +41,7 @@ export function HostSidebar({ requests, unread }: { requests: number; unread: nu
     { href: "/host/business/ratings", label: "Ratings", icon: Star, match: (p) => p.startsWith("/host/business/ratings") },
     { href: "/host/hours", label: "Pickup and hours", icon: MapPin, match: (p) => p.startsWith("/host/hours") },
     { href: "/host/notifications", label: "Notifications", icon: Bell, match: (p) => p.startsWith("/host/notifications") },
+    ...(isAdmin ? [{ href: "/host/admin/personas", label: "Personas", icon: Shield, match: (p: string) => p.startsWith("/host/admin") }] : []),
   ];
 
   return (

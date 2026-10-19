@@ -19,10 +19,11 @@ export default async function HostLayout({ children }: LayoutProps<"/">) {
   if (!user) redirect("/login?redirectTo=/host");
 
   const { requests, unread } = await getHostNav(user.id);
+  const isAdmin = user.id === process.env.ADMIN_USER_ID;
 
   return (
     <div className="flex min-h-dvh flex-1">
-      <HostSidebar requests={requests} unread={unread} />
+      <HostSidebar requests={requests} unread={unread} isAdmin={isAdmin} />
       <div className="flex min-w-0 flex-1 flex-col">
         <HostTopbar />
         <main className="flex-1 px-4 pt-6 pb-12 sm:px-7 sm:pt-7">{children}</main>
