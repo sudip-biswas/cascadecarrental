@@ -62,8 +62,8 @@ async function loadFeatured() {
     .from("vehicles")
     .select(LISTED_VEHICLE_SELECT)
     .eq("status", "listed")
-    .order("trip_count", { ascending: false })
-    .order("created_at", { ascending: false })
+    .order("rating_avg", { ascending: false, nullsFirst: false })
+    .order("daily_rate_cents", { ascending: false })
     .limit(3);
   return (data ?? []) as unknown as ListedVehicle[];
 }
