@@ -303,6 +303,38 @@ export type Database = {
           }
         ];
       };
+      vehicle_daily_prices: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          date: string;
+          price_cents: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          date: string;
+          price_cents: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string;
+          date?: string;
+          price_cents?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_daily_prices_vehicle_id_fkey";
+            columns: ["vehicle_id"];
+            isOneToOne: false;
+            referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       vehicle_availability: {
         Row: {
           id: string;
