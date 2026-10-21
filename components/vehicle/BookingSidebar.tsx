@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Divider, PriceRow } from "@/components/kit";
-import { computePricing, NON_REFUNDABLE_DISCOUNT, type RateType } from "@/lib/pricing";
+import { computePricing, dayRates, NON_REFUNDABLE_DISCOUNT, type DailyPrices, type RateType } from "@/lib/pricing";
 import { cn, formatCurrency, formatPrice, formatRange, pluralize, zonedInstant } from "@/lib/utils";
 import type { Vehicle } from "@/lib/supabase/types";
 import { TripDatesPicker } from "@/components/search/TripDatesPicker";
@@ -35,6 +35,8 @@ interface Props {
   vehicle: BookingVehicle;
   hostName: string;
   unavailable: Range[];
+  /** The host's own prices for single days, from today on. */
+  dailyPrices: DailyPrices;
   initialFrom?: DateKey;
   initialUntil?: DateKey;
   initialRate: RateType;
@@ -70,6 +72,7 @@ export function CarBooking({
   vehicle,
   hostName,
   unavailable,
+  dailyPrices,
   initialFrom,
   initialUntil,
   initialRate,
@@ -91,6 +94,7 @@ export function CarBooking({
     computePricing({
       dailyRateCents: vehicle.daily_rate_cents,
       days: Math.max(days, 1),
+      dayRatesCents: from ? dayRates(vehicle.daily_rate_cents, from, Math.max(days, 1), dailyPrices) : undefined,
       rateType,
       weeklyDiscountPct: vehicle.weekly_discount_pct,
       monthlyDiscountPct: vehicle.monthly_discount_pct,
@@ -215,7 +219,11 @@ export function CarBooking({
               <span className="bg-sky" style={{ flex: pricing.taxCents }} />
             </div>
             <PriceRow
-              label={`${pluralize(days, "day")} × ${formatPrice(vehicle.daily_rate_cents)}`}
+              label={
+                pricing.ratesVary
+                  ? `${pluralize(days, "day")}, avg ${formatPrice(pricing.dailyRateCents)}`
+                  : `${pluralize(days, "day")} × ${formatPrice(pricing.dailyRateCents)}`
+              }
               value={formatCurrency(pricing.baseCents)}
             />
             {pricing.lengthDiscountCents > 0 && (

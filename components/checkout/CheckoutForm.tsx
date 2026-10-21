@@ -12,7 +12,9 @@ import {
   NON_REFUNDABLE_DISCOUNT,
   PROTECTION_DAILY_CENTS,
   computePricing,
+  dayRates,
   tripDays,
+  type DailyPrices,
   type PricingResult,
   type ProtectionPlan,
   type RateType,
@@ -43,6 +45,8 @@ interface Props {
   from: string;
   until: string;
   initialRate: RateType;
+  /** The host's own prices for the trip's days. */
+  dailyPrices: DailyPrices;
 }
 
 const appearance: Appearance = {
@@ -97,7 +101,7 @@ function coverOf(vehicle: CheckoutVehicle) {
   return images[0]?.url ?? null;
 }
 
-export function CheckoutForm({ vehicle, from, until, initialRate }: Props) {
+export function CheckoutForm({ vehicle, from, until, initialRate, dailyPrices }: Props) {
   const [rateType, setRateType] = useState<RateType>(initialRate);
   const [plan, setPlan] = useState<ProtectionPlan | null>(null);
 
@@ -107,6 +111,7 @@ export function CheckoutForm({ vehicle, from, until, initialRate }: Props) {
   const pricing = computePricing({
     dailyRateCents: vehicle.daily_rate_cents,
     days,
+    dayRatesCents: dayRates(vehicle.daily_rate_cents, from, days, dailyPrices),
     protectionPlan: plan,
     rateType,
     weeklyDiscountPct: vehicle.weekly_discount_pct,
@@ -153,7 +158,7 @@ function CheckoutLayout({
   onRateType,
   plan,
   onPlan,
-}: Omit<Props, "initialRate"> & {
+}: Omit<Props, "initialRate" | "dailyPrices"> & {
   start: Date;
   end: Date;
   pricing: PricingResult;
@@ -420,7 +425,9 @@ function Choice({ on, onClick, children }: { on: boolean; onClick: () => void; c
 function Breakdown({ pricing, plan }: { pricing: PricingResult; plan: ProtectionPlan | null }) {
   const rows = [
     {
-      label: `${pluralize(pricing.days, "day")} × ${formatPrice(pricing.dailyRateCents)}`,
+      label: pricing.ratesVary
+        ? `${pluralize(pricing.days, "day")}, avg ${formatPrice(pricing.dailyRateCents)}`
+        : `${pluralize(pricing.days, "day")} × ${formatPrice(pricing.dailyRateCents)}`,
       value: pricing.baseCents,
     },
     pricing.lengthDiscountCents > 0 && {

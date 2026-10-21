@@ -15,13 +15,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { unavailableRanges } from "@/lib/trips";
+import { loadDailyPrices, unavailableRanges } from "@/lib/trips";
 import { PROTECTION_DAILY_CENTS } from "@/lib/pricing";
 import { rentalPageFor } from "@/lib/rentals";
 import { NO_INDEX, OPEN_GRAPH, absoluteUrl, carIdFromSlug, carPath } from "@/lib/site";
 import { VEHICLE_PUBLIC, type PublicVehicle } from "@/lib/supabase/columns";
 import type { VehicleImage } from "@/lib/supabase/types";
-import { HANDOVER_TIME, cn, formatCurrency, formatDate, formatPrice, pluralize } from "@/lib/utils";
+import { HANDOVER_TIME, cn, formatCurrency, formatDate, formatPrice, pluralize, toDateKey } from "@/lib/utils";
 import { Tag, Tile, TileTitle, toneClass, type Tone } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -147,7 +147,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
   const user = auth.user;
   const isOwner = user?.id === car.host_id;
 
-  const [{ data: reviewData, count: reviewCount }, { count: hostCars }, unavailable] = await Promise.all([
+  const [{ data: reviewData, count: reviewCount }, { count: hostCars }, unavailable, dailyPrices] = await Promise.all([
     supabase
       .from("reviews")
       .select("id, created_at, rating_overall, body, host_reply, reviewer:profiles!reviewer_id(full_name)", { count: "exact" })
@@ -160,6 +160,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
       .eq("host_id", car.host_id)
       .eq("status", "listed"),
     unavailableRanges(vehicleId),
+    loadDailyPrices(vehicleId, toDateKey(new Date())),
   ]);
   const reviews = (reviewData ?? []) as unknown as ReviewRow[];
 
@@ -495,6 +496,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
           }}
           hostName={host}
           unavailable={unavailable}
+          dailyPrices={dailyPrices}
           initialFrom={dates?.from}
           initialUntil={dates?.until}
           initialRate={rate}

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { CalendarX } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { loadDailyPrices } from "@/lib/trips";
 import { tripDays } from "@/lib/pricing";
 import { NO_INDEX, carIdFromSlug, carPath } from "@/lib/site";
 import { pluralize, toDateKey, zonedInstant } from "@/lib/utils";
@@ -82,5 +83,8 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
     );
   }
 
-  return <CheckoutForm vehicle={vehicle} from={from} until={until} initialRate={initialRate} />;
+  const dailyPrices = await loadDailyPrices(vehicle.id, from, until);
+  return (
+    <CheckoutForm vehicle={vehicle} from={from} until={until} initialRate={initialRate} dailyPrices={dailyPrices} />
+  );
 }

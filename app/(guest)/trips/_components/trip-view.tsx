@@ -103,7 +103,7 @@ export function TripView({ trip, reviewed }: { trip: TripRow; reviewed: boolean 
   const cancelled = trip.status === "cancelled_guest" || trip.status === "cancelled_host";
   const terms = guestCancellation(trip, now);
   const days = tripDays(trip.starts_at, trip.ends_at);
-  const base = trip.daily_rate_cents * days;
+  const base = trip.base_cents ?? trip.daily_rate_cents * days;
   const discounts = base - trip.subtotal_cents;
   const directions = mapsUrl(trip);
   const heroTone = cancelled ? "peach" : "sky";
@@ -177,7 +177,14 @@ export function TripView({ trip, reviewed }: { trip: TripRow; reviewed: boolean 
 
           <Tile className="flex flex-col gap-2.5">
             <TileTitle className="mb-1 text-[24px]">Receipt</TileTitle>
-            <PriceRow label={`${pluralize(days, "day")} × ${formatPrice(trip.daily_rate_cents)}`} value={formatCurrency(base)} />
+            <PriceRow
+              label={
+                base === trip.daily_rate_cents * days
+                  ? `${pluralize(days, "day")} × ${formatPrice(trip.daily_rate_cents)}`
+                  : `${pluralize(days, "day")}, avg ${formatPrice(trip.daily_rate_cents)}`
+              }
+              value={formatCurrency(base)}
+            />
             {discounts > 0 && <PriceRow label="Discounts" value={`−${formatCurrency(discounts)}`} />}
             {trip.protection_cost_cents > 0 && (
               <PriceRow

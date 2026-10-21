@@ -380,6 +380,7 @@ export type Database = {
           ends_at: string;
           pickup_location: string;
           daily_rate_cents: number;
+          base_cents: number | null;
           subtotal_cents: number;
           tax_cents: number;
           total_cents: number;
@@ -408,6 +409,7 @@ export type Database = {
           ends_at: string;
           pickup_location: string;
           daily_rate_cents: number;
+          base_cents?: number | null;
           subtotal_cents: number;
           tax_cents: number;
           total_cents: number;
@@ -436,6 +438,7 @@ export type Database = {
           ends_at?: string;
           pickup_location?: string;
           daily_rate_cents?: number;
+          base_cents?: number | null;
           subtotal_cents?: number;
           tax_cents?: number;
           total_cents?: number;

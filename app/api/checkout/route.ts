@@ -3,8 +3,8 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
-import { computePricing, tripDays } from "@/lib/pricing";
-import { hasConflict, releaseStaleCheckouts } from "@/lib/trips";
+import { computePricing, dayRates, tripDays } from "@/lib/pricing";
+import { hasConflict, loadDailyPrices, releaseStaleCheckouts } from "@/lib/trips";
 import { pluralize, zonedInstant } from "@/lib/utils";
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -73,9 +73,11 @@ export async function POST(req: Request) {
     return fail("Someone just booked these dates. Try others.", 409);
   }
 
+  const prices = await loadDailyPrices(vehicleId, from, until);
   const pricing = computePricing({
     dailyRateCents: vehicle.daily_rate_cents,
     days,
+    dayRatesCents: dayRates(vehicle.daily_rate_cents, from, days, prices),
     protectionPlan,
     rateType,
     weeklyDiscountPct: vehicle.weekly_discount_pct,
@@ -132,7 +134,8 @@ export async function POST(req: Request) {
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
       pickup_location: vehicle.location_name,
-      daily_rate_cents: vehicle.daily_rate_cents,
+      daily_rate_cents: pricing.dailyRateCents,
+      base_cents: pricing.baseCents,
       subtotal_cents: pricing.subtotalCents,
       tax_cents: pricing.taxCents,
       total_cents: pricing.totalCents,

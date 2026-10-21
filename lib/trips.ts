@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database, Trip } from "@/lib/supabase/types";
 import { stripe } from "@/lib/stripe/server";
 import { CANCEL_REASON } from "@/lib/trip-status";
-import { hostEarningsCents } from "@/lib/pricing";
+import { hostEarningsCents, type DailyPrices } from "@/lib/pricing";
 
 type TripUpdate = Database["public"]["Tables"]["trips"]["Update"];
 
@@ -326,4 +326,23 @@ export async function settleTripStatuses(userId: string) {
 export async function capturePayment(trip: MoneyTrip) {
   if (!trip.stripe_payment_intent_id) throw new Error("Trip has no payment");
   return stripe.paymentIntents.capture(trip.stripe_payment_intent_id);
+}
+
+/**
+ * A car's own day prices from fromKey on, and before untilKey when given. Read with the
+ * admin client so the car page, checkout and the checkout API all price from the same rows.
+ */
+export async function loadDailyPrices(
+  vehicleId: string,
+  fromKey: string,
+  untilKey?: string
+): Promise<DailyPrices> {
+  let query = createAdminClient()
+    .from("vehicle_daily_prices")
+    .select("date, price_cents")
+    .eq("vehicle_id", vehicleId)
+    .gte("date", fromKey);
+  if (untilKey) query = query.lt("date", untilKey);
+  const { data } = await query;
+  return Object.fromEntries((data ?? []).map((row) => [row.date, row.price_cents]));
 }

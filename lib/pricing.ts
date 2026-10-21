@@ -15,9 +15,28 @@ export const NON_REFUNDABLE_DISCOUNT = 0.09;
 /** Share of the rental subtotal paid out to the host. Tax and protection stay with Cascade. */
 export const HOST_SHARE = 0.8;
 
+/** A host's own prices for single days, in cents, keyed by Pacific date ("2026-10-18"). */
+export type DailyPrices = Record<string, number>;
+
+/** What each day of a trip costs: the host's price for that day if they set one, else the car's rate. */
+export function dayRates(
+  dailyRateCents: number,
+  fromKey: string,
+  days: number,
+  prices: DailyPrices = {}
+): number[] {
+  const start = Date.parse(`${fromKey}T12:00:00Z`);
+  return Array.from({ length: days }, (_, i) => {
+    const key = new Date(start + i * 86_400_000).toISOString().slice(0, 10);
+    return prices[key] ?? dailyRateCents;
+  });
+}
+
 export interface PricingInput {
   dailyRateCents: number;
   days: number;
+  /** Each day's rate, from dayRates. Replaces dailyRateCents × days when given. */
+  dayRatesCents?: number[];
   protectionPlan?: ProtectionPlan | null;
   rateType?: RateType;
   weeklyDiscountPct?: number;
@@ -25,7 +44,10 @@ export interface PricingInput {
 }
 
 export interface PricingResult {
+  /** The car's rate, or the average when days are priced differently. */
   dailyRateCents: number;
+  /** True when the days don't all cost the same, so dailyRateCents is an average. */
+  ratesVary: boolean;
   days: number;
   /** Rental before any discount. */
   baseCents: number;
@@ -53,15 +75,23 @@ export function lengthDiscountPct(
 
 export function computePricing(input: PricingInput): PricingResult {
   const {
-    dailyRateCents,
     days,
+    dayRatesCents,
     protectionPlan,
     rateType = "non_refundable",
     weeklyDiscountPct = 0,
     monthlyDiscountPct = 0,
   } = input;
 
-  const baseCents = dailyRateCents * days;
+  const baseCents = dayRatesCents
+    ? dayRatesCents.reduce((sum, cents) => sum + cents, 0)
+    : input.dailyRateCents * days;
+  const ratesVary = !!dayRatesCents && dayRatesCents.some((cents) => cents !== dayRatesCents[0]);
+  const dailyRateCents = dayRatesCents
+    ? ratesVary
+      ? Math.round(baseCents / days)
+      : dayRatesCents[0]
+    : input.dailyRateCents;
   const pct = lengthDiscountPct(days, weeklyDiscountPct, monthlyDiscountPct);
   const lengthDiscountCents = Math.round((baseCents * pct) / 100);
   const afterLength = baseCents - lengthDiscountCents;
@@ -79,6 +109,7 @@ export function computePricing(input: PricingInput): PricingResult {
 
   return {
     dailyRateCents,
+    ratesVary,
     days,
     baseCents,
     lengthDiscountCents,
