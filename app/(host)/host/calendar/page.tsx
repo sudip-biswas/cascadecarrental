@@ -2,11 +2,12 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { settleTripStatuses } from "@/lib/trips";
 import { toDateKey } from "@/lib/utils";
-import type { Vehicle, VehicleImage } from "@/lib/supabase/types";
+import type { Database, Vehicle, VehicleImage } from "@/lib/supabase/types";
 import { EmptyState, PageTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { MultiCalendar, type PriceOverrides } from "@/components/host/MultiCalendar";
@@ -20,6 +21,32 @@ export const metadata = { title: "Calendar" };
 type CarRow = Pick<Vehicle, "id" | "make" | "model" | "daily_rate_cents"> & {
   vehicle_images: Pick<VehicleImage, "url" | "is_cover" | "position">[];
 };
+
+/** How far ahead hosts can price, and so how far the calendar scrolls. */
+const HORIZON_DAYS = 365;
+
+/** Every price row in the range. PostgREST pages at 1,000 rows and a fleet's year runs past that. */
+async function loadPrices(
+  supabase: SupabaseClient<Database>,
+  carIds: string[],
+  from: string,
+  to: string
+) {
+  const rows: { vehicle_id: string; date: string; price_cents: number }[] = [];
+  for (let page = 0; ; page++) {
+    const { data } = await supabase
+      .from("vehicle_daily_prices")
+      .select("vehicle_id, date, price_cents")
+      .in("vehicle_id", carIds)
+      .gte("date", from)
+      .lte("date", to)
+      .order("vehicle_id")
+      .order("date")
+      .range(page * 1000, page * 1000 + 999);
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) return rows;
+  }
+}
 
 export default async function HostCalendarPage() {
   const supabase = await createClient();
@@ -63,27 +90,20 @@ export default async function HostCalendarPage() {
   }
 
   const carIds = cars.map((c) => c.id);
-  const priceFrom = addDays(today, -7);
-  const priceTo = addDays(today, 90);
 
   // Step 2 – fetch trips, blocks, and price overrides in parallel
-  const [trips, { data: blocksData }, { data: priceRows }] = await Promise.all([
+  const [trips, { data: blocksData }, priceRows] = await Promise.all([
     loadHostTrips(supabase, user.id, ["pending", "approved", "active", "completed"]),
     createAdminClient()
       .from("vehicle_availability")
       .select("id, vehicle_id, blocked_from, blocked_to, reason")
       .in("vehicle_id", carIds),
-    supabase
-      .from("vehicle_daily_prices")
-      .select("vehicle_id, date, price_cents")
-      .in("vehicle_id", carIds)
-      .gte("date", priceFrom)
-      .lte("date", priceTo),
+    loadPrices(supabase, carIds, addDays(today, -30), addDays(today, HORIZON_DAYS)),
   ]);
 
   // Build price overrides map: { [vehicleId]: { [date]: price_cents } }
   const priceOverrides: PriceOverrides = {};
-  for (const row of priceRows ?? []) {
+  for (const row of priceRows) {
     if (!priceOverrides[row.vehicle_id]) priceOverrides[row.vehicle_id] = {};
     priceOverrides[row.vehicle_id][row.date] = row.price_cents;
   }
@@ -92,6 +112,7 @@ export default async function HostCalendarPage() {
     <Suspense>
       <MultiCalendar
         today={today}
+        horizon={addDays(today, HORIZON_DAYS)}
         priceOverrides={priceOverrides}
         cars={cars.map((c) => ({
           id: c.id,

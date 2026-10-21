@@ -12,8 +12,8 @@ import { addDays, daysBetween } from "./days";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  vehicleId: string;
-  carName: string;
+  /** One car, or several from the fleet calendar. */
+  cars: { id: string; name: string }[];
   /** Pacific date keys, both days included. */
   from: string;
   to: string;
@@ -21,7 +21,7 @@ interface Props {
 }
 
 /** Confirms a block of whole days, with an optional note only the host sees. */
-export function BlockDateModal({ open, onOpenChange, vehicleId, carName, from: initialFrom, to: initialTo, onBlocked }: Props) {
+export function BlockDateModal({ open, onOpenChange, cars, from: initialFrom, to: initialTo, onBlocked }: Props) {
   const today = toDateKey(new Date());
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
@@ -37,24 +37,37 @@ export function BlockDateModal({ open, onOpenChange, vehicleId, carName, from: i
       return;
     }
     setSaving(true);
-    const res = await fetch(`/api/vehicles/${vehicleId}/block`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        // Whole Pacific days: midnight on the first day to midnight after the last.
-        blocked_from: zonedInstant(from, "00:00").toISOString(),
-        blocked_to: zonedInstant(addDays(to, 1), "00:00").toISOString(),
-        reason: note.trim() || undefined,
-      }),
-    });
-    const body: { error?: string } = await res.json().catch(() => ({}));
+    const results = await Promise.all(
+      cars.map(async (car) => {
+        const res = await fetch(`/api/vehicles/${car.id}/block`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            // Whole Pacific days: midnight on the first day to midnight after the last.
+            blocked_from: zonedInstant(from, "00:00").toISOString(),
+            blocked_to: zonedInstant(addDays(to, 1), "00:00").toISOString(),
+            reason: note.trim() || undefined,
+          }),
+        });
+        const body: { error?: string } = await res.json().catch(() => ({}));
+        return { car, ok: res.ok, error: body.error };
+      })
+    );
     setSaving(false);
 
-    if (!res.ok) {
-      toast.error(body.error ?? "Couldn't block those days. Try again.");
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length === cars.length) {
+      toast.error(failed[0].error ?? "Couldn't block those days. Try again.");
       return;
     }
-    toast.success(`${pluralize(days, "day")} blocked. Nobody can book them.`);
+    if (failed.length) {
+      toast.error(`Couldn't block ${failed.map((r) => r.car.name).join(", ")}. ${failed[0].error ?? ""}`.trim());
+    }
+    toast.success(
+      cars.length === 1
+        ? `${pluralize(days, "day")} blocked. Nobody can book them.`
+        : `${pluralize(days, "day")} blocked on ${pluralize(cars.length - failed.length, "car")}.`
+    );
     setNote("");
     onBlocked();
     onOpenChange(false);
@@ -66,7 +79,8 @@ export function BlockDateModal({ open, onOpenChange, vehicleId, carName, from: i
         <DialogHeader>
           <DialogTitle>Block days</DialogTitle>
           <DialogDescription className="text-[15px] text-slate">
-            {carName} won&apos;t show as available on these days.
+            {cars.length === 1 ? cars[0].name : pluralize(cars.length, "car")} won&apos;t show as available on
+            these days.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4">

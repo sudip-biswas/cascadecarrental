@@ -18,6 +18,9 @@ export const HOST_SHARE = 0.8;
 /** A host's own prices for single days, in cents, keyed by Pacific date ("2026-10-18"). */
 export type DailyPrices = Record<string, number>;
 
+/** What a calendar price change did: each car's new day prices, null where it went back to the daily rate. */
+export type PriceChanges = Record<string, Record<string, number | null>>;
+
 /** What each day of a trip costs: the host's price for that day if they set one, else the car's rate. */
 export function dayRates(
   dailyRateCents: number,

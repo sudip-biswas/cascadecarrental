@@ -20,6 +20,7 @@ import {
 import { addDays, daysBetween, occupantsByDay, OCCUPANT_FILL, type Occupant } from "./days";
 import { BlockDateModal } from "./BlockDateModal";
 import { LegendItem } from "./bits";
+import type { PriceChanges } from "@/lib/pricing";
 
 export interface MultiCalendarCar {
   id: string;
@@ -52,16 +53,33 @@ function headerLabel(dateKey: string): { day: string; num: number; monthMark: st
   return { day, num, monthMark };
 }
 
-type Sel = { carId: string; from: string; to: string };
-type Picking = { selection: Sel | null; anchor: { carId: string; key: string } | null };
+/** A rectangle of the grid: car rows r0 to r1 (indexes into cars) and days from to to. */
+type Sel = { r0: number; r1: number; from: string; to: string };
+type Cell = { row: number; key: string };
+/** anchor is set while dragging; origin is the corner shift-click extends from. */
+type Picking = { selection: Sel | null; anchor: Cell | null; origin: Cell | null };
+
+function rect(a: Cell, b: Cell): Sel {
+  return {
+    r0: Math.min(a.row, b.row),
+    r1: Math.max(a.row, b.row),
+    from: a.key < b.key ? a.key : b.key,
+    to: a.key < b.key ? b.key : a.key,
+  };
+}
+
+type PriceMode = "set" | "raise" | "lower";
 
 export function MultiCalendar({
   cars,
   today,
+  horizon,
   priceOverrides: initial,
 }: {
   cars: MultiCalendarCar[];
   today: string;
+  /** The last day prices are loaded for; the window doesn't scroll past it. */
+  horizon: string;
   priceOverrides: PriceOverrides;
 }) {
   const router = useRouter();
@@ -77,6 +95,7 @@ export function MultiCalendar({
       ),
     [dates]
   );
+  const lastStart = addDays(horizon, -(WINDOW_DAYS - 1));
 
   // Who holds each car on each day, worked out once per window rather than per cell.
   // Starts a day early so a stay that began before the window doesn't get relabelled.
@@ -91,10 +110,10 @@ export function MultiCalendar({
     [cars, dates]
   );
 
-  // Selection: one car, one date range. One state, so the handlers below stay stable
-  // and a drag only re-renders the row under the pointer.
-  const [{ selection }, setPick] = useState<Picking>({ selection: null, anchor: null });
-  const clearSelection = () => setPick({ selection: null, anchor: null });
+  // Selection: any block of cars and days. One state, so the handlers below stay stable
+  // and a drag only re-renders the rows it crosses.
+  const [{ selection }, setPick] = useState<Picking>({ selection: null, anchor: null, origin: null });
+  const clearSelection = () => setPick({ selection: null, anchor: null, origin: null });
 
   // Right panel
   const [activeTab, setActiveTab] = useState<"prices" | "availability" | "trips">("prices");
@@ -102,6 +121,7 @@ export function MultiCalendar({
 
   // Price overrides (client-side cache updated after saves)
   const [overrides, setOverrides] = useState<PriceOverrides>(initial);
+  const [priceMode, setPriceMode] = useState<PriceMode>("set");
   const [priceInput, setPriceInput] = useState("");
   const [savingPrice, setSavingPrice] = useState(false);
 
@@ -111,94 +131,137 @@ export function MultiCalendar({
     return () => window.removeEventListener("pointerup", stop);
   }, []);
 
-  const selectedCar = selection ? cars.find((c) => c.id === selection.carId) : null;
+  const selCars = selection ? cars.slice(selection.r0, selection.r1 + 1) : [];
   const selectedDays = selection ? daysBetween(selection.from, selection.to) + 1 : 0;
-  const selDates = selection
-    ? Array.from({ length: selectedDays }, (_, i) => addDays(selection.from, i))
-    : [];
 
-  /** All unique occupants that overlap the selection */
-  const selOccupants: Occupant[] = (() => {
-    if (!selection || !selectedCar) return [];
-    const byDay = occupantsByDay(selectedCar.occupants, selection.from, selection.to);
-    return [...new Set(selDates.map((d) => byDay.get(d)).filter((o) => o !== undefined))];
+  /** What's on the selected days, car by car. */
+  const selBusy = selCars.map((car) => {
+    const byDay = occupantsByDay(car.occupants, selection!.from, selection!.to);
+    return { car, occupants: [...new Set(byDay.values())] };
+  });
+  const selOccupants = selBusy.flatMap(({ car, occupants }) => occupants.map((o) => ({ car, o })));
+  const freeCars = selBusy.filter((b) => b.occupants.length === 0).map((b) => b.car);
+
+  /** Lowest and highest daily price across the selection. */
+  const priceSpan = (() => {
+    if (!selection) return null;
+    let lo = Infinity;
+    let hi = 0;
+    for (const car of selCars) {
+      for (let d = selection.from; d <= selection.to; d = addDays(d, 1)) {
+        const cents = overrides[car.id]?.[d] ?? car.dailyRateCents;
+        lo = Math.min(lo, cents);
+        hi = Math.max(hi, cents);
+      }
+    }
+    return { lo, hi };
   })();
 
-  const startAt = useCallback((carId: string, key: string) => {
-    setPick(({ selection, anchor }) => {
+  const startAt = useCallback((row: number, key: string, extend: boolean) => {
+    setPick(({ selection, anchor, origin }) => {
+      // Shift-click stretches the selection from where it started
+      if (extend && origin) return { selection: rect(origin, { row, key }), anchor: null, origin };
       // Second tap on a different day in the same car extends the range
       if (
-        selection?.carId === carId &&
+        selection &&
+        selection.r0 === row &&
+        selection.r1 === row &&
         selection.from === selection.to &&
         key !== selection.from &&
         !anchor
       ) {
-        return {
-          selection: {
-            carId,
-            from: key < selection.from ? key : selection.from,
-            to: key < selection.from ? selection.from : key,
-          },
-          anchor: null,
-        };
+        return { selection: rect({ row, key: selection.from }, { row, key }), anchor: null, origin };
       }
-      return { selection: { carId, from: key, to: key }, anchor: { carId, key } };
+      const cell = { row, key };
+      return { selection: rect(cell, cell), anchor: cell, origin: cell };
     });
   }, []);
 
-  const dragTo = useCallback((carId: string, key: string) => {
+  const dragTo = useCallback((row: number, key: string) => {
     setPick((p) => {
-      if (!p.anchor || p.anchor.carId !== carId) return p;
-      const from = key < p.anchor.key ? key : p.anchor.key;
-      const to = key < p.anchor.key ? p.anchor.key : key;
-      if (p.selection?.from === from && p.selection.to === to) return p;
-      return { ...p, selection: { carId, from, to } };
+      if (!p.anchor) return p;
+      const next = rect(p.anchor, { row, key });
+      const s = p.selection;
+      if (s && s.r0 === next.r0 && s.r1 === next.r1 && s.from === next.from && s.to === next.to) return p;
+      return { ...p, selection: next };
     });
   }, []);
 
-  async function savePrice() {
-    if (!selection || !priceInput) return;
-    const cents = Math.round(parseFloat(priceInput) * 100);
-    if (isNaN(cents) || cents < 100) {
-      toast.error("Enter a price of at least $1.");
-      return;
-    }
+  /** A date header picks that day for every car; shift-click stretches it. */
+  function selectDay(key: string, extend: boolean) {
+    const last = cars.length - 1;
+    setPick(({ origin }) => {
+      const corner = extend && origin ? origin : { row: 0, key };
+      return {
+        selection: { ...rect({ row: 0, key: corner.key }, { row: last, key }), r0: 0, r1: last },
+        anchor: null,
+        origin: corner,
+      };
+    });
+  }
+
+  async function changePrices(change: { kind: "set"; cents: number } | { kind: "adjust"; pct: number } | { kind: "reset" }) {
+    if (!selection) return;
     setSavingPrice(true);
-    const res = await fetch(`/api/vehicles/${selection.carId}/daily-prices`, {
+    const res = await fetch("/api/vehicles/daily-prices", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dates: selDates, priceCents: cents }),
+      body: JSON.stringify({
+        vehicleIds: selCars.map((c) => c.id),
+        from: selection.from,
+        to: selection.to,
+        change,
+      }),
     });
     setSavingPrice(false);
-    if (!res.ok) {
-      const { error } = await res.json().catch(() => ({ error: "Unknown error" }));
-      toast.error(error ?? "Couldn't save price.");
+    const body: { error?: string; changes?: PriceChanges } = await res.json().catch(() => ({}));
+    if (!res.ok || !body.changes) {
+      toast.error(body.error ?? "Couldn't save prices.");
+      return false;
+    }
+    setOverrides((prev) => {
+      const next = { ...prev };
+      for (const [carId, days] of Object.entries(body.changes!)) {
+        const car = { ...(next[carId] ?? {}) };
+        for (const [d, cents] of Object.entries(days)) {
+          if (cents === null) delete car[d];
+          else car[d] = cents;
+        }
+        next[carId] = car;
+      }
+      return next;
+    });
+    return true;
+  }
+
+  async function savePrice() {
+    const value = parseFloat(priceInput);
+    const where = `${pluralize(selectedDays, "day")}${selCars.length > 1 ? ` on ${pluralize(selCars.length, "car")}` : ""}`;
+    if (priceMode === "set") {
+      const cents = Math.round(value * 100);
+      if (isNaN(cents) || cents < 100) {
+        toast.error("Enter a price of at least $1.");
+        return;
+      }
+      if (await changePrices({ kind: "set", cents })) {
+        toast.success(`${formatPrice(cents)}/day set for ${where}.`);
+        setPriceInput("");
+      }
       return;
     }
-    const next = { ...overrides, [selection.carId]: { ...(overrides[selection.carId] ?? {}) } };
-    for (const d of selDates) next[selection.carId][d] = cents;
-    setOverrides(next);
-    toast.success(`${formatPrice(cents)}/day set for ${pluralize(selectedDays, "day")}.`);
-    setPriceInput("");
+    if (isNaN(value) || value <= 0 || (priceMode === "lower" && value > 90)) {
+      toast.error(priceMode === "lower" ? "Lower by 1% to 90%." : "Enter a percentage above 0.");
+      return;
+    }
+    const pct = priceMode === "raise" ? value : -value;
+    if (await changePrices({ kind: "adjust", pct })) {
+      toast.success(`Prices ${pct > 0 ? "raised" : "lowered"} ${Math.abs(pct)}% for ${where}.`);
+      setPriceInput("");
+    }
   }
 
   async function resetPrice() {
-    if (!selection) return;
-    setSavingPrice(true);
-    const res = await fetch(`/api/vehicles/${selection.carId}/daily-prices`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dates: selDates, priceCents: null }),
-    });
-    setSavingPrice(false);
-    if (!res.ok) {
-      toast.error("Couldn't reset price.");
-      return;
-    }
-    const next = { ...overrides, [selection.carId]: { ...(overrides[selection.carId] ?? {}) } };
-    for (const d of selDates) delete next[selection.carId][d];
-    setOverrides(next);
-    toast.success("Reset to base rate.");
+    if (await changePrices({ kind: "reset" })) toast.success("Reset to the daily rate.");
   }
 
   return (
@@ -239,8 +302,12 @@ export function MultiCalendar({
                   <button
                     type="button"
                     aria-label="Forward 14 days"
-                    onClick={() => setWindowStart((s) => addDays(s, 14))}
-                    className="rounded-[8px] p-1.5 transition-colors hover:bg-board"
+                    onClick={() => setWindowStart((s) => {
+                      const next = addDays(s, 14);
+                      return next > lastStart ? lastStart : next;
+                    })}
+                    disabled={windowStart >= lastStart}
+                    className="rounded-[8px] p-1.5 transition-colors hover:bg-board disabled:opacity-30"
                   >
                     <ChevronRight className="size-4" />
                   </button>
@@ -251,9 +318,12 @@ export function MultiCalendar({
                   const { day, num, monthMark } = headers[i];
                   const isToday = dk === today;
                   return (
-                    <div
+                    <button
                       key={dk}
-                      className="relative flex shrink-0 flex-col items-center justify-end border-r border-line pb-1.5 pt-5 last:border-r-0"
+                      type="button"
+                      onClick={(e) => selectDay(dk, e.shiftKey)}
+                      aria-label={`Select ${dayNames.get(dk)} for every car`}
+                      className="relative flex shrink-0 select-none flex-col items-center justify-end border-r border-line pb-1.5 pt-5 transition-colors last:border-r-0 hover:bg-board"
                       style={{ width: DAY_COL_W }}
                     >
                       {monthMark && (
@@ -272,17 +342,18 @@ export function MultiCalendar({
                       >
                         {num}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
 
               {/* ── Car rows ── */}
-              {cars.map((car) => {
-                const selected = selection?.carId === car.id;
+              {cars.map((car, row) => {
+                const selected = !!selection && row >= selection.r0 && row <= selection.r1;
                 return (
                   <CarRow
                     key={car.id}
+                    row={row}
                     car={car}
                     dates={dates}
                     dayNames={dayNames}
@@ -314,12 +385,16 @@ export function MultiCalendar({
 
         {/* ── Right panel ──────────────────────────────────── */}
         <aside className="flex min-w-0 flex-[1_1_280px] flex-col gap-3 rounded-[30px] bg-white p-5">
-          {selection && selectedCar ? (
+          {selection && selCars.length > 0 ? (
             <>
               <div>
-                <h2 className="text-[18px] font-extrabold leading-tight">{selectedCar.name}</h2>
+                <h2 className="text-[18px] font-extrabold leading-tight">
+                  {selCars.length === 1 ? selCars[0].name : pluralize(selCars.length, "car")}
+                </h2>
                 <p className="mt-0.5 text-[13px] text-slate">
-                  {formatRange(zonedInstant(selection.from), zonedInstant(selection.to))}
+                  {selection.from === selection.to
+                    ? formatDate(zonedInstant(selection.from), { year: undefined })
+                    : formatRange(zonedInstant(selection.from), zonedInstant(selection.to))}
                   {" · "}
                   {pluralize(selectedDays, "day")}
                 </p>
@@ -348,28 +423,76 @@ export function MultiCalendar({
               {activeTab === "prices" && (
                 <div className="flex flex-col gap-3">
                   <p className="text-[13px] text-slate">
-                    Base rate:{" "}
-                    <strong className="text-ink">{formatPrice(selectedCar.dailyRateCents)}/day</strong>
+                    {selCars.length === 1 ? (
+                      <>
+                        Base rate:{" "}
+                        <strong className="text-ink">{formatPrice(selCars[0].dailyRateCents)}/day</strong>
+                        {" · "}
+                      </>
+                    ) : null}
+                    Now{" "}
+                    <strong className="text-ink">
+                      {priceSpan && priceSpan.lo !== priceSpan.hi
+                        ? `${formatPrice(priceSpan.lo)} – ${formatPrice(priceSpan.hi)}`
+                        : formatPrice(priceSpan?.lo ?? 0)}
+                    </strong>
                   </p>
+                  <div className="flex gap-1 rounded-[12px] bg-board p-1" role="radiogroup" aria-label="How to change prices">
+                    {(
+                      [
+                        ["set", "Set to"],
+                        ["raise", "Raise by"],
+                        ["lower", "Lower by"],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="radio"
+                        aria-checked={priceMode === mode}
+                        onClick={() => setPriceMode(mode)}
+                        className={cn(
+                          "flex-1 rounded-[9px] py-1.5 text-[12px] font-bold transition-colors",
+                          priceMode === mode ? "bg-white text-ink shadow-sm" : "text-slate hover:text-ink"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="price-input" className="text-sm font-semibold">
-                      Set custom price
+                      {priceMode === "set" ? "Price a day, in dollars" : "Percent"}
                     </Label>
-                    <div className="flex gap-2">
+                    <form
+                      className="flex gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        savePrice();
+                      }}
+                    >
                       <Input
                         id="price-input"
                         type="number"
                         min="1"
+                        max={priceMode === "lower" ? 90 : undefined}
                         step="1"
-                        placeholder={(selectedCar.dailyRateCents / 100).toFixed(0)}
+                        placeholder={
+                          priceMode === "set"
+                            ? (selCars[0].dailyRateCents / 100).toFixed(0)
+                            : "10"
+                        }
                         value={priceInput}
                         onChange={(e) => setPriceInput(e.target.value)}
                         className="flex-1"
                       />
-                      <Button onClick={savePrice} disabled={savingPrice || !priceInput}>
+                      <Button type="submit" disabled={savingPrice || !priceInput}>
                         {savingPrice ? "…" : "Apply"}
                       </Button>
-                    </div>
+                    </form>
+                    {priceMode !== "set" && (
+                      <p className="text-[12px] text-slate">Each day moves from its own price, rounded to whole dollars.</p>
+                    )}
                   </div>
                   <Button variant="secondary" size="sm" disabled={savingPrice} onClick={resetPrice}>
                     Reset to base rate
@@ -385,9 +508,12 @@ export function MultiCalendar({
                       <p className="text-[13px] text-slate">
                         Some days already have bookings or blocks.
                       </p>
-                      {selOccupants.map((o) => (
+                      {selOccupants.map(({ car, o }) => (
                         <div key={o.id} className="rounded-[12px] bg-board p-3 text-[13px]">
-                          <p className="font-semibold">{o.label}</p>
+                          <p className="font-semibold">
+                            {selCars.length > 1 ? `${car.name} · ` : ""}
+                            {o.label}
+                          </p>
                           <p className="mt-0.5 text-slate">
                             {formatRange(new Date(o.start), new Date(o.end))}
                           </p>
@@ -395,22 +521,26 @@ export function MultiCalendar({
                       ))}
                     </>
                   ) : (
-                    <>
-                      <p className="text-[13px] text-slate">
-                        All {pluralize(selectedDays, "day")} are open.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setBlocking(true)}
-                        className="flex items-center gap-3 rounded-[18px] bg-ink p-4 text-left text-white transition-colors hover:bg-graphite"
-                      >
-                        <CalendarX className="size-5 shrink-0" strokeWidth={1.75} />
-                        <span>
-                          <span className="block text-[15px] font-extrabold">Block these days</span>
-                          <span className="text-[12px] opacity-75">Nobody can book them</span>
+                    <p className="text-[13px] text-slate">
+                      All {pluralize(selectedDays, "day")} are open.
+                    </p>
+                  )}
+                  {freeCars.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setBlocking(true)}
+                      className="flex items-center gap-3 rounded-[18px] bg-ink p-4 text-left text-white transition-colors hover:bg-graphite"
+                    >
+                      <CalendarX className="size-5 shrink-0" strokeWidth={1.75} />
+                      <span>
+                        <span className="block text-[15px] font-extrabold">Block these days</span>
+                        <span className="text-[12px] opacity-75">
+                          {freeCars.length === selCars.length
+                            ? "Nobody can book them"
+                            : `On the ${pluralize(freeCars.length, "car")} that are free`}
                         </span>
-                      </button>
-                    </>
+                      </span>
+                    </button>
                   )}
                   <button
                     type="button"
@@ -428,7 +558,7 @@ export function MultiCalendar({
                   {selOccupants.length === 0 ? (
                     <p className="text-[13px] text-slate">No trips or blocks on these days.</p>
                   ) : (
-                    selOccupants.map((o) => (
+                    selOccupants.map(({ car, o }) => (
                       <div key={o.id} className="rounded-[12px] bg-board p-3 text-[13px]">
                         <div className="flex items-center gap-2">
                           <span
@@ -441,7 +571,10 @@ export function MultiCalendar({
                                   : "bg-[#c9ccd3]"
                             )}
                           />
-                          <p className="font-semibold">{o.label}</p>
+                          <p className="font-semibold">
+                            {selCars.length > 1 ? `${car.name} · ` : ""}
+                            {o.label}
+                          </p>
                         </div>
                         <p className="mt-0.5 text-slate">
                           {formatRange(new Date(o.start), new Date(o.end))}
@@ -468,8 +601,9 @@ export function MultiCalendar({
             <>
               <h2 className="text-[22px] font-extrabold">Your calendar</h2>
               <p className="text-[14px] text-slate">
-                Click a date on any car row to select it. Drag to extend the range. Then set
-                prices, block days, or view trips in the panel.
+                Click a day on any car to select it, and drag across days and cars to select more.
+                Shift-click to stretch a selection, or click a date at the top to pick it for every
+                car. Then set prices, block days, or view trips here.
               </p>
               <p className="rounded-[18px] bg-sky p-3.5 text-[13px] leading-[1.45] text-sky-ink">
                 Tip: on mobile, tap the first day then tap the last day to select a range.
@@ -479,13 +613,12 @@ export function MultiCalendar({
         </aside>
       </div>
 
-      {selection && blocking && selectedCar && (
+      {selection && blocking && freeCars.length > 0 && (
         <BlockDateModal
-          key={`${selection.carId}-${selection.from}-${selection.to}`}
+          key={`${selection.r0}-${selection.r1}-${selection.from}-${selection.to}`}
           open={blocking}
           onOpenChange={setBlocking}
-          vehicleId={selection.carId}
-          carName={selectedCar.name}
+          cars={freeCars.map((c) => ({ id: c.id, name: c.name }))}
           from={selection.from}
           to={selection.to}
           onBlocked={() => {
@@ -501,6 +634,7 @@ export function MultiCalendar({
 
 /** One car's row. Memoised so selecting or dragging only redraws the rows that change. */
 const CarRow = memo(function CarRow({
+  row,
   car,
   dates,
   dayNames,
@@ -512,6 +646,7 @@ const CarRow = memo(function CarRow({
   onStart,
   onDrag,
 }: {
+  row: number;
   car: MultiCalendarCar;
   dates: string[];
   dayNames: Map<string, string>;
@@ -520,8 +655,8 @@ const CarRow = memo(function CarRow({
   prices: Record<string, number> | undefined;
   selFrom: string | null;
   selTo: string | null;
-  onStart: (carId: string, key: string) => void;
-  onDrag: (carId: string, key: string) => void;
+  onStart: (row: number, key: string, extend: boolean) => void;
+  onDrag: (row: number, key: string) => void;
 }) {
   return (
     <div className="flex border-b border-line last:border-b-0">
@@ -569,8 +704,8 @@ const CarRow = memo(function CarRow({
           <button
             key={dk}
             type="button"
-            onPointerDown={() => onStart(car.id, dk)}
-            onPointerEnter={() => onDrag(car.id, dk)}
+            onPointerDown={(e) => onStart(row, dk, e.shiftKey)}
+            onPointerEnter={() => onDrag(row, dk)}
             aria-pressed={isSelected}
             aria-label={`${car.name} ${dayNames.get(dk)}${occupant ? `, ${occupant.label}` : `, ${formatPrice(price)}`}`}
             className={cn(

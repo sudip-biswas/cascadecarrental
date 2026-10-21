@@ -264,8 +264,7 @@ export function HostCalendar({ cars, carId, today }: { cars: CalendarCar[]; carI
           key={`${selection.from}-${selection.to}`}
           open={blocking}
           onOpenChange={setBlocking}
-          vehicleId={car.id}
-          carName={car.name}
+          cars={[{ id: car.id, name: car.name }]}
           from={selection.from}
           to={selection.to}
           onBlocked={() => {
