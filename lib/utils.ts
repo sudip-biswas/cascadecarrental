@@ -6,30 +6,44 @@ export const TIME_ZONE = "America/Los_Angeles";
 /** Pick-up and return time for trips booked by date. */
 export const HANDOVER_TIME = "10:00";
 
+// Building an Intl formatter is slow, and calendars format thousands of cells, so reuse them.
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const usdWhole = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 0,
+});
+const dateKeyFormat = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE });
+const offsetFormat = new Intl.DateTimeFormat("en-US", {
+  timeZone: TIME_ZONE,
+  timeZoneName: "longOffset",
+});
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+
 export function formatCurrency(cents: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(cents / 100);
+  return usd.format(cents / 100);
 }
 
 /** Whole dollars when there are no cents, e.g. "$50" or "$49.50". */
 export function formatPrice(cents: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
-  }).format(cents / 100);
+  return (cents % 100 === 0 ? usdWhole : usd).format(cents / 100);
 }
 
 export function formatDate(date: string | Date, options?: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: TIME_ZONE,
-    ...options,
-  }).format(new Date(date));
+  // Keep undefined in the key: { year: undefined } means "no year", not the default.
+  const key = JSON.stringify(options ?? {}, (_, v) => (v === undefined ? null : v));
+  let format = dateFormats.get(key);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: TIME_ZONE,
+      ...options,
+    });
+    dateFormats.set(key, format);
+  }
+  return format.format(new Date(date));
 }
 
 export function formatDateShort(date: string | Date): string {
@@ -66,14 +80,14 @@ export function formatRange(start: string | Date, end: string | Date): string {
 
 /** The calendar date ("2026-10-18") of an instant, in Pacific time. */
 export function toDateKey(date: string | Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(new Date(date));
+  return dateKeyFormat.format(new Date(date));
 }
 
 /** The instant a Pacific wall-clock time happens on a given date ("2026-10-18"). */
 export function zonedInstant(dateKey: string, time = HANDOVER_TIME): Date {
   const probe = new Date(`${dateKey}T${time}:00Z`);
   const offset =
-    new Intl.DateTimeFormat("en-US", { timeZone: TIME_ZONE, timeZoneName: "longOffset" })
+    offsetFormat
       .formatToParts(probe)
       .find((p) => p.type === "timeZoneName")
       ?.value.replace("GMT", "") || "+00:00";

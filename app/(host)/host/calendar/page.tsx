@@ -28,16 +28,18 @@ export default async function HostCalendarPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?redirectTo=/host/calendar");
 
-  await settleTripStatuses(user.id);
-
   const today = toDateKey(new Date());
 
-  // Step 1 – fetch cars (needed to know IDs for downstream queries)
-  const { data } = await supabase
-    .from("vehicles")
-    .select("id, make, model, daily_rate_cents, vehicle_images(url, is_cover, position)")
-    .eq("host_id", user.id)
-    .order("created_at", { ascending: true });
+  // Step 1 – fetch cars (needed to know IDs for downstream queries). Settling trip
+  // statuses only touches trips, so it runs alongside instead of in front.
+  const [{ data }] = await Promise.all([
+    supabase
+      .from("vehicles")
+      .select("id, make, model, daily_rate_cents, vehicle_images(url, is_cover, position)")
+      .eq("host_id", user.id)
+      .order("created_at", { ascending: true }),
+    settleTripStatuses(user.id),
+  ]);
 
   const cars = (data ?? []) as unknown as CarRow[];
 

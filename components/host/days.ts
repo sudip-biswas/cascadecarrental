@@ -1,4 +1,4 @@
-import { zonedInstant } from "@/lib/utils";
+import { toDateKey, zonedInstant } from "@/lib/utils";
 
 /** Calendar maths on Pacific date keys ("2026-10-18"), free of the viewer's time zone. */
 
@@ -45,6 +45,29 @@ export interface Occupant {
 export function occupantOn(dateKey: string, occupants: Occupant[]): Occupant | undefined {
   const hits = occupants.filter((o) => overlapsDay(dateKey, o.start, o.end));
   return hits.find((o) => o.kind !== "blocked") ?? hits[0];
+}
+
+/**
+ * occupantOn for every day from fromKey to toKey, in one pass over the occupants.
+ * Same rules: a day is the whole Pacific day, and trips win over blocks.
+ */
+export function occupantsByDay(
+  occupants: Occupant[],
+  fromKey: string,
+  toKey: string
+): Map<string, Occupant> {
+  const byDay = new Map<string, Occupant>();
+  for (const o of occupants) {
+    // The days it touches: the one it starts in through the one holding its last instant.
+    let key = toDateKey(o.start);
+    const last = toDateKey(new Date(new Date(o.end).getTime() - 1));
+    if (key < fromKey) key = fromKey;
+    for (; key <= last && key <= toKey; key = addDays(key, 1)) {
+      const held = byDay.get(key);
+      if (!held || (held.kind === "blocked" && o.kind !== "blocked")) byDay.set(key, o);
+    }
+  }
+  return byDay;
 }
 
 export const OCCUPANT_FILL: Record<Occupant["kind"], string> = {
