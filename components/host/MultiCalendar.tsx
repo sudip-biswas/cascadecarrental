@@ -85,7 +85,8 @@ export function MultiCalendar({
   const router = useRouter();
 
   // Dates window
-  const [windowStart, setWindowStart] = useState(() => addDays(today, -7));
+  // Opens on today; the back arrow reaches earlier days.
+  const [windowStart, setWindowStart] = useState(today);
   const dates = useMemo(() => makeDates(windowStart, WINDOW_DAYS), [windowStart]);
   const headers = useMemo(() => dates.map(headerLabel), [dates]);
   const dayNames = useMemo(
