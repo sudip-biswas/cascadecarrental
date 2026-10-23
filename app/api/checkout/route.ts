@@ -129,18 +129,27 @@ export async function POST(req: Request) {
 
   // When a ConfirmationToken is supplied we create and confirm in one step,
   // avoiding the dual-PI conflict that arises with Elements' deferred PI.
-  const paymentIntent = confirmationTokenId
-    ? await stripe.paymentIntents.create({
-        ...piBase,
-        confirm: true,
-        confirmation_token: confirmationTokenId,
-        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/trips`,
-      })
-    : await stripe.paymentIntents.create({
-        ...piBase,
-        // Legacy fallback (no ConfirmationToken): cards only, client confirms.
-        payment_method_types: ["card"],
-      });
+  // confirmation_token requires automatic_payment_methods instead of payment_method_types.
+  const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+  let paymentIntent: Awaited<ReturnType<typeof stripe.paymentIntents.create>>;
+  try {
+    paymentIntent = confirmationTokenId
+      ? await stripe.paymentIntents.create({
+          ...piBase,
+          confirm: true,
+          confirmation_token: confirmationTokenId,
+          automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+          return_url: `${origin}/trips`,
+        })
+      : await stripe.paymentIntents.create({
+          ...piBase,
+          // Legacy fallback (no ConfirmationToken): cards only, client confirms.
+          payment_method_types: ["card"],
+        });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Payment setup failed. Try again.";
+    return fail(msg, 500);
+  }
 
   const { data: trip, error } = await admin
     .from("trips")
