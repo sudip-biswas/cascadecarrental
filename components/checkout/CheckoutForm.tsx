@@ -199,9 +199,16 @@ function CheckoutLayout({
     setError(null);
     setBusy(true);
 
-    // Collect card details into a ConfirmationToken so the server can create
-    // and confirm the PaymentIntent in one step — this avoids the dual-PI conflict
-    // where Stripe's deferred Element PI clashes with the server-created PI.
+    // Step 1: validate the card form. This surfaces "card number incomplete" etc.
+    const { error: submitError } = await elements.submit();
+    if (submitError) {
+      setError(submitError.message ?? "Check your card details.");
+      setBusy(false);
+      return;
+    }
+
+    // Step 2: collect card data into a ConfirmationToken so the server can create
+    // and confirm the PaymentIntent in one step — avoids the dual-PI conflict.
     const { confirmationToken, error: tokenError } = await stripe.createConfirmationToken({ elements });
     if (tokenError) {
       setError(tokenError.message ?? "Check your card details.");
