@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { loadDailyPrices } from "@/lib/trips";
 import { tripDays } from "@/lib/pricing";
 import { NO_INDEX, carIdFromSlug, carPath } from "@/lib/site";
-import { pluralize, toDateKey, zonedInstant } from "@/lib/utils";
+import { pluralize, toDateKey, zonedInstant, HANDOVER_TIME } from "@/lib/utils";
 import { Container, EmptyState } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { CheckoutForm, type CheckoutVehicle } from "@/components/checkout/CheckoutForm";
@@ -27,6 +27,9 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
   const query = await searchParams;
   const from = param(query.from);
   const until = param(query.until);
+  const TIME_RE = /^\d{2}:\d{2}$/;
+  const fromTime = typeof query.fromTime === "string" && TIME_RE.test(query.fromTime) ? query.fromTime : HANDOVER_TIME;
+  const untilTime = typeof query.untilTime === "string" && TIME_RE.test(query.untilTime) ? query.untilTime : HANDOVER_TIME;
   const initialRate = query.rate === "refundable" ? "refundable" : "non_refundable";
 
   const supabase = await createClient();
@@ -52,8 +55,8 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
   const problem = (() => {
     if (vehicle.host_id === user.id) return { title: "That's your car.", body: "You can't book your own listing." };
     if (!from || !until) return { title: "Pick your dates first.", body: "Choose pick-up and return dates on the car's page, then come back here." };
-    const start = zonedInstant(from);
-    const end = zonedInstant(until);
+    const start = zonedInstant(from, fromTime);
+    const end = zonedInstant(until, untilTime);
     if (end <= start) return { title: "Those dates don't work.", body: "The return date has to be after pick-up." };
     if (from < toDateKey(new Date())) return { title: "Those dates have passed.", body: "Pick new dates on the car's page." };
     const days = tripDays(start, end);
@@ -85,6 +88,6 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
 
   const dailyPrices = await loadDailyPrices(vehicle.id, from, until);
   return (
-    <CheckoutForm vehicle={vehicle} from={from} until={until} initialRate={initialRate} dailyPrices={dailyPrices} />
+    <CheckoutForm vehicle={vehicle} from={from} until={until} fromTime={fromTime} untilTime={untilTime} initialRate={initialRate} dailyPrices={dailyPrices} />
   );
 }

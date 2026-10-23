@@ -44,6 +44,8 @@ interface Props {
   vehicle: CheckoutVehicle;
   from: string;
   until: string;
+  fromTime: string;
+  untilTime: string;
   initialRate: RateType;
   /** The host's own prices for the trip's days. */
   dailyPrices: DailyPrices;
@@ -101,12 +103,12 @@ function coverOf(vehicle: CheckoutVehicle) {
   return images[0]?.url ?? null;
 }
 
-export function CheckoutForm({ vehicle, from, until, initialRate, dailyPrices }: Props) {
+export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initialRate, dailyPrices }: Props) {
   const [rateType, setRateType] = useState<RateType>(initialRate);
   const [plan, setPlan] = useState<ProtectionPlan | null>(null);
 
-  const start = zonedInstant(from);
-  const end = zonedInstant(until);
+  const start = zonedInstant(from, fromTime);
+  const end = zonedInstant(until, untilTime);
   const days = tripDays(start, end);
   const pricing = computePricing({
     dailyRateCents: vehicle.daily_rate_cents,
@@ -135,6 +137,8 @@ export function CheckoutForm({ vehicle, from, until, initialRate, dailyPrices }:
         vehicle={vehicle}
         from={from}
         until={until}
+        fromTime={fromTime}
+        untilTime={untilTime}
         start={start}
         end={end}
         pricing={pricing}
@@ -151,6 +155,8 @@ function CheckoutLayout({
   vehicle,
   from,
   until,
+  fromTime,
+  untilTime,
   start,
   end,
   pricing,
@@ -193,9 +199,12 @@ function CheckoutLayout({
     setError(null);
     setBusy(true);
 
-    const { error: cardError } = await elements.submit();
-    if (cardError) {
-      setError(cardError.message ?? "Check your card details.");
+    // Collect card details into a ConfirmationToken so the server can create
+    // and confirm the PaymentIntent in one step — this avoids the dual-PI conflict
+    // where Stripe's deferred Element PI clashes with the server-created PI.
+    const { confirmationToken, error: tokenError } = await stripe.createConfirmationToken({ elements });
+    if (tokenError) {
+      setError(tokenError.message ?? "Check your card details.");
       setBusy(false);
       return;
     }
@@ -207,36 +216,36 @@ function CheckoutLayout({
         vehicleId: vehicle.id,
         from,
         until,
+        fromTime,
+        untilTime,
         rateType,
         protectionPlan: plan,
         expectedTotalCents: pricing.totalCents,
         expectedInstantBook: vehicle.instant_book,
+        confirmationTokenId: confirmationToken.id,
       }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setError(data.error ?? "Couldn't start the booking. Try again.");
-      // The price or dates moved: reload the car so the total is current.
       if (res.status === 409) router.refresh();
       setBusy(false);
       return;
     }
 
-    const { tripId, clientSecret } = data as { tripId: string; clientSecret: string };
+    const { tripId, clientSecret } = data as { tripId: string; clientSecret?: string };
     const tripUrl = `/trips/${tripId}?booked=1`;
-    const { error: payError } = await stripe.confirmPayment({
-      elements,
-      clientSecret,
-      confirmParams: { return_url: `${window.location.origin}${tripUrl}` },
-      redirect: "if_required",
-    });
-    if (payError) {
-      setError(payError.message ?? "The payment didn't go through. Nothing was charged.");
-      setBusy(false);
-      return;
+
+    // clientSecret is only present when 3-D Secure authentication is required.
+    if (clientSecret) {
+      const { error: actionError } = await stripe.handleNextAction({ clientSecret });
+      if (actionError) {
+        setError(actionError.message ?? "The payment didn't go through. Nothing was charged.");
+        setBusy(false);
+        return;
+      }
     }
 
-    await fetch(`/api/trips/${tripId}/sync`, { method: "POST" }).catch(() => null);
     if (note.trim()) {
       await fetch("/api/messages", {
         method: "POST",

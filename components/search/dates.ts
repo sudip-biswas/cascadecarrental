@@ -4,6 +4,14 @@ import { tripDays } from "@/lib/pricing";
 /** A Pacific calendar date, "2026-10-18". */
 export type DateKey = string;
 
+/** Default pick-up / return time of day. */
+export const DEFAULT_TIME = "10:00";
+
+const TIME_RE = /^\d{2}:\d{2}$/;
+export function isTimeKey(v: string | null | undefined): v is string {
+  return !!v && TIME_RE.test(v);
+}
+
 const KEY = /^\d{4}-\d{2}-\d{2}$/;
 
 export function isDateKey(value: string | null | undefined): value is DateKey {
@@ -34,8 +42,8 @@ export function todayKey(): DateKey {
 }
 
 /** Days billed for a from/until pair, the same way checkout counts them. */
-export function daysBetween(from: DateKey, until: DateKey): number {
-  return tripDays(zonedInstant(from), zonedInstant(until));
+export function daysBetween(from: DateKey, until: DateKey, fromTime = DEFAULT_TIME, untilTime = DEFAULT_TIME): number {
+  return tripDays(zonedInstant(from, fromTime), zonedInstant(until, untilTime));
 }
 
 /** A valid from/until pair from the URL, or nothing. */

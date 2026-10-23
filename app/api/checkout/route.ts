@@ -19,6 +19,10 @@ const schema = z.object({
   expectedTotalCents: z.number().int().positive(),
   /** Decides charge-now vs hold on the card form, so it has to match too. */
   expectedInstantBook: z.boolean(),
+  /** Stripe ConfirmationToken id — when present, we create+confirm the PI in one step. */
+  confirmationTokenId: z.string().startsWith("ctoken_").optional(),
+  fromTime: z.string().regex(/^\d{2}:\d{2}$/).default("10:00"),
+  untilTime: z.string().regex(/^\d{2}:\d{2}$/).default("10:00"),
 });
 
 function fail(error: string, status: number) {
@@ -34,11 +38,11 @@ export async function POST(req: Request) {
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("Something's off with this booking. Refresh and try again.", 400);
-  const { vehicleId, from, until, rateType, protectionPlan, expectedTotalCents, expectedInstantBook } =
+  const { vehicleId, from, until, fromTime, untilTime, rateType, protectionPlan, expectedTotalCents, expectedInstantBook, confirmationTokenId } =
     parsed.data;
 
-  const startsAt = zonedInstant(from);
-  const endsAt = zonedInstant(until);
+  const startsAt = zonedInstant(from, fromTime);
+  const endsAt = zonedInstant(until, untilTime);
   if (endsAt <= startsAt) return fail("The return date has to be after pick-up.", 400);
 
   const admin = createAdminClient();
@@ -108,12 +112,10 @@ export async function POST(req: Request) {
 
   // Instant-book cars are charged straight away. Otherwise the card is only
   // held until the host accepts.
-  const paymentIntent = await stripe.paymentIntents.create({
+  const piBase = {
     amount: pricing.totalCents,
     currency: "usd",
     customer: customerId,
-    // Cards (and wallets) only: they settle instantly and support holds.
-    payment_method_types: ["card"],
     capture_method: vehicle.instant_book ? "automatic" : "manual",
     description: `${vehicle.year} ${vehicle.make} ${vehicle.model}, ${from} to ${until}`,
     metadata: {
@@ -123,7 +125,22 @@ export async function POST(req: Request) {
       from,
       until,
     },
-  });
+  } as const;
+
+  // When a ConfirmationToken is supplied we create and confirm in one step,
+  // avoiding the dual-PI conflict that arises with Elements' deferred PI.
+  const paymentIntent = confirmationTokenId
+    ? await stripe.paymentIntents.create({
+        ...piBase,
+        confirm: true,
+        confirmation_token: confirmationTokenId,
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/trips`,
+      })
+    : await stripe.paymentIntents.create({
+        ...piBase,
+        // Legacy fallback (no ConfirmationToken): cards only, client confirms.
+        payment_method_types: ["card"],
+      });
 
   const { data: trip, error } = await admin
     .from("trips")
@@ -160,5 +177,12 @@ export async function POST(req: Request) {
       : fail("Couldn't start the booking. Try again.", 500);
   }
 
-  return NextResponse.json({ clientSecret: paymentIntent.client_secret, tripId: trip.id });
+  // For the ConfirmationToken flow: only send clientSecret if 3DS is needed.
+  // For the legacy flow: always send it so the client can call confirmPayment.
+  const clientSecret =
+    confirmationTokenId
+      ? paymentIntent.status === "requires_action" ? paymentIntent.client_secret : undefined
+      : paymentIntent.client_secret;
+
+  return NextResponse.json({ tripId: trip.id, ...(clientSecret ? { clientSecret } : {}) });
 }

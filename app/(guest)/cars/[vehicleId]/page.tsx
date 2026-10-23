@@ -133,6 +133,8 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const dates = readDates(one(query.from), one(query.until));
   const rate = one(query.rate) === "refundable" ? "refundable" : "non_refundable";
+  const fromTime = one(query.fromTime);
+  const untilTime = one(query.untilTime);
 
   const supabase = await createClient();
   const [car, { data: auth }] = await Promise.all([getCar(vehicleId), supabase.auth.getUser()]);
@@ -499,6 +501,8 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
           dailyPrices={dailyPrices}
           initialFrom={dates?.from}
           initialUntil={dates?.until}
+          initialFromTime={fromTime}
+          initialUntilTime={untilTime}
           initialRate={rate}
           isLoggedIn={!!user}
         >

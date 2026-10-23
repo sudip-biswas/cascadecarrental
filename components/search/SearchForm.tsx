@@ -5,13 +5,15 @@ import { useRouter } from "next/navigation";
 import { MapPin, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TripDatesPicker } from "./TripDatesPicker";
-import type { DateKey } from "./dates";
+import { DEFAULT_TIME, type DateKey } from "./dates";
 import type { GeocodeSuggestion } from "@/app/api/geocode/route";
 
 interface Props {
   where?: string;
   from?: DateKey;
   until?: DateKey;
+  fromTime?: string;
+  untilTime?: string;
   /** Filters to keep when searching again from the results page. */
   keep?: Record<string, string>;
   size?: "lg" | "md";
@@ -19,11 +21,12 @@ interface Props {
 }
 
 /** Where and when. Sends people to /search with both in the URL. */
-export function SearchForm({ where = "", from, until, keep, size = "lg", className }: Props) {
+export function SearchForm({ where = "", from, until, fromTime, untilTime, keep, size = "lg", className }: Props) {
   const router = useRouter();
   const [place, setPlace] = useState(where);
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
   const [dates, setDates] = useState<{ from?: DateKey; until?: DateKey }>({ from, until });
+  const [times, setTimes] = useState({ from: fromTime ?? DEFAULT_TIME, until: untilTime ?? DEFAULT_TIME });
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -67,9 +70,15 @@ export function SearchForm({ where = "", from, until, keep, size = "lg", classNa
     if (dates.from && dates.until) {
       params.set("from", dates.from);
       params.set("until", dates.until);
+      if (times.from !== DEFAULT_TIME) params.set("fromTime", times.from);
+      else params.delete("fromTime");
+      if (times.until !== DEFAULT_TIME) params.set("untilTime", times.until);
+      else params.delete("untilTime");
     } else {
       params.delete("from");
       params.delete("until");
+      params.delete("fromTime");
+      params.delete("untilTime");
     }
     return params;
   }
@@ -177,7 +186,10 @@ export function SearchForm({ where = "", from, until, keep, size = "lg", classNa
       <TripDatesPicker
         from={dates.from}
         until={dates.until}
+        fromTime={times.from}
+        untilTime={times.until}
         onChange={(f, u) => setDates({ from: f, until: u })}
+        onTimeChange={(ft, ut) => setTimes({ from: ft, until: ut })}
         className="flex-[2_1_280px]"
       />
       <button

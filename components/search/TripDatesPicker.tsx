@@ -5,12 +5,28 @@ import type { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDay, zonedInstant } from "@/lib/utils";
-import { keyToLocalDate, localDateToKey, todayKey, type DateKey } from "./dates";
+import { DEFAULT_TIME, keyToLocalDate, localDateToKey, todayKey, type DateKey } from "./dates";
+
+const TIME_STEPS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2).toString().padStart(2, "0");
+  const m = i % 2 === 0 ? "00" : "30";
+  return `${h}:${m}`;
+});
+
+function formatTime(t: string): string {
+  const [h, m] = t.split(":").map(Number);
+  const ampm = h < 12 ? "AM" : "PM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
+}
 
 interface Props {
   from?: DateKey;
   until?: DateKey;
+  fromTime?: string;
+  untilTime?: string;
   onChange: (from: DateKey | undefined, until: DateKey | undefined) => void;
+  onTimeChange?: (fromTime: string, untilTime: string) => void;
   /** Days that can't be picked at all, e.g. inside the host's notice window. */
   isDisabled?: (key: DateKey) => boolean;
   /** Nights already taken. Shown struck through. */
@@ -22,27 +38,41 @@ interface Props {
   className?: string;
 }
 
-function Field({ label, value, tone }: { label: string; value?: DateKey; tone: "board" | "white" }) {
+function Field({
+  label,
+  value,
+  time,
+  tone,
+}: {
+  label: string;
+  value?: DateKey;
+  time: string;
+  tone: "board" | "white";
+}) {
   return (
     <span
       className={cn(
-        "flex min-w-0 flex-col gap-0.5 rounded-[16px] px-4 py-2.5 text-left transition-colors",
+        "flex min-w-0 flex-col gap-0 rounded-[16px] px-4 py-2 text-left transition-colors",
         tone === "board" ? "bg-board group-hover:bg-line" : "bg-white"
       )}
     >
       <span className="text-[13px] font-semibold text-slate">{label}</span>
-      <span className={cn("truncate text-base font-bold", !value && "text-slate")}>
+      <span className={cn("truncate text-base font-bold leading-snug", !value && "text-slate")}>
         {value ? formatDay(zonedInstant(value)) : "Add date"}
       </span>
+      <span className="text-[12px] text-slate leading-snug">{formatTime(time)}</span>
     </span>
   );
 }
 
-/** Pick-up and return fields that open one range calendar. */
+/** Pick-up and return fields that open one range calendar with optional time pickers. */
 export function TripDatesPicker({
   from,
   until,
+  fromTime = DEFAULT_TIME,
+  untilTime = DEFAULT_TIME,
   onChange,
+  onTimeChange,
   isDisabled,
   booked,
   tone = "board",
@@ -72,8 +102,8 @@ export function TripDatesPicker({
           type="button"
           className={cn("group grid w-full grid-cols-2 gap-2 rounded-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ink", className)}
         >
-          <Field label="Pick-up" value={from} tone={tone} />
-          <Field label="Return" value={until} tone={tone} />
+          <Field label="Pick-up" value={from} time={fromTime} tone={tone} />
+          <Field label="Return" value={until} time={untilTime} tone={tone} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
@@ -90,9 +120,37 @@ export function TripDatesPicker({
           modifiersClassNames={{ booked: "[&_button]:line-through [&_button]:text-quiet" }}
           className="p-1 [--cell-size:--spacing(10)]"
         />
+        {onTimeChange && (
+          <div className="grid grid-cols-2 gap-2 px-2 pt-2 pb-1">
+            <div className="flex flex-col gap-1">
+              <span className="text-[12px] font-semibold text-slate">Pick-up time</span>
+              <select
+                value={fromTime}
+                onChange={(e) => onTimeChange(e.target.value, untilTime)}
+                className="rounded-[10px] bg-board px-3 py-2 text-sm font-semibold text-ink outline-none focus:ring-2 focus:ring-ink"
+              >
+                {TIME_STEPS.map((t) => (
+                  <option key={t} value={t}>{formatTime(t)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[12px] font-semibold text-slate">Return time</span>
+              <select
+                value={untilTime}
+                onChange={(e) => onTimeChange(fromTime, e.target.value)}
+                className="rounded-[10px] bg-board px-3 py-2 text-sm font-semibold text-ink outline-none focus:ring-2 focus:ring-ink"
+              >
+                {TIME_STEPS.map((t) => (
+                  <option key={t} value={t}>{formatTime(t)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
         <div className="flex max-w-[300px] items-center justify-between gap-3 px-2 pt-1 pb-1 text-sm">
           <span className="text-slate">
-            {note ?? (from && !until ? "Now pick the return day." : "Pick-up and return are at 10:00.")}
+            {note ?? (from && !until ? "Now pick the return day." : undefined)}
           </span>
           {(from || until) && (
             <button

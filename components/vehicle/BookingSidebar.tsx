@@ -11,6 +11,7 @@ import { cn, formatCurrency, formatPrice, formatRange, pluralize, zonedInstant }
 import type { Vehicle } from "@/lib/supabase/types";
 import { TripDatesPicker } from "@/components/search/TripDatesPicker";
 import {
+  DEFAULT_TIME,
   bookedNights,
   daysBetween,
   overlapsBooked,
@@ -39,6 +40,8 @@ interface Props {
   dailyPrices: DailyPrices;
   initialFrom?: DateKey;
   initialUntil?: DateKey;
+  initialFromTime?: string;
+  initialUntilTime?: string;
   initialRate: RateType;
   isLoggedIn: boolean;
   /** The details column, rendered by the page. */
@@ -50,16 +53,18 @@ function problemWith(
   vehicle: BookingVehicle,
   from: DateKey | undefined,
   until: DateKey | undefined,
-  nights: Set<DateKey>
+  nights: Set<DateKey>,
+  fromTime: string,
+  untilTime: string,
 ): string | null {
   if (!from) return "Pick dates first";
   if (!until) return "Pick a return date";
   if (from < todayKey()) return "Pick-up can't be in the past.";
-  const hoursAhead = (zonedInstant(from).getTime() - Date.now()) / 3_600_000;
+  const hoursAhead = (zonedInstant(from, fromTime).getTime() - Date.now()) / 3_600_000;
   if (hoursAhead < vehicle.advance_notice_hours) {
     return `The host needs ${pluralize(vehicle.advance_notice_hours, "hour")} notice. Pick a later day.`;
   }
-  const days = daysBetween(from, until);
+  const days = daysBetween(from, until, fromTime, untilTime);
   if (days < vehicle.min_trip_days) return `This car needs at least ${pluralize(vehicle.min_trip_days, "day")}.`;
   if (vehicle.max_trip_days && days > vehicle.max_trip_days) {
     return `This car can be booked for up to ${pluralize(vehicle.max_trip_days, "day")}.`;
@@ -75,6 +80,8 @@ export function CarBooking({
   dailyPrices,
   initialFrom,
   initialUntil,
+  initialFromTime,
+  initialUntilTime,
   initialRate,
   isLoggedIn,
   children,
@@ -83,13 +90,15 @@ export function CarBooking({
   const pathname = usePathname();
   const [from, setFrom] = useState(initialFrom);
   const [until, setUntil] = useState(initialUntil);
+  const [fromTime, setFromTime] = useState(initialFromTime ?? DEFAULT_TIME);
+  const [untilTime, setUntilTime] = useState(initialUntilTime ?? DEFAULT_TIME);
   const [rate, setRate] = useState<RateType>(initialRate);
 
   const nights = useMemo(() => bookedNights(unavailable), [unavailable]);
-  const problem = problemWith(vehicle, from, until, nights);
+  const problem = problemWith(vehicle, from, until, nights, fromTime, untilTime);
   const ready = !problem && from && until;
 
-  const days = from && until ? daysBetween(from, until) : 0;
+  const days = from && until ? daysBetween(from, until, fromTime, untilTime) : 0;
   const priceFor = (rateType: RateType) =>
     computePricing({
       dailyRateCents: vehicle.daily_rate_cents,
@@ -103,17 +112,19 @@ export function CarBooking({
   const payNow = priceFor("non_refundable");
   const flexible = priceFor("refundable");
 
-  function query(next: { from?: DateKey; until?: DateKey; rate: RateType }) {
+  function query(next: { from?: DateKey; until?: DateKey; fromTime: string; untilTime: string; rate: RateType }) {
     const params = new URLSearchParams();
     if (next.from && next.until) {
       params.set("from", next.from);
       params.set("until", next.until);
+      if (next.fromTime !== DEFAULT_TIME) params.set("fromTime", next.fromTime);
+      if (next.untilTime !== DEFAULT_TIME) params.set("untilTime", next.untilTime);
     }
     if (next.rate === "refundable") params.set("rate", "refundable");
     return params.toString();
   }
 
-  function sync(next: { from?: DateKey; until?: DateKey; rate: RateType }) {
+  function sync(next: { from?: DateKey; until?: DateKey; fromTime: string; untilTime: string; rate: RateType }) {
     const qs = query(next);
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
@@ -121,19 +132,25 @@ export function CarBooking({
   function changeDates(nextFrom?: DateKey, nextUntil?: DateKey) {
     setFrom(nextFrom);
     setUntil(nextUntil);
-    if (!nextFrom || nextUntil) sync({ from: nextFrom, until: nextUntil, rate });
+    if (!nextFrom || nextUntil) sync({ from: nextFrom, until: nextUntil, fromTime, untilTime, rate });
+  }
+
+  function changeTimes(nextFromTime: string, nextUntilTime: string) {
+    setFromTime(nextFromTime);
+    setUntilTime(nextUntilTime);
+    sync({ from, until, fromTime: nextFromTime, untilTime: nextUntilTime, rate });
   }
 
   function changeRate(next: RateType) {
     setRate(next);
-    sync({ from, until, rate: next });
+    sync({ from, until, fromTime, untilTime, rate: next });
   }
 
-  const checkoutUrl = `/cars/${vehicle.id}/checkout?${query({ from, until, rate })}`;
+  const checkoutUrl = `/cars/${vehicle.id}/checkout?${query({ from, until, fromTime, untilTime, rate })}`;
   const reserveHref = isLoggedIn ? checkoutUrl : `/login?redirectTo=${encodeURIComponent(checkoutUrl)}`;
 
   const insideNotice = (key: DateKey) =>
-    (zonedInstant(key).getTime() - Date.now()) / 3_600_000 < vehicle.advance_notice_hours;
+    (zonedInstant(key, fromTime).getTime() - Date.now()) / 3_600_000 < vehicle.advance_notice_hours;
 
   const chargeNote = vehicle.instant_book
     ? "Instant book: you're charged when you book."
@@ -158,7 +175,10 @@ export function CarBooking({
         <TripDatesPicker
           from={from}
           until={until}
+          fromTime={fromTime}
+          untilTime={untilTime}
           onChange={changeDates}
+          onTimeChange={changeTimes}
           isDisabled={insideNotice}
           booked={nights}
           note={from && until && problem ? problem : undefined}
@@ -274,7 +294,7 @@ export function CarBooking({
                 {formatCurrency(pricing.totalCents)} <span className="text-sm font-semibold text-slate">total</span>
               </span>
               <span className="block truncate text-[13px] text-slate">
-                {formatRange(zonedInstant(from), zonedInstant(until))} · {formatPrice(vehicle.daily_rate_cents)}/day · tax in
+                {formatRange(zonedInstant(from, fromTime), zonedInstant(until, untilTime))} · {formatPrice(vehicle.daily_rate_cents)}/day · tax in
               </span>
             </span>
             <Button asChild className="h-[54px] shrink-0 px-6 text-[17px]">
