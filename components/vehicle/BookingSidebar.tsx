@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Divider, PriceRow } from "@/components/kit";
-import { computePricing, dayRates, NON_REFUNDABLE_DISCOUNT, type DailyPrices, type RateType } from "@/lib/pricing";
+import { computePricing, dayRates, NON_REFUNDABLE_DISCOUNT, YOUNG_DRIVER_AGE, type DailyPrices, type RateType } from "@/lib/pricing";
 import { cn, formatCurrency, formatPrice, formatRange, pluralize, zonedInstant } from "@/lib/utils";
 import type { Vehicle } from "@/lib/supabase/types";
 import { TripDatesPicker } from "@/components/search/TripDatesPicker";
@@ -32,6 +32,29 @@ export type BookingVehicle = Pick<
   | "instant_book"
 >;
 
+export interface BookingPerks {
+  minAge: number;
+  youngDriverFeeCents: number;
+  delivery: boolean;
+  /** Names of the extras on offer. */
+  extras: string[];
+}
+
+/** "Delivery available. Child seat and 2 more at checkout." and "Drivers 21+, under 25 adds $15/day." */
+function perkLines(perks: BookingPerks): string[] {
+  const offers = [
+    perks.delivery && "Delivery available",
+    perks.extras.length > 0 &&
+      `${perks.extras[0]}${perks.extras.length > 1 ? ` and ${pluralize(perks.extras.length - 1, "more extra")}` : ""} at checkout`,
+  ].filter(Boolean);
+  const age =
+    `Drivers ${perks.minAge}+` +
+    (perks.youngDriverFeeCents > 0 && perks.minAge < YOUNG_DRIVER_AGE
+      ? `, under ${YOUNG_DRIVER_AGE} adds ${formatPrice(perks.youngDriverFeeCents)}/day`
+      : "");
+  return [offers.length > 0 ? `${offers.join(". ")}.` : null, `${age}.`].filter((line) => line !== null);
+}
+
 interface Props {
   vehicle: BookingVehicle;
   hostName: string;
@@ -44,6 +67,8 @@ interface Props {
   initialUntilTime?: string;
   initialRate: RateType;
   isLoggedIn: boolean;
+  /** Age rule, delivery and extras, for one light line under the button. */
+  perks?: BookingPerks;
   /** The details column, rendered by the page. */
   children: React.ReactNode;
 }
@@ -84,6 +109,7 @@ export function CarBooking({
   initialUntilTime,
   initialRate,
   isLoggedIn,
+  perks,
   children,
 }: Props) {
   const router = useRouter();
@@ -283,6 +309,12 @@ export function CarBooking({
           </p>
         )}
         <p className="text-center text-sm text-slate">{chargeNote}</p>
+        {perks &&
+          perkLines(perks).map((line) => (
+            <p key={line} className="-mt-2 text-center text-sm text-slate">
+              {line}
+            </p>
+          ))}
       </aside>
 
       {/* Phones: the price and button stay in reach while scrolling the details. */}

@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hostEarningsCents } from "@/lib/pricing";
 import { carPath } from "@/lib/site";
 import { formatCurrency, formatPrice, formatRange, pluralize } from "@/lib/utils";
-import type { Vehicle, VehicleImage } from "@/lib/supabase/types";
+import type { Vehicle, VehicleExtra, VehicleImage } from "@/lib/supabase/types";
 import { Fact, Tag } from "@/components/kit";
 import { CarPhoto, coverUrl, firstName, Initial } from "@/components/host/bits";
 import { isRequest, loadHostTrips } from "@/components/host/data";
@@ -14,6 +14,8 @@ import { PhotoManager } from "@/components/host/PhotoManager";
 import { VehicleStatusToggle } from "@/components/host/VehicleStatusToggle";
 import { VehicleEditDialog } from "@/components/host/VehicleEditDialog";
 import { DeleteVehicleButton } from "@/components/host/DeleteVehicleButton";
+import { CarSettings } from "@/components/host/settings/CarSettings";
+import { ExtrasManager } from "@/components/host/settings/ExtrasManager";
 import { tripStatus } from "@/lib/trip-status";
 
 export const instant = false;
@@ -47,9 +49,10 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
   if (!data) notFound();
   const car = data as unknown as CarRow;
 
-  const [trips, { count: tripRows }] = await Promise.all([
+  const [trips, { count: tripRows }, { data: extras }] = await Promise.all([
     loadHostTrips(supabase, user.id, ["pending", "approved", "active", "completed"]),
     supabase.from("trips").select("id", { count: "exact", head: true }).eq("vehicle_id", vehicleId),
+    supabase.from("vehicle_extras").select("*").eq("vehicle_id", vehicleId).order("position"),
   ]);
   const carTrips = trips.filter((t) => t.vehicle_id === vehicleId);
   const upcoming = carTrips.filter((t) => isRequest(t) || t.status === "approved" || t.status === "active");
@@ -169,6 +172,12 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
           <Row label="Pickup" value={car.location_name} />
         </section>
       </div>
+
+      <CarSettings car={car} />
+
+      <section className="rounded-[30px] bg-white p-5 sm:p-6">
+        <ExtrasManager vehicleId={car.id} initialExtras={(extras ?? []) as VehicleExtra[]} />
+      </section>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-4">
         <section className="rounded-[30px] bg-white p-5 sm:p-6">

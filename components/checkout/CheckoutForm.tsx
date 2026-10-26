@@ -15,16 +15,23 @@ import {
   dayRates,
   tripDays,
   type DailyPrices,
+  type DeliverySettings,
   type PricingResult,
   type ProtectionPlan,
   type RateType,
 } from "@/lib/pricing";
 import { carPath } from "@/lib/site";
 import { cn, formatCurrency, formatDateTime, formatPrice, formatRange, pluralize, zonedInstant } from "@/lib/utils";
-import { Container, Divider, Fact, Tile, TileTitle } from "@/components/kit";
+import { Container, Divider, Fact, Tile } from "@/components/kit";
 import { Button } from "@/components/ui/button";
+import { Choice, Notice, Section } from "./parts";
+import { ExtrasSection, type CheckoutExtra } from "./ExtrasSection";
+import { DeliverySection, type DeliveryMode, type Place } from "./DeliverySection";
+import { DriverSection } from "./DriverSection";
+import { PromoField, type AppliedPromo } from "./PromoField";
+import { driverCheck, offersDelivery, quoteDelivery, type DeliveryChoice, type DriverRules } from "./rules";
 
-export interface CheckoutVehicle {
+export interface CheckoutVehicle extends DeliverySettings, DriverRules {
   id: string;
   make: string;
   model: string;
@@ -36,6 +43,7 @@ export interface CheckoutVehicle {
   monthly_discount_pct: number;
   distance_included_mi: number;
   instant_book: boolean;
+  deposit_cents: number;
   vehicle_images: { url: string; is_cover: boolean; position: number }[];
   host: { full_name: string } | null;
 }
@@ -49,6 +57,21 @@ interface Props {
   initialRate: RateType;
   /** The host's own prices for the trip's days. */
   dailyPrices: DailyPrices;
+  /** The car's active extras. */
+  extras: CheckoutExtra[];
+  driver: {
+    userId: string;
+    dateOfBirth: string | null;
+    /** REQUIRE_DRIVER_CHECK is on and their license isn't verified yet. */
+    licenseRequired: boolean;
+  };
+}
+
+/** What the server needs on top of dates, rate and protection. */
+interface AddOnRequest {
+  extras: { id: string; quantity: number }[];
+  delivery: DeliveryChoice | null;
+  promoCode: string | null;
 }
 
 const appearance: Appearance = {
@@ -103,13 +126,34 @@ function coverOf(vehicle: CheckoutVehicle) {
   return images[0]?.url ?? null;
 }
 
-export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initialRate, dailyPrices }: Props) {
+export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initialRate, dailyPrices, extras, driver }: Props) {
   const [rateType, setRateType] = useState<RateType>(initialRate);
   const [plan, setPlan] = useState<ProtectionPlan | null>(null);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("pickup");
+  const [place, setPlace] = useState<Place | null>(null);
+  const [promo, setPromo] = useState<AppliedPromo | null>(null);
+  const [dateOfBirth, setDateOfBirth] = useState(driver.dateOfBirth);
 
   const start = zonedInstant(from, fromTime);
   const end = zonedInstant(until, untilTime);
   const days = tripDays(start, end);
+
+  const check = driverCheck(vehicle, dateOfBirth, from);
+  const delivery: DeliveryChoice | null =
+    deliveryMode === "address" ? (place ? { mode: "address", ...place } : null) : { mode: deliveryMode };
+  const deliveryResult = delivery ? quoteDelivery(vehicle, delivery) : null;
+  const picked = extras
+    .filter((e) => (quantities[e.id] ?? 0) > 0)
+    .map((e) => ({
+      id: e.id,
+      name: e.name,
+      per: e.per,
+      price_cents: e.price_cents,
+      quantity: quantities[e.id],
+      unlimited_miles: e.unlimited_miles,
+    }));
+
   const pricing = computePricing({
     dailyRateCents: vehicle.daily_rate_cents,
     days,
@@ -118,7 +162,56 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
     rateType,
     weeklyDiscountPct: vehicle.weekly_discount_pct,
     monthlyDiscountPct: vehicle.monthly_discount_pct,
+    extras: picked,
+    deliveryCents: deliveryResult?.ok ? deliveryResult.cents : 0,
+    youngDriverDailyCents: check.ok ? check.youngDriverDailyCents : 0,
+    promo,
   });
+
+  // Why the button can't book yet, if it can't.
+  const blocker = driver.licenseRequired
+    ? "Verify your driver's license to book."
+    : !check.ok
+      ? check.message
+      : !delivery
+        ? "Pick a delivery address, or pick the car up."
+        : deliveryResult && !deliveryResult.ok
+          ? deliveryResult.reason
+          : null;
+
+  const request: AddOnRequest = {
+    extras: picked.map((e) => ({ id: e.id, quantity: e.quantity })),
+    delivery,
+    promoCode: promo?.code ?? null,
+  };
+
+  const addOns = (
+    <>
+      <DriverSection
+        car={vehicle}
+        check={check}
+        licenseRequired={driver.licenseRequired}
+        userId={driver.userId}
+        onDateOfBirth={setDateOfBirth}
+      />
+      {offersDelivery(vehicle) && (
+        <DeliverySection
+          car={vehicle}
+          mode={deliveryMode}
+          place={place}
+          quote={deliveryResult}
+          onMode={setDeliveryMode}
+          onPlace={setPlace}
+        />
+      )}
+      <ExtrasSection
+        extras={extras}
+        quantities={quantities}
+        days={days}
+        onChange={(id, quantity) => setQuantities((q) => ({ ...q, [id]: quantity }))}
+      />
+    </>
+  );
 
   return (
     <Elements
@@ -128,6 +221,9 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
         amount: pricing.totalCents,
         currency: "usd",
         captureMethod: vehicle.instant_book ? "automatic" : "manual",
+        // Must match the PaymentIntent's setup_future_usage: the card is kept
+        // for the deposit hold and charges after the trip.
+        setupFutureUsage: "off_session",
         allowedPaymentMethodTypes: ["card"],
         appearance,
         fonts,
@@ -146,6 +242,13 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
         onRateType={setRateType}
         plan={plan}
         onPlan={setPlan}
+        addOns={addOns}
+        promoField={
+          <PromoField trip={{ vehicleId: vehicle.id, from, until, fromTime, untilTime }} promo={promo} onPromo={setPromo} />
+        }
+        request={request}
+        blocker={blocker}
+        deliveryLabel={deliveryMode === "airport" ? "Airport delivery" : "Delivery"}
       />
     </Elements>
   );
@@ -164,7 +267,12 @@ function CheckoutLayout({
   onRateType,
   plan,
   onPlan,
-}: Omit<Props, "initialRate" | "dailyPrices"> & {
+  addOns,
+  promoField,
+  request,
+  blocker,
+  deliveryLabel,
+}: Omit<Props, "initialRate" | "dailyPrices" | "extras" | "driver"> & {
   start: Date;
   end: Date;
   pricing: PricingResult;
@@ -172,6 +280,11 @@ function CheckoutLayout({
   onRateType: (rate: RateType) => void;
   plan: ProtectionPlan | null;
   onPlan: (plan: ProtectionPlan | null) => void;
+  addOns: ReactNode;
+  promoField: ReactNode;
+  request: AddOnRequest;
+  blocker: string | null;
+  deliveryLabel: string;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -186,6 +299,9 @@ function CheckoutLayout({
   const holdNote = vehicle.instant_book
     ? "Instant book: your card is charged now and the car is yours."
     : `Your card is held now and only charged if ${hostName} accepts. If they say no or don't answer, the hold is released.`;
+  const miles = pricing.extras.some((e) => e.unlimited_miles)
+    ? "Unlimited miles."
+    : `${pluralize(vehicle.distance_included_mi * pricing.days, "mile")} included.`;
   const cover = coverOf(vehicle);
   const carUrl = `${carPath(vehicle)}?from=${from}&until=${until}`;
 
@@ -195,7 +311,7 @@ function CheckoutLayout({
   }, [elements, pricing.totalCents]);
 
   async function pay() {
-    if (!stripe || !elements || busy) return;
+    if (!stripe || !elements || busy || blocker || !request.delivery) return;
     setError(null);
     setBusy(true);
 
@@ -227,6 +343,9 @@ function CheckoutLayout({
         untilTime,
         rateType,
         protectionPlan: plan,
+        extras: request.extras,
+        delivery: request.delivery,
+        ...(request.promoCode ? { promoCode: request.promoCode } : {}),
         expectedTotalCents: pricing.totalCents,
         expectedInstantBook: vehicle.instant_book,
         confirmationTokenId: confirmationToken.id,
@@ -264,7 +383,7 @@ function CheckoutLayout({
   }
 
   const payButton = (
-    <Button size="lg" className="h-[60px] w-full text-[18px]" disabled={!stripe || busy} onClick={pay}>
+    <Button size="lg" className="h-[60px] w-full text-[18px]" disabled={!stripe || busy || !!blocker} onClick={pay}>
       {busy ? "Working on it…" : cta}
     </Button>
   );
@@ -301,6 +420,8 @@ function CheckoutLayout({
             </span>
           </Tile>
 
+          {addOns}
+
           <Section icon={<Shield />} iconTone="bg-lilac" title="Protection">
             <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,200px),1fr))] gap-2">
               {PLANS.map((p) => {
@@ -335,6 +456,9 @@ function CheckoutLayout({
 
           <Section icon={<CreditCard />} iconTone="bg-sky" title="Card">
             <PaymentElement options={{ layout: "tabs" }} />
+            <p className="text-sm text-slate">
+              Your card is saved to your account for this trip&apos;s deposit and any costs after it, like tolls or fuel.
+            </p>
             <label className="flex flex-col gap-1.5 rounded-[16px] bg-board px-3.5 py-3">
               <span className="text-[13px] font-semibold text-slate">Note to {hostName} (optional)</span>
               <textarea
@@ -370,75 +494,45 @@ function CheckoutLayout({
             <Fact label="Return" value={formatDateTime(end)} />
           </div>
 
-          <Breakdown pricing={pricing} plan={plan} />
+          <Breakdown pricing={pricing} plan={plan} deliveryLabel={deliveryLabel} />
+          {promoField}
 
-          {error && (
-            <p role="alert" className="rounded-[14px] bg-error-soft px-3.5 py-3 text-[15px] font-semibold text-error">
-              {error}
-            </p>
-          )}
+          {(error || blocker) && <Notice>{error ?? blocker}</Notice>}
 
           <div className="hidden lg:block">{payButton}</div>
           <p className="flex gap-2.5 rounded-[18px] bg-sky p-3.5 text-sm leading-[1.45] text-sky-ink">
             <Clock className="size-5 shrink-0" strokeWidth={1.75} />
             <span>
-              {holdNote} {pluralize(vehicle.distance_included_mi * pricing.days, "mile")} included.
+              {holdNote} {miles}
             </span>
           </p>
+          {vehicle.deposit_cents > 0 && (
+            <Notice tone="peach">
+              A {formatPrice(vehicle.deposit_cents)} hold is placed when the trip starts and released after return.
+            </Notice>
+          )}
         </aside>
       </Container>
 
       <div className="fixed inset-x-0 bottom-0 z-40 flex flex-col gap-2 rounded-t-[26px] bg-white px-4 pt-3 pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
         {payButton}
         <span className="text-center text-xs leading-snug text-slate">
-          {vehicle.instant_book ? "You're charged now." : `Held now, charged only if ${hostName} accepts.`}
+          {blocker ?? (vehicle.instant_book ? "You're charged now." : `Held now, charged only if ${hostName} accepts.`)}
         </span>
       </div>
     </div>
   );
 }
 
-function Section({
-  icon,
-  iconTone,
-  title,
-  children,
+function Breakdown({
+  pricing,
+  plan,
+  deliveryLabel,
 }: {
-  icon: ReactNode;
-  iconTone: string;
-  title: string;
-  children: ReactNode;
+  pricing: PricingResult;
+  plan: ProtectionPlan | null;
+  deliveryLabel: string;
 }) {
-  return (
-    <Tile className="flex flex-col gap-4 sm:p-6">
-      <div className="flex items-center gap-3">
-        <span className={cn("flex size-10 items-center justify-center rounded-[12px] [&_svg]:size-5", iconTone)}>
-          {icon}
-        </span>
-        <TileTitle>{title}</TileTitle>
-      </div>
-      {children}
-    </Tile>
-  );
-}
-
-function Choice({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={onClick}
-      className={cn(
-        "flex min-h-[96px] flex-col items-start justify-between gap-2.5 rounded-[20px] p-4 text-left transition-colors",
-        on ? "bg-ink text-white" : "bg-board text-ink hover:bg-line"
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Breakdown({ pricing, plan }: { pricing: PricingResult; plan: ProtectionPlan | null }) {
   const rows = [
     {
       label: pricing.ratesVary
@@ -459,18 +553,36 @@ function Breakdown({ pricing, plan }: { pricing: PricingResult; plan: Protection
   return (
     <div className="figures flex flex-col gap-2.5">
       <div className="flex h-3.5 gap-[3px] overflow-hidden rounded-[7px]" aria-hidden>
-        <span className="bg-ink" style={{ flex: pricing.subtotalCents }} />
+        <span className="bg-ink" style={{ flex: pricing.rentalCents }} />
+        {pricing.extrasCents > 0 && <span className="bg-butter" style={{ flex: pricing.extrasCents }} />}
+        {pricing.deliveryCents > 0 && <span className="bg-mint" style={{ flex: pricing.deliveryCents }} />}
+        {pricing.youngDriverCents > 0 && <span className="bg-peach" style={{ flex: pricing.youngDriverCents }} />}
         {pricing.protectionCostCents > 0 && <span className="bg-lilac" style={{ flex: pricing.protectionCostCents }} />}
         <span className="bg-sky" style={{ flex: pricing.taxCents }} />
       </div>
       {rows.map((r) => (
         <Line key={r.label} swatch="bg-ink" label={r.label} value={r.value} />
       ))}
+      {pricing.extras.map((e) => (
+        <Line
+          key={e.id}
+          swatch="bg-butter"
+          label={`${e.name}${e.quantity > 1 ? ` × ${e.quantity}` : ""}`}
+          value={e.total_cents}
+        />
+      ))}
+      {pricing.deliveryCents > 0 && <Line swatch="bg-mint" label={deliveryLabel} value={pricing.deliveryCents} />}
+      {pricing.youngDriverCents > 0 && (
+        <Line swatch="bg-peach" label="Young driver fee" value={pricing.youngDriverCents} />
+      )}
       <Line
         swatch="bg-lilac"
         label={plan ? `${plan[0].toUpperCase()}${plan.slice(1)} protection` : "No protection"}
         value={pricing.protectionCostCents}
       />
+      {pricing.promoCents > 0 && (
+        <Line swatch="bg-mint" label={`Promo ${pricing.promoCode}`} value={-pricing.promoCents} />
+      )}
       <Line swatch="bg-sky" label="Tax, 10.9%" value={pricing.taxCents} />
       <Divider className="mt-1" />
       <div className="flex items-baseline justify-between">

@@ -3,11 +3,24 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
-import { computePricing, dayRates, tripDays } from "@/lib/pricing";
+import { computePricing, dayRates, tripDays, type ExtraLine } from "@/lib/pricing";
 import { hasConflict, loadDailyPrices, releaseStaleCheckouts } from "@/lib/trips";
 import { pluralize, zonedInstant } from "@/lib/utils";
+import { driverCheck, quoteDelivery } from "@/components/checkout/rules";
+import { checkPromo } from "@/app/api/promo/check";
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const delivery = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("pickup") }),
+  z.object({
+    mode: z.literal("address"),
+    address: z.string().trim().min(3).max(300),
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+  }),
+  z.object({ mode: z.literal("airport") }),
+]);
 
 const schema = z.object({
   vehicleId: z.string().uuid(),
@@ -23,6 +36,10 @@ const schema = z.object({
   confirmationTokenId: z.string().startsWith("ctoken_").optional(),
   fromTime: z.string().regex(/^\d{2}:\d{2}$/).default("10:00"),
   untilTime: z.string().regex(/^\d{2}:\d{2}$/).default("10:00"),
+  /** Extras by id. Names and prices come from the car's own list. */
+  extras: z.array(z.object({ id: z.string().uuid(), quantity: z.number().int().min(1).max(10) })).max(20).default([]),
+  delivery: delivery.default({ mode: "pickup" }),
+  promoCode: z.string().trim().min(1).max(40).optional(),
 });
 
 function fail(error: string, status: number) {
@@ -38,8 +55,21 @@ export async function POST(req: Request) {
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("Something's off with this booking. Refresh and try again.", 400);
-  const { vehicleId, from, until, fromTime, untilTime, rateType, protectionPlan, expectedTotalCents, expectedInstantBook, confirmationTokenId } =
-    parsed.data;
+  const {
+    vehicleId,
+    from,
+    until,
+    fromTime,
+    untilTime,
+    rateType,
+    protectionPlan,
+    expectedTotalCents,
+    expectedInstantBook,
+    confirmationTokenId,
+    extras: pickedExtras,
+    delivery: deliveryChoice,
+    promoCode,
+  } = parsed.data;
 
   const startsAt = zonedInstant(from, fromTime);
   const endsAt = zonedInstant(until, untilTime);
@@ -77,6 +107,57 @@ export async function POST(req: Request) {
     return fail("Someone just booked these dates. Try others.", 409);
   }
 
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("stripe_customer_id, date_of_birth, driving_license_verified, suspended_at")
+    .eq("id", user.id)
+    .single();
+  if (!profile) return fail("Couldn't find your profile. Log in again.", 401);
+  if (profile.suspended_at) return fail("Your account is on hold. Contact Cascade to book again.", 403);
+
+  if (process.env.REQUIRE_DRIVER_CHECK === "true" && !profile.driving_license_verified) {
+    return fail("Verify your driver's license on your profile before you book.", 403);
+  }
+  const driver = driverCheck(vehicle, profile.date_of_birth, from);
+  if (!driver.ok) return fail(driver.message, driver.reason === "needs_dob" ? 400 : 403);
+
+  // Extras are priced from the car's list, never from the request.
+  let extras: ExtraLine[] = [];
+  if (pickedExtras.length > 0) {
+    const ids = [...new Set(pickedExtras.map((e) => e.id))];
+    const { data: offered } = await admin
+      .from("vehicle_extras")
+      .select("id, name, per, price_cents, max_quantity, unlimited_miles")
+      .eq("vehicle_id", vehicleId)
+      .eq("active", true)
+      .in("id", ids);
+    if ((offered ?? []).length !== ids.length) {
+      return fail("One of the extras isn't offered any more. Check the page again.", 409);
+    }
+    extras = ids.map((id) => {
+      const extra = offered!.find((e) => e.id === id)!;
+      const quantity = pickedExtras.filter((e) => e.id === id).reduce((sum, e) => sum + e.quantity, 0);
+      return {
+        id,
+        name: extra.name,
+        per: extra.per,
+        price_cents: extra.price_cents,
+        quantity: Math.min(quantity, extra.max_quantity),
+        unlimited_miles: extra.unlimited_miles,
+      };
+    });
+  }
+
+  const delivered = quoteDelivery(vehicle, deliveryChoice);
+  if (!delivered.ok) return fail(delivered.reason, 400);
+
+  let promo = null;
+  if (promoCode) {
+    const result = await checkPromo(promoCode, user.id, days);
+    if (!result.ok) return fail(result.error, 409);
+    promo = result.terms;
+  }
+
   const prices = await loadDailyPrices(vehicleId, from, until);
   const pricing = computePricing({
     dailyRateCents: vehicle.daily_rate_cents,
@@ -86,6 +167,10 @@ export async function POST(req: Request) {
     rateType,
     weeklyDiscountPct: vehicle.weekly_discount_pct,
     monthlyDiscountPct: vehicle.monthly_discount_pct,
+    extras,
+    deliveryCents: delivered.cents,
+    youngDriverDailyCents: driver.youngDriverDailyCents,
+    promo,
   });
   if (pricing.totalCents !== expectedTotalCents) {
     return fail("The price changed. Check the new total and try again.", 409);
@@ -93,12 +178,6 @@ export async function POST(req: Request) {
   if (vehicle.instant_book !== expectedInstantBook) {
     return fail("The host just changed how this car is booked. Check the page again.", 409);
   }
-
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("stripe_customer_id")
-    .eq("id", user.id)
-    .single();
 
   let customerId = profile?.stripe_customer_id;
   if (!customerId) {
@@ -117,6 +196,9 @@ export async function POST(req: Request) {
     currency: "usd",
     customer: customerId,
     capture_method: vehicle.instant_book ? "automatic" : "manual",
+    // Keeps the card on the customer for the deposit hold and any charges after
+    // the trip. Elements is set up with the same setupFutureUsage, as Stripe requires.
+    setup_future_usage: "off_session",
     description: `${vehicle.year} ${vehicle.make} ${vehicle.model}, ${from} to ${until}`,
     metadata: {
       vehicle_id: vehicleId,
@@ -124,6 +206,7 @@ export async function POST(req: Request) {
       host_id: vehicle.host_id,
       from,
       until,
+      ...(pricing.promoCode ? { promo_code: pricing.promoCode } : {}),
     },
   } as const;
 
@@ -160,9 +243,29 @@ export async function POST(req: Request) {
       host_id: vehicle.host_id,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
-      pickup_location: vehicle.location_name,
+      pickup_location: delivered.address ?? vehicle.location_name,
       daily_rate_cents: pricing.dailyRateCents,
       base_cents: pricing.baseCents,
+      rental_cents: pricing.rentalCents,
+      extras: pricing.extras.map((e) => ({
+        id: e.id,
+        name: e.name,
+        per: e.per,
+        price_cents: e.price_cents,
+        quantity: e.quantity,
+        total_cents: e.total_cents,
+        unlimited_miles: !!e.unlimited_miles,
+      })),
+      extras_cents: pricing.extrasCents,
+      unlimited_miles: pricing.extras.some((e) => e.unlimited_miles),
+      delivery_cents: pricing.deliveryCents,
+      delivery_address: delivered.address,
+      delivery_lat: delivered.lat,
+      delivery_lng: delivered.lng,
+      young_driver_cents: pricing.youngDriverCents,
+      promo_code: pricing.promoCode,
+      promo_cents: pricing.promoCents,
+      deposit_cents: vehicle.deposit_cents,
       subtotal_cents: pricing.subtotalCents,
       tax_cents: pricing.taxCents,
       total_cents: pricing.totalCents,
@@ -172,6 +275,10 @@ export async function POST(req: Request) {
       protection_plan: protectionPlan,
       protection_cost_cents: pricing.protectionCostCents,
       stripe_payment_intent_id: paymentIntent.id,
+      stripe_payment_method_id:
+        typeof paymentIntent.payment_method === "string"
+          ? paymentIntent.payment_method
+          : (paymentIntent.payment_method?.id ?? null),
       payment_status: "pending",
       pay_later: false,
       status: "pending",

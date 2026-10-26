@@ -1,6 +1,19 @@
 // This file will be replaced by: supabase gen types typescript --project-id <id> > lib/supabase/types.ts
 // Placeholder types until Supabase project is configured
 
+/** An extra the guest booked, as it was priced at checkout. */
+export interface TripExtra {
+  id: string;
+  name: string;
+  per: "day" | "trip";
+  price_cents: number;
+  quantity: number;
+  total_cents: number;
+  unlimited_miles: boolean;
+}
+
+export type ChargeKind = "extra_miles" | "fuel" | "tolls" | "cleaning" | "smoking" | "late_return" | "damage" | "other";
+
 export type Json =
   | string
   | number
@@ -27,6 +40,11 @@ export type Database = {
           identity_verified: boolean;
           created_at: string;
           updated_at: string;
+          date_of_birth: string | null;
+          identity_status: "unverified" | "pending" | "verified" | "failed";
+          identity_session_id: string | null;
+          identity_error: string | null;
+          suspended_at: string | null;
         };
         Insert: {
           id: string;
@@ -42,6 +60,11 @@ export type Database = {
           identity_verified?: boolean;
           created_at?: string;
           updated_at?: string;
+          date_of_birth?: string | null;
+          identity_status?: "unverified" | "pending" | "verified" | "failed";
+          identity_session_id?: string | null;
+          identity_error?: string | null;
+          suspended_at?: string | null;
         };
         Update: {
           id?: string;
@@ -56,6 +79,11 @@ export type Database = {
           driving_license_verified?: boolean;
           identity_verified?: boolean;
           updated_at?: string;
+          date_of_birth?: string | null;
+          identity_status?: "unverified" | "pending" | "verified" | "failed";
+          identity_session_id?: string | null;
+          identity_error?: string | null;
+          suspended_at?: string | null;
         };
         Relationships: [];
       };
@@ -143,6 +171,14 @@ export type Database = {
           trip_count: number;
           created_at: string;
           updated_at: string;
+          min_age: number;
+          young_driver_fee_cents: number;
+          deposit_cents: number;
+          delivery_enabled: boolean;
+          delivery_radius_mi: number;
+          delivery_fee_cents: number;
+          delivery_fee_per_mi_cents: number;
+          airport_delivery_fee_cents: number | null;
         };
         Insert: {
           id?: string;
@@ -181,6 +217,14 @@ export type Database = {
           trip_count?: number;
           created_at?: string;
           updated_at?: string;
+          min_age?: number;
+          young_driver_fee_cents?: number;
+          deposit_cents?: number;
+          delivery_enabled?: boolean;
+          delivery_radius_mi?: number;
+          delivery_fee_cents?: number;
+          delivery_fee_per_mi_cents?: number;
+          airport_delivery_fee_cents?: number | null;
         };
         Update: {
           id?: string;
@@ -218,6 +262,14 @@ export type Database = {
           rating_avg?: number | null;
           trip_count?: number;
           updated_at?: string;
+          min_age?: number;
+          young_driver_fee_cents?: number;
+          deposit_cents?: number;
+          delivery_enabled?: boolean;
+          delivery_radius_mi?: number;
+          delivery_fee_cents?: number;
+          delivery_fee_per_mi_cents?: number;
+          airport_delivery_fee_cents?: number | null;
         };
         Relationships: [
           {
@@ -399,6 +451,25 @@ export type Database = {
           approved_at: string | null;
           created_at: string;
           updated_at: string;
+          rental_cents: number | null;
+          extras: TripExtra[];
+          extras_cents: number;
+          delivery_cents: number;
+          delivery_address: string | null;
+          delivery_lat: number | null;
+          delivery_lng: number | null;
+          young_driver_cents: number;
+          promo_code: string | null;
+          promo_cents: number;
+          unlimited_miles: boolean;
+          stripe_payment_method_id: string | null;
+          deposit_cents: number;
+          deposit_payment_intent_id: string | null;
+          deposit_status: "none" | "held" | "released" | "captured" | "failed";
+          pickup_reminded_at: string | null;
+          return_reminded_at: string | null;
+          completed_at: string | null;
+          paid_out_at: string | null;
         };
         Insert: {
           id?: string;
@@ -428,6 +499,25 @@ export type Database = {
           approved_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          rental_cents?: number | null;
+          extras?: TripExtra[];
+          extras_cents?: number;
+          delivery_cents?: number;
+          delivery_address?: string | null;
+          delivery_lat?: number | null;
+          delivery_lng?: number | null;
+          young_driver_cents?: number;
+          promo_code?: string | null;
+          promo_cents?: number;
+          unlimited_miles?: boolean;
+          stripe_payment_method_id?: string | null;
+          deposit_cents?: number;
+          deposit_payment_intent_id?: string | null;
+          deposit_status?: "none" | "held" | "released" | "captured" | "failed";
+          pickup_reminded_at?: string | null;
+          return_reminded_at?: string | null;
+          completed_at?: string | null;
+          paid_out_at?: string | null;
         };
         Update: {
           id?: string;
@@ -456,6 +546,25 @@ export type Database = {
           cancelled_at?: string | null;
           approved_at?: string | null;
           updated_at?: string;
+          rental_cents?: number | null;
+          extras?: TripExtra[];
+          extras_cents?: number;
+          delivery_cents?: number;
+          delivery_address?: string | null;
+          delivery_lat?: number | null;
+          delivery_lng?: number | null;
+          young_driver_cents?: number;
+          promo_code?: string | null;
+          promo_cents?: number;
+          unlimited_miles?: boolean;
+          stripe_payment_method_id?: string | null;
+          deposit_cents?: number;
+          deposit_payment_intent_id?: string | null;
+          deposit_status?: "none" | "held" | "released" | "captured" | "failed";
+          pickup_reminded_at?: string | null;
+          return_reminded_at?: string | null;
+          completed_at?: string | null;
+          paid_out_at?: string | null;
         };
         Relationships: [
           {
@@ -577,6 +686,7 @@ export type Database = {
           host_reply: string | null;
           host_replied_at: string | null;
           created_at: string;
+          kind: "guest_to_host" | "host_to_guest";
         };
         Insert: {
           id?: string;
@@ -592,6 +702,7 @@ export type Database = {
           host_reply?: string | null;
           host_replied_at?: string | null;
           created_at?: string;
+          kind?: "guest_to_host" | "host_to_guest";
         };
         Update: {
           id?: string;
@@ -607,6 +718,7 @@ export type Database = {
           host_reply?: string | null;
           host_replied_at?: string | null;
           created_at?: string;
+          kind?: "guest_to_host" | "host_to_guest";
         };
         Relationships: [
           {
@@ -625,6 +737,366 @@ export type Database = {
           }
         ];
       };
+      vehicle_extras: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          name: string;
+          description: string | null;
+          price_cents: number;
+          per: "day" | "trip";
+          max_quantity: number;
+          unlimited_miles: boolean;
+          active: boolean;
+          position: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          name: string;
+          description?: string | null;
+          price_cents: number;
+          per?: "day" | "trip";
+          max_quantity?: number;
+          unlimited_miles?: boolean;
+          active?: boolean;
+          position?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string;
+          name?: string;
+          description?: string | null;
+          price_cents?: number;
+          per?: "day" | "trip";
+          max_quantity?: number;
+          unlimited_miles?: boolean;
+          active?: boolean;
+          position?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_extras_vehicle_id_fkey";
+            columns: ["vehicle_id"];
+            isOneToOne: false;
+            referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      trip_inspections: {
+        Row: {
+          id: string;
+          trip_id: string;
+          kind: "pickup" | "return";
+          recorded_by: string;
+          role: "guest" | "host";
+          odometer_mi: number | null;
+          fuel_pct: number | null;
+          photos: string[];
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          trip_id: string;
+          kind: "pickup" | "return";
+          recorded_by: string;
+          role: "guest" | "host";
+          odometer_mi?: number | null;
+          fuel_pct?: number | null;
+          photos?: string[];
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          trip_id?: string;
+          kind?: "pickup" | "return";
+          recorded_by?: string;
+          role?: "guest" | "host";
+          odometer_mi?: number | null;
+          fuel_pct?: number | null;
+          photos?: string[];
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "trip_inspections_trip_id_fkey";
+            columns: ["trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      trip_charges: {
+        Row: {
+          id: string;
+          trip_id: string;
+          host_id: string;
+          guest_id: string;
+          kind: ChargeKind;
+          amount_cents: number;
+          description: string;
+          photos: string[];
+          status: "requested" | "paid" | "disputed" | "declined" | "cancelled" | "failed";
+          stripe_payment_intent_id: string | null;
+          paid_from_deposit: boolean;
+          guest_note: string | null;
+          resolution_note: string | null;
+          created_at: string;
+          responded_at: string | null;
+          resolved_at: string | null;
+          paid_out_at: string | null;
+          failure_reason: string | null;
+        };
+        Insert: {
+          id?: string;
+          trip_id: string;
+          host_id: string;
+          guest_id: string;
+          kind: ChargeKind;
+          amount_cents: number;
+          description: string;
+          photos?: string[];
+          status?: "requested" | "paid" | "disputed" | "declined" | "cancelled" | "failed";
+          stripe_payment_intent_id?: string | null;
+          paid_from_deposit?: boolean;
+          guest_note?: string | null;
+          resolution_note?: string | null;
+          created_at?: string;
+          responded_at?: string | null;
+          resolved_at?: string | null;
+          paid_out_at?: string | null;
+          failure_reason?: string | null;
+        };
+        Update: {
+          id?: string;
+          trip_id?: string;
+          host_id?: string;
+          guest_id?: string;
+          kind?: ChargeKind;
+          amount_cents?: number;
+          description?: string;
+          photos?: string[];
+          status?: "requested" | "paid" | "disputed" | "declined" | "cancelled" | "failed";
+          stripe_payment_intent_id?: string | null;
+          paid_from_deposit?: boolean;
+          guest_note?: string | null;
+          resolution_note?: string | null;
+          created_at?: string;
+          responded_at?: string | null;
+          resolved_at?: string | null;
+          paid_out_at?: string | null;
+          failure_reason?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "trip_charges_trip_id_fkey";
+            columns: ["trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "trip_charges_host_id_fkey";
+            columns: ["host_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "trip_charges_guest_id_fkey";
+            columns: ["guest_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      trip_changes: {
+        Row: {
+          id: string;
+          trip_id: string;
+          requested_by: string;
+          old_starts_at: string;
+          old_ends_at: string;
+          new_starts_at: string;
+          new_ends_at: string;
+          pricing: Json;
+          difference_cents: number;
+          status: "requested" | "accepted" | "declined" | "cancelled" | "failed";
+          stripe_payment_intent_id: string | null;
+          stripe_refund_id: string | null;
+          note: string | null;
+          created_at: string;
+          responded_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          trip_id: string;
+          requested_by: string;
+          old_starts_at: string;
+          old_ends_at: string;
+          new_starts_at: string;
+          new_ends_at: string;
+          pricing: Json;
+          difference_cents: number;
+          status?: "requested" | "accepted" | "declined" | "cancelled" | "failed";
+          stripe_payment_intent_id?: string | null;
+          stripe_refund_id?: string | null;
+          note?: string | null;
+          created_at?: string;
+          responded_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          trip_id?: string;
+          requested_by?: string;
+          old_starts_at?: string;
+          old_ends_at?: string;
+          new_starts_at?: string;
+          new_ends_at?: string;
+          pricing?: Json;
+          difference_cents?: number;
+          status?: "requested" | "accepted" | "declined" | "cancelled" | "failed";
+          stripe_payment_intent_id?: string | null;
+          stripe_refund_id?: string | null;
+          note?: string | null;
+          created_at?: string;
+          responded_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "trip_changes_trip_id_fkey";
+            columns: ["trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      favorites: {
+        Row: {
+          user_id: string;
+          vehicle_id: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          vehicle_id: string;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          vehicle_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "favorites_vehicle_id_fkey";
+            columns: ["vehicle_id"];
+            isOneToOne: false;
+            referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      promo_codes: {
+        Row: {
+          id: string;
+          code: string;
+          description: string | null;
+          percent_off: number | null;
+          amount_off_cents: number | null;
+          max_redemptions: number | null;
+          per_user_limit: number;
+          min_days: number;
+          first_trip_only: boolean;
+          starts_at: string | null;
+          expires_at: string | null;
+          active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          description?: string | null;
+          percent_off?: number | null;
+          amount_off_cents?: number | null;
+          max_redemptions?: number | null;
+          per_user_limit?: number;
+          min_days?: number;
+          first_trip_only?: boolean;
+          starts_at?: string | null;
+          expires_at?: string | null;
+          active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          description?: string | null;
+          percent_off?: number | null;
+          amount_off_cents?: number | null;
+          max_redemptions?: number | null;
+          per_user_limit?: number;
+          min_days?: number;
+          first_trip_only?: boolean;
+          starts_at?: string | null;
+          expires_at?: string | null;
+          active?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          kind: string;
+          title: string;
+          body: string | null;
+          href: string | null;
+          trip_id: string | null;
+          dedupe_key: string | null;
+          read_at: string | null;
+          emailed_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          kind: string;
+          title: string;
+          body?: string | null;
+          href?: string | null;
+          trip_id?: string | null;
+          dedupe_key?: string | null;
+          read_at?: string | null;
+          emailed_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          kind?: string;
+          title?: string;
+          body?: string | null;
+          href?: string | null;
+          trip_id?: string | null;
+          dedupe_key?: string | null;
+          read_at?: string | null;
+          emailed_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -641,3 +1113,9 @@ export type TripStatus = Trip["status"];
 export type PaymentStatus = Trip["payment_status"];
 export type Review = Tables["reviews"]["Row"];
 export type Message = Tables["messages"]["Row"];
+export type VehicleExtra = Tables["vehicle_extras"]["Row"];
+export type TripInspection = Tables["trip_inspections"]["Row"];
+export type TripCharge = Tables["trip_charges"]["Row"];
+export type TripChange = Tables["trip_changes"]["Row"];
+export type PromoCode = Tables["promo_codes"]["Row"];
+export type Notification = Tables["notifications"]["Row"];

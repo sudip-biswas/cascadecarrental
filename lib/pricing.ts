@@ -35,6 +35,16 @@ export function dayRates(
   });
 }
 
+/** An extra on the bill, priced per day or once per trip. */
+export interface ExtraLine {
+  id: string;
+  name: string;
+  per: "day" | "trip";
+  price_cents: number;
+  quantity: number;
+  unlimited_miles?: boolean;
+}
+
 export interface PricingInput {
   dailyRateCents: number;
   days: number;
@@ -44,6 +54,18 @@ export interface PricingInput {
   rateType?: RateType;
   weeklyDiscountPct?: number;
   monthlyDiscountPct?: number;
+  extras?: ExtraLine[];
+  deliveryCents?: number;
+  /** Per day, for drivers under 25. Zero when it doesn't apply. */
+  youngDriverDailyCents?: number;
+  promo?: PromoTerms | null;
+}
+
+/** What a promo code takes off. Cascade pays for it, so it never lowers the host's share. */
+export interface PromoTerms {
+  code: string;
+  percentOff: number | null;
+  amountOffCents: number | null;
 }
 
 export interface PricingResult {
@@ -59,8 +81,16 @@ export interface PricingResult {
   lengthDiscountPct: number;
   /** Pay-now discount. */
   savingsCents: number;
-  /** Rental after discounts. This is what the host is paid from. */
+  /** Rental after discounts. */
+  rentalCents: number;
+  extras: (ExtraLine & { total_cents: number })[];
+  extrasCents: number;
+  deliveryCents: number;
+  /** Rental, extras and delivery. This is what the host is paid from. */
   subtotalCents: number;
+  youngDriverCents: number;
+  promoCode: string | null;
+  promoCents: number;
   protectionCostCents: number;
   taxCents: number;
   totalCents: number;
@@ -84,6 +114,10 @@ export function computePricing(input: PricingInput): PricingResult {
     rateType = "non_refundable",
     weeklyDiscountPct = 0,
     monthlyDiscountPct = 0,
+    extras = [],
+    deliveryCents = 0,
+    youngDriverDailyCents = 0,
+    promo = null,
   } = input;
 
   const baseCents = dayRatesCents
@@ -101,14 +135,29 @@ export function computePricing(input: PricingInput): PricingResult {
 
   const savingsCents =
     rateType === "non_refundable" ? Math.round(afterLength * NON_REFUNDABLE_DISCOUNT) : 0;
-  const subtotalCents = afterLength - savingsCents;
+  const rentalCents = afterLength - savingsCents;
+
+  const pricedExtras = extras
+    .filter((e) => e.quantity > 0)
+    .map((e) => ({ ...e, total_cents: e.price_cents * e.quantity * (e.per === "day" ? days : 1) }));
+  const extrasCents = pricedExtras.reduce((sum, e) => sum + e.total_cents, 0);
+  const subtotalCents = rentalCents + extrasCents + deliveryCents;
 
   const protectionCostCents = protectionPlan
     ? PROTECTION_DAILY_CENTS[protectionPlan] * days
     : 0;
+  const youngDriverCents = youngDriverDailyCents * days;
 
-  const taxCents = Math.round((subtotalCents + protectionCostCents) * TAX_RATE);
-  const totalCents = subtotalCents + protectionCostCents + taxCents;
+  const beforePromo = subtotalCents + protectionCostCents + youngDriverCents;
+  const promoCents = promo
+    ? Math.min(
+        beforePromo,
+        promo.percentOff ? Math.round((rentalCents * promo.percentOff) / 100) : (promo.amountOffCents ?? 0)
+      )
+    : 0;
+
+  const taxCents = Math.round((beforePromo - promoCents) * TAX_RATE);
+  const totalCents = beforePromo - promoCents + taxCents;
 
   return {
     dailyRateCents,
@@ -118,7 +167,14 @@ export function computePricing(input: PricingInput): PricingResult {
     lengthDiscountCents,
     lengthDiscountPct: pct,
     savingsCents,
+    rentalCents,
+    extras: pricedExtras,
+    extrasCents,
+    deliveryCents,
     subtotalCents,
+    youngDriverCents,
+    promoCode: promoCents > 0 && promo ? promo.code : null,
+    promoCents,
     protectionCostCents,
     taxCents,
     totalCents,
@@ -136,4 +192,59 @@ export function tripDays(startsAt: string | Date, endsAt: string | Date): number
 
 export function hostEarningsCents(subtotalCents: number): number {
   return Math.round(subtotalCents * HOST_SHARE);
+}
+
+/** Under this age a driver pays the car's young driver fee. */
+export const YOUNG_DRIVER_AGE = 25;
+
+/** Whole years old on a given day. */
+export function ageOn(dateOfBirth: string, on: Date): number {
+  const [y, m, d] = dateOfBirth.split("-").map(Number);
+  const onY = on.getUTCFullYear();
+  const onM = on.getUTCMonth() + 1;
+  const onD = on.getUTCDate();
+  return onY - y - (onM < m || (onM === m && onD < d) ? 1 : 0);
+}
+
+/** Miles between two points, as the crow flies. */
+export function milesBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 3958.8 * 2 * Math.asin(Math.sqrt(h));
+}
+
+export interface DeliverySettings {
+  delivery_enabled: boolean;
+  delivery_radius_mi: number;
+  delivery_fee_cents: number;
+  delivery_fee_per_mi_cents: number;
+  airport_delivery_fee_cents: number | null;
+  location_lat: number;
+  location_lng: number;
+}
+
+/** Sea-Tac's arrivals curb. Airport delivery goes here at the host's airport price. */
+export const AIRPORT = { name: "Seattle-Tacoma International Airport", lat: 47.4436, lng: -122.3016 };
+
+export type DeliveryQuote =
+  | { ok: true; cents: number; miles: number }
+  | { ok: false; reason: string };
+
+/** What delivering the car to a spot costs, or why it can't go there. */
+export function deliveryQuote(
+  car: DeliverySettings,
+  to: { lat: number; lng: number; airport?: boolean }
+): DeliveryQuote {
+  if (to.airport) {
+    if (car.airport_delivery_fee_cents == null) return { ok: false, reason: "This host doesn't deliver to the airport." };
+    return { ok: true, cents: car.airport_delivery_fee_cents, miles: milesBetween({ lat: car.location_lat, lng: car.location_lng }, AIRPORT) };
+  }
+  if (!car.delivery_enabled) return { ok: false, reason: "This host doesn't deliver." };
+  const miles = milesBetween({ lat: car.location_lat, lng: car.location_lng }, to);
+  if (miles > car.delivery_radius_mi) {
+    return { ok: false, reason: `That's ${Math.round(miles)} mi away. This host delivers up to ${car.delivery_radius_mi} mi.` };
+  }
+  return { ok: true, cents: car.delivery_fee_cents + Math.round(miles * car.delivery_fee_per_mi_cents), miles };
 }

@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { PhotoGallery } from "@/components/vehicle/PhotoGallery";
 import { CarBooking } from "@/components/vehicle/BookingSidebar";
+import { FavoriteButton } from "@/components/vehicle/FavoriteButton";
 import { fuelLabel, typeLabel } from "@/components/search/categories";
 import { daysBetween, readDates } from "@/components/search/dates";
 import { coverImage, firstName } from "@/components/search/vehicle";
@@ -36,6 +37,7 @@ export const instant = false;
 type CarRow = PublicVehicle & {
   vehicle_images: VehicleImage[];
   vehicle_features: { category: string; feature: string }[];
+  vehicle_extras: { name: string; active: boolean; position: number }[];
   host: { id: string; full_name: string; avatar_url: string | null; host_since: string | null } | null;
   persona: { id: string; name: string; avatar_url: string | null; host_since: string | null; bio: string | null; trip_count: number; rating: number | null; rating_count: number } | null;
 };
@@ -50,7 +52,7 @@ type ReviewRow = {
 };
 
 const CAR_SELECT =
-  `${VEHICLE_PUBLIC}, vehicle_images(*), vehicle_features(category, feature), host:profiles!host_id(id, full_name, avatar_url, host_since), persona:host_personas!persona_id(id, name, avatar_url, host_since, bio, trip_count, rating, rating_count)`;
+  `${VEHICLE_PUBLIC}, min_age, young_driver_fee_cents, delivery_enabled, airport_delivery_fee_cents, vehicle_images(*), vehicle_features(category, feature), vehicle_extras(name, active, position), host:profiles!host_id(id, full_name, avatar_url, host_since), persona:host_personas!persona_id(id, name, avatar_url, host_since, bio, trip_count, rating, rating_count)`;
 
 /** Shared by the page and its metadata, so the car is read once per request. */
 const getCar = cache(async (id: string) => {
@@ -148,12 +150,16 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
   }
   const user = auth.user;
   const isOwner = user?.id === car.host_id;
+  const { data: favorite } = user
+    ? await supabase.from("favorites").select("vehicle_id").eq("user_id", user.id).eq("vehicle_id", vehicleId).maybeSingle()
+    : { data: null };
 
   const [{ data: reviewData, count: reviewCount }, { count: hostCars }, unavailable, dailyPrices] = await Promise.all([
     supabase
       .from("reviews")
       .select("id, created_at, rating_overall, body, host_reply, reviewer:profiles!reviewer_id(full_name)", { count: "exact" })
       .eq("vehicle_id", vehicleId)
+      .eq("kind", "guest_to_host")
       .order("created_at", { ascending: false })
       .limit(10),
     supabase
@@ -262,7 +268,10 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
   const details = (
     <>
       <div className="flex flex-col gap-2.5 py-1.5">
-        <h1 className="headline text-[clamp(40px,6vw,88px)] leading-none">{name}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="headline text-[clamp(40px,6vw,88px)] leading-none">{name}</h1>
+          {!isOwner && <FavoriteButton vehicleId={car.id} userId={user?.id ?? null} saved={!!favorite} size="lg" />}
+        </div>
         <div className="flex flex-wrap items-center gap-2.5 text-[15px] text-slate sm:text-lg">
           {car.year}
           {car.trim ? ` ${car.trim}` : ""} · {car.location_name}
@@ -505,6 +514,12 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
           initialUntilTime={untilTime}
           initialRate={rate}
           isLoggedIn={!!user}
+          perks={{
+            minAge: car.min_age,
+            youngDriverFeeCents: car.young_driver_fee_cents,
+            delivery: car.delivery_enabled || car.airport_delivery_fee_cents != null,
+            extras: car.vehicle_extras.filter((e) => e.active).sort((a, b) => a.position - b.position).map((e) => e.name),
+          }}
         >
           {details}
         </CarBooking>

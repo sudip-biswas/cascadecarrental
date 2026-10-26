@@ -44,7 +44,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
   const { data } = await supabase
     .from("vehicles")
     .select(
-      "id, host_id, make, model, year, trim, location_name, daily_rate_cents, weekly_discount_pct, monthly_discount_pct, distance_included_mi, instant_book, min_trip_days, max_trip_days, vehicle_images(url, is_cover, position), host:profiles!host_id(full_name)"
+      "id, host_id, make, model, year, trim, location_name, daily_rate_cents, weekly_discount_pct, monthly_discount_pct, distance_included_mi, instant_book, min_trip_days, max_trip_days, location_lat, location_lng, min_age, young_driver_fee_cents, deposit_cents, delivery_enabled, delivery_radius_mi, delivery_fee_cents, delivery_fee_per_mi_cents, airport_delivery_fee_cents, vehicle_images(url, is_cover, position), host:profiles!host_id(full_name)"
     )
     .eq("id", vehicleId)
     .eq("status", "listed")
@@ -86,8 +86,32 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
     );
   }
 
-  const dailyPrices = await loadDailyPrices(vehicle.id, from, until);
+  const [dailyPrices, { data: extras }, { data: profile }] = await Promise.all([
+    loadDailyPrices(vehicle.id, from, until),
+    supabase
+      .from("vehicle_extras")
+      .select("id, name, description, per, price_cents, max_quantity, unlimited_miles")
+      .eq("vehicle_id", vehicle.id)
+      .eq("active", true)
+      .order("position")
+      .order("created_at"),
+    supabase.from("profiles").select("date_of_birth, driving_license_verified").eq("id", user.id).single(),
+  ]);
   return (
-    <CheckoutForm vehicle={vehicle} from={from} until={until} fromTime={fromTime} untilTime={untilTime} initialRate={initialRate} dailyPrices={dailyPrices} />
+    <CheckoutForm
+      vehicle={vehicle}
+      from={from}
+      until={until}
+      fromTime={fromTime}
+      untilTime={untilTime}
+      initialRate={initialRate}
+      dailyPrices={dailyPrices}
+      extras={extras ?? []}
+      driver={{
+        userId: user.id,
+        dateOfBirth: profile?.date_of_birth ?? null,
+        licenseRequired: process.env.REQUIRE_DRIVER_CHECK === "true" && !profile?.driving_license_verified,
+      }}
+    />
   );
 }
