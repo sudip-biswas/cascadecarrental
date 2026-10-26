@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
-import { CalendarSearch, SearchX } from "lucide-react";
+import { CalendarSearch, List, Map as MapIcon, SearchX } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Container, EmptyState, Tile } from "@/components/kit";
 import { Button } from "@/components/ui/button";
@@ -9,11 +9,14 @@ import { FilterBar } from "@/components/search/FilterBar";
 import { SearchForm } from "@/components/search/SearchForm";
 import { VehicleCard } from "@/components/search/VehicleCard";
 import { VehicleGridSkeleton } from "@/components/search/VehicleCardSkeleton";
+import { SearchMap } from "@/components/search/SearchMap";
 import { availableFor } from "@/components/search/availability";
+import { loadFavorites } from "@/components/search/favorites";
+import { mapPins } from "@/components/search/map";
 import { FILTER_KEYS, hasFilters, parseSearchParams, type SearchFilters } from "@/components/search/params";
 import { listedCars } from "@/components/search/listings";
 import { tripTotalCents } from "@/components/search/vehicle";
-import { formatRange, pluralize, zonedInstant } from "@/lib/utils";
+import { cn, formatRange, pluralize, zonedInstant } from "@/lib/utils";
 
 export const instant = false;
 
@@ -23,6 +26,8 @@ export const metadata: Metadata = {
   title: "Find a car",
   robots: { index: false, follow: true },
 };
+
+type View = "list" | "map";
 
 async function loadCars(filters: SearchFilters) {
   let cars = await listedCars(await createClient(), filters);
@@ -53,8 +58,43 @@ function withoutFilters(raw: Record<string, string>) {
   return qs ? `/search?${qs}` : "/search";
 }
 
-async function Results({ filters, raw }: { filters: SearchFilters; raw: Record<string, string> }) {
-  const cars = await loadCars(filters);
+/** The current URL showing the other view. */
+function viewHref(raw: Record<string, string>, view: View) {
+  const params = new URLSearchParams(raw);
+  if (view === "map") params.set("view", "map");
+  else params.delete("view");
+  const qs = params.toString();
+  return qs ? `/search?${qs}` : "/search";
+}
+
+function ViewToggle({ raw, view }: { raw: Record<string, string>; view: View }) {
+  const options = [
+    { id: "list", label: "List", icon: List },
+    { id: "map", label: "Map", icon: MapIcon },
+  ] as const;
+  return (
+    <nav aria-label="View" className="flex shrink-0 gap-1 rounded-[14px] bg-white p-1">
+      {options.map(({ id, label, icon: Icon }) => (
+        <Link
+          key={id}
+          href={viewHref(raw, id)}
+          scroll={false}
+          aria-current={view === id ? "page" : undefined}
+          className={cn(
+            "flex h-9 items-center gap-1.5 rounded-[10px] px-3 text-[15px] font-semibold transition-colors",
+            view === id ? "bg-ink text-white" : "text-ink hover:bg-board"
+          )}
+        >
+          <Icon className="size-[18px]" strokeWidth={2} />
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+async function Results({ filters, raw, view }: { filters: SearchFilters; raw: Record<string, string>; view: View }) {
+  const [cars, { userId, saved }] = await Promise.all([loadCars(filters), createClient().then(loadFavorites)]);
 
   if (!cars.length) {
     const filtered = hasFilters(filters);
@@ -80,12 +120,54 @@ async function Results({ filters, raw }: { filters: SearchFilters; raw: Record<s
     );
   }
 
+  const title = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h1 className="headline my-1 text-[30px] sm:text-[40px]">{heading(cars.length, filters)}</h1>
+      <ViewToggle raw={raw} view={view} />
+    </div>
+  );
+
+  if (view === "map") {
+    const card = (car: (typeof cars)[number]) => (
+      <VehicleCard
+        vehicle={car}
+        dates={filters.dates}
+        layout="compact"
+        favorite={{ userId, saved: saved.has(car.id) }}
+      />
+    );
+    return (
+      <div className="flex flex-col gap-3">
+        {title}
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
+          <SearchMap
+            pins={mapPins(cars)}
+            cards={Object.fromEntries(cars.map((car) => [car.id, card(car)]))}
+            className="-mx-4 h-[68svh] min-h-[420px] sm:mx-0 lg:sticky lg:top-4 lg:order-2 lg:h-[calc(100svh-2rem)]"
+          />
+          <div className="flex flex-col gap-2 lg:order-1">
+            {cars.map((car) => (
+              <div key={car.id}>{card(car)}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <h1 className="headline my-1 text-[30px] sm:text-[40px]">{heading(cars.length, filters)}</h1>
+      {title}
       <div className="grid gap-3 xl:grid-cols-2">
         {cars.map((car, i) => (
-          <VehicleCard key={car.id} vehicle={car} dates={filters.dates} layout="row" priority={i < 2} />
+          <VehicleCard
+            key={car.id}
+            vehicle={car}
+            dates={filters.dates}
+            layout="row"
+            priority={i < 2}
+            favorite={{ userId, saved: saved.has(car.id) }}
+          />
         ))}
       </div>
       {filters.dates && (
@@ -107,7 +189,10 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
     Object.entries(await searchParams).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : []))
   );
   const filters = parseSearchParams(raw);
-  const keep = Object.fromEntries(Object.entries(raw).filter(([k]) => FILTER_KEYS.includes(k) || k === "sort"));
+  const view: View = raw.view === "map" ? "map" : "list";
+  const keep = Object.fromEntries(
+    Object.entries(raw).filter(([k]) => FILTER_KEYS.includes(k) || k === "sort" || k === "view")
+  );
 
   return (
     <Container className="flex flex-col gap-4 pt-5 pb-16">
@@ -123,7 +208,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
         <FilterBar />
       </Suspense>
       <Suspense key={JSON.stringify(raw)} fallback={<VehicleGridSkeleton layout="row" count={4} />}>
-        <Results filters={filters} raw={raw} />
+        <Results filters={filters} raw={raw} view={view} />
       </Suspense>
     </Container>
   );

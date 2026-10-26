@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { safeRedirect } from "@/lib/utils";
 
-const PROTECTED_GUEST_PATHS = ["/trips", "/messages", "/profile"];
+const PROTECTED_GUEST_PATHS = ["/trips", "/messages", "/profile", "/favorites"];
 const CHECKOUT_PATH = /^\/cars\/[^/]+\/checkout/;
 const PROTECTED_HOST_PATHS = ["/host"];
 const AUTH_PATHS = ["/login", "/register"];

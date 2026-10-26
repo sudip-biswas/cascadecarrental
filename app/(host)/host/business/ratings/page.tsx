@@ -62,6 +62,7 @@ export default async function RatingsPage() {
         "id, created_at, reviewer_id, rating_overall, rating_cleanliness, rating_accuracy, rating_value, body, host_reply, reviewer:profiles!reviewer_id(full_name), trips(starts_at, ends_at), vehicles(make, model)"
       )
       .eq("reviewee_id", user.id)
+      .eq("kind", "guest_to_host")
       .order("created_at", { ascending: false })
       .overrideTypes<ReviewRow[], { merge: false }>(),
     supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("host_id", user.id),

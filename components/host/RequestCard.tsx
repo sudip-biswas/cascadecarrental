@@ -3,9 +3,10 @@ import { Check, Clock, MessageSquare } from "lucide-react";
 import { Fact, Tag } from "@/components/kit";
 import { TripActionButtons } from "@/components/trips/TripActionButtons";
 import { hostEarningsCents, tripDays } from "@/lib/pricing";
-import { formatCurrency, formatDate, formatDay } from "@/lib/utils";
+import { formatCurrency, formatDay } from "@/lib/utils";
 import { answerBy, PROTECTION_LABEL, timeLeft, type ConversationLink, type HostTrip } from "./data";
 import { firstName, Initial } from "./bits";
+import { GuestRecord } from "./GuestRecord";
 
 function inboxHref(conversation: ConversationLink | null) {
   return conversation ? `/host/inbox/${conversation.id}` : "/host/inbox";
@@ -26,8 +27,8 @@ export function RequestCompact({ trip, conversation }: { trip: HostTrip; convers
           </p>
           <p className="text-sm text-slate">
             {formatDay(trip.starts_at)} – {formatDay(trip.ends_at)}
-            {trip.guest?.driving_license_verified ? " · licence verified" : ""}
           </p>
+          <GuestRecord guestId={trip.guest_id} variant="line" />
         </div>
         <div className="figures shrink-0 text-right">
           <p className="font-display text-[24px] leading-none font-extrabold">
@@ -58,7 +59,6 @@ export function RequestFull({ trip, conversation }: { trip: HostTrip; conversati
   const car = trip.vehicle ? trip.vehicle.model : "your car";
   const checks = [
     trip.guest?.identity_verified && "ID confirmed",
-    trip.guest?.driving_license_verified && "Driver's licence verified",
     `Card held for ${formatCurrency(trip.total_cents)}`,
   ].filter((c): c is string => Boolean(c));
 
@@ -67,15 +67,9 @@ export function RequestFull({ trip, conversation }: { trip: HostTrip; conversati
       <div className="flex max-w-full flex-[1_1_280px] flex-col gap-3.5 rounded-[24px] bg-butter p-5 text-butter-ink sm:max-w-[380px]">
         <div className="flex items-center gap-3">
           <Initial name={guest} tone="white" className="size-16 rounded-[20px] text-[28px]" />
-          <div>
-            <p className="font-display text-[28px] leading-none font-extrabold text-ink">{guest}</p>
-            {trip.guest?.created_at && (
-              <p className="mt-1.5 text-sm">
-                Joined {formatDate(trip.guest.created_at, { day: undefined })}
-              </p>
-            )}
-          </div>
+          <p className="font-display text-[28px] leading-none font-extrabold text-ink">{guest}</p>
         </div>
+        <GuestRecord guestId={trip.guest_id} tone="white" />
         <ul className="flex flex-col gap-2 text-[15px] text-ink">
           {checks.map((c) => (
             <li key={c} className="flex items-center gap-2">

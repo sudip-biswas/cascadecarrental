@@ -38,6 +38,7 @@ export async function loadHistory(supabase: SupabaseClient<Database>, hostId: st
     ? await supabase
         .from("reviews")
         .select("trip_id, rating_overall")
+        .eq("kind", "guest_to_host")
         .in("trip_id", trips.map((t) => t.id))
     : { data: [] };
   const ratingByTrip = new Map((reviews ?? []).map((r) => [r.trip_id, r.rating_overall]));

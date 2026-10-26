@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { CarFront, Star } from "lucide-react";
 import { Tag } from "@/components/kit";
+import { FavoriteButton } from "@/components/vehicle/FavoriteButton";
 import { cn, formatPrice } from "@/lib/utils";
 import { fuelLabel } from "./categories";
 import { carHref, coverImage, firstName, roughPrice, tripTotalCents, type ListedVehicle } from "./vehicle";
@@ -13,6 +14,8 @@ interface Props {
   /** tile: photo on top. row: photo beside the details. compact: small phone row. */
   layout?: "tile" | "row" | "compact";
   priority?: boolean;
+  /** Shows the heart. Leave out where saving makes no sense. */
+  favorite?: { userId: string | null; saved: boolean };
 }
 
 function Photo({ vehicle, className, sizes, priority }: { vehicle: ListedVehicle; className?: string; sizes: string; priority?: boolean }) {
@@ -48,7 +51,31 @@ function Rating({ vehicle }: { vehicle: ListedVehicle }) {
   );
 }
 
-export function VehicleCard({ vehicle, dates, layout = "tile", priority }: Props) {
+/** The heart sits over the photo, beside the link rather than inside it. */
+const HEART_SPOT = {
+  tile: "top-5 right-5",
+  row: "top-5 left-5",
+  compact: "top-3 left-3",
+} as const;
+
+export function VehicleCard({ favorite, ...props }: Props) {
+  if (!favorite) return <Card {...props} />;
+  const layout = props.layout ?? "tile";
+  return (
+    <div className="relative">
+      <Card {...props} heart />
+      <FavoriteButton
+        vehicleId={props.vehicle.id}
+        userId={favorite.userId}
+        saved={favorite.saved}
+        size={layout === "compact" ? "sm" : "md"}
+        className={`absolute ${HEART_SPOT[layout]}`}
+      />
+    </div>
+  );
+}
+
+function Card({ vehicle, dates, layout = "tile", priority, heart }: Omit<Props, "favorite"> & { heart?: boolean }) {
   const href = carHref(vehicle, dates);
   const name = `${vehicle.make} ${vehicle.model}`;
   const total = dates ? tripTotalCents(vehicle, dates.from, dates.until) : null;
@@ -130,7 +157,11 @@ export function VehicleCard({ vehicle, dates, layout = "tile", priority }: Props
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 300px"
         />
         {isNew && <Tag tone="mint" className="absolute top-2.5 left-2.5">New</Tag>}
-        {vehicle.instant_book && <Tag tone="white" className="absolute top-2.5 right-2.5">Instant book</Tag>}
+        {vehicle.instant_book && (
+          <Tag tone="white" className={cn("absolute", heart ? "bottom-2.5 left-2.5" : "top-2.5 right-2.5")}>
+            Instant book
+          </Tag>
+        )}
       </span>
       <span className="flex flex-col gap-1 px-2.5">
         <span className="flex items-start justify-between gap-2">

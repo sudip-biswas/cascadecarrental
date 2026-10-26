@@ -6,6 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Container, Tile, TileTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { ProfileForm } from "@/components/profile/ProfileForm";
+import { LicenceCheck } from "@/components/profile/LicenceCheck";
+import { GuestRecord } from "@/components/host/GuestRecord";
 import { SignOutButton } from "@/components/profile/SignOutButton";
 import { cn, formatDate, pluralize } from "@/lib/utils";
 import { NO_INDEX } from "@/lib/site";
@@ -13,7 +15,8 @@ import { NO_INDEX } from "@/lib/site";
 export const instant = false;
 export const metadata = { title: "Your profile", ...NO_INDEX };
 
-export default async function ProfilePage() {
+export default async function ProfilePage({ searchParams }: PageProps<"/profile">) {
+  const { verify } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -24,7 +27,7 @@ export default async function ProfilePage() {
     // Phone is a private column, so read your own profile with the admin client.
     createAdminClient()
       .from("profiles")
-      .select("id, full_name, bio, phone, is_host, driving_license_verified, identity_verified, created_at")
+      .select("id, full_name, bio, phone, is_host, driving_license_verified, identity_verified, identity_status, identity_error, date_of_birth, created_at")
       .eq("id", user.id)
       .single(),
     supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("host_id", user.id),
@@ -35,8 +38,8 @@ export default async function ProfilePage() {
   const checklist = [
     { label: "Email", done: !!user.email_confirmed_at, todo: "Email not confirmed" },
     { label: "Phone", done: !!profile?.phone, todo: "Add phone", href: "#phone" },
-    { label: "Driver's licence", done: !!profile?.driving_license_verified, todo: "Licence not checked" },
-    { label: "ID", done: !!profile?.identity_verified, todo: "ID not checked" },
+    { label: "Driver's licence", done: !!profile?.driving_license_verified, todo: "Licence not checked", href: "#licence" },
+    { label: "ID", done: !!profile?.identity_verified, todo: "ID not checked", href: "#licence" },
   ];
   const done = checklist.filter((c) => c.done).length;
 
@@ -56,6 +59,7 @@ export default async function ProfilePage() {
             {" · "}
             {profile?.is_host ? "renting and hosting" : "renting"}
           </p>
+          <GuestRecord guestId={user.id} variant="line" className="text-base text-peach-ink" />
         </div>
         <div className="flex flex-[1_1_340px] flex-col gap-3 rounded-[24px] bg-white p-[18px]">
           <div className="flex items-baseline justify-between">
@@ -100,23 +104,25 @@ export default async function ProfilePage() {
             full_name: profile?.full_name ?? "",
             phone: profile?.phone ?? null,
             bio: profile?.bio ?? null,
+            date_of_birth: profile?.date_of_birth ?? null,
           }}
+          dobLocked={!!profile?.identity_verified}
           email={user.email ?? ""}
         />
       </Tile>
 
       <div className="flex flex-col gap-4">
-        <Tile tone="sky" className="flex flex-wrap items-center gap-[18px] p-6">
+        <Tile id="licence" tone="sky" className="flex flex-wrap items-start gap-[18px] p-6">
           <span className="flex size-16 items-center justify-center rounded-[18px] bg-white">
             <IdCard className="size-[30px]" strokeWidth={1.75} />
           </span>
           <span className="flex-[1_1_200px]">
             <span className="mb-1.5 block font-display text-[24px] font-extrabold">Driver&apos;s licence</span>
-            <span className="text-[15px] text-sky-ink">
-              {profile?.driving_license_verified
-                ? "Checked. Hosts see a checkmark, never the photo."
-                : "Licence checks aren't set up yet. Bring your licence to pick-up."}
-            </span>
+            <LicenceCheck
+              status={profile?.driving_license_verified ? "verified" : (profile?.identity_status ?? "unverified")}
+              error={profile?.identity_error ?? null}
+              returned={verify === "done"}
+            />
           </span>
         </Tile>
 
