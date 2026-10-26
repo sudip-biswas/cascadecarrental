@@ -4,10 +4,13 @@ import { Container, Divider, PriceRow, Tag, Tile, TileTitle } from "@/components
 import { Button } from "@/components/ui/button";
 import { CancelTripButton } from "@/components/trips/CancelTripButton";
 import { ReviewForm } from "@/components/trips/ReviewForm";
+import { InspectionPanel } from "@/components/trip-panels/InspectionPanel";
+import { ChargesPanel } from "@/components/trip-panels/ChargesPanel";
+import { ChangePanel } from "@/components/trip-panels/ChangePanel";
 import { freeCancellationUntil, guestCancellation } from "@/lib/cancellation";
-import { tripDays } from "@/lib/pricing";
 import { tripStatus } from "@/lib/trip-status";
-import { cn, formatCurrency, formatDate, formatDateShort, formatDateTime, formatPrice, pluralize } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatDateShort, formatDateTime, pluralize } from "@/lib/utils";
+import { receiptLines } from "../[tripId]/receipt/lines";
 import { type TripRow, carName, hostFirstName, paidLabel } from "../_lib/trip-row";
 import { CarSummary, type Step, Steps, daysBetween, mapsUrl } from "./parts";
 import { AutoRefresh } from "./auto-refresh";
@@ -95,17 +98,15 @@ function Countdown({ trip, now }: { trip: TripRow; now: Date }) {
   );
 }
 
-export function TripView({ trip, reviewed }: { trip: TripRow; reviewed: boolean }) {
+export function TripView({ trip, reviewed, userId }: { trip: TripRow; reviewed: boolean; userId: string }) {
   const now = new Date();
   const host = hostFirstName(trip);
   const status = tripStatus(trip, "guest");
   const confirmed = trip.status === "approved" || trip.status === "active";
   const cancelled = trip.status === "cancelled_guest" || trip.status === "cancelled_host";
   const terms = guestCancellation(trip, now);
-  const days = tripDays(trip.starts_at, trip.ends_at);
-  const base = trip.base_cents ?? trip.daily_rate_cents * days;
-  const discounts = base - trip.subtotal_cents;
-  const directions = mapsUrl(trip);
+  // A delivered car comes to the guest, so there's nowhere to get directions to.
+  const directions = trip.delivery_address ? null : mapsUrl(trip);
   const heroTone = cancelled ? "peach" : "sky";
 
   return (
@@ -133,12 +134,13 @@ export function TripView({ trip, reviewed }: { trip: TripRow; reviewed: boolean 
             <Tile className="flex flex-col gap-3 sm:p-6">
               <span className="flex items-center gap-2 text-sm font-semibold text-slate">
                 <MapPin className="size-4" strokeWidth={1.75} />
-                Pick-up and return
+                {trip.delivery_address ? "Delivered to you" : "Pick-up and return"}
               </span>
               <span className="font-display text-[clamp(24px,3vw,30px)] leading-[1.12] font-extrabold tracking-[-0.02em]">
-                {confirmed && trip.vehicle?.location_address ? trip.vehicle.location_address : trip.pickup_location}
+                {trip.delivery_address ??
+                  (confirmed && trip.vehicle?.location_address ? trip.vehicle.location_address : trip.pickup_location)}
               </span>
-              {!confirmed && trip.status === "pending" && (
+              {!confirmed && !trip.delivery_address && trip.status === "pending" && (
                 <span className="text-[15px] text-slate">The exact spot shows here once {host} says yes.</span>
               )}
               <span className="mt-1 flex flex-wrap gap-2">
@@ -157,6 +159,10 @@ export function TripView({ trip, reviewed }: { trip: TripRow; reviewed: boolean 
           )}
 
           {trip.status === "completed" && !reviewed && <ReviewForm tripId={trip.id} carName={carName(trip)} />}
+
+          <ChangePanel tripId={trip.id} viewer="guest" userId={userId} />
+          <InspectionPanel tripId={trip.id} viewer="guest" userId={userId} />
+          <ChargesPanel tripId={trip.id} viewer="guest" userId={userId} />
 
           <Tile className="flex flex-col gap-4 sm:p-6">
             <TileTitle>The trip</TileTitle>
@@ -177,24 +183,20 @@ export function TripView({ trip, reviewed }: { trip: TripRow; reviewed: boolean 
 
           <Tile className="flex flex-col gap-2.5">
             <TileTitle className="mb-1 text-[24px]">Receipt</TileTitle>
-            <PriceRow
-              label={
-                base === trip.daily_rate_cents * days
-                  ? `${pluralize(days, "day")} × ${formatPrice(trip.daily_rate_cents)}`
-                  : `${pluralize(days, "day")}, avg ${formatPrice(trip.daily_rate_cents)}`
-              }
-              value={formatCurrency(base)}
-            />
-            {discounts > 0 && <PriceRow label="Discounts" value={`−${formatCurrency(discounts)}`} />}
-            {trip.protection_cost_cents > 0 && (
+            {receiptLines(trip).map((line, i) => (
               <PriceRow
-                label={`${trip.protection_plan ? `${trip.protection_plan[0].toUpperCase()}${trip.protection_plan.slice(1)} ` : ""}protection`}
-                value={formatCurrency(trip.protection_cost_cents)}
+                key={line.label}
+                label={i === 0 && line.detail ? line.detail : line.label}
+                value={line.cents < 0 ? `−${formatCurrency(-line.cents)}` : formatCurrency(line.cents)}
               />
-            )}
-            <PriceRow label="Tax, 10.9%" value={formatCurrency(trip.tax_cents)} />
+            ))}
             <Divider className="mt-1" />
             <PriceRow strong label={paidLabel(trip)} value={formatCurrency(trip.total_cents)} />
+            {!cancelled && trip.payment_status !== "pending" && (
+              <Button asChild variant="secondary" size="sm" className="mt-1 self-start">
+                <Link href={`/trips/${trip.id}/receipt`}>Full receipt</Link>
+              </Button>
+            )}
           </Tile>
 
           {terms.canCancel && (

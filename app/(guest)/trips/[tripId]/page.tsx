@@ -64,5 +64,5 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
 
   const cancelled = trip.status === "cancelled_guest" || trip.status === "cancelled_host";
   if (booked === "1" && !cancelled) return <BookedView trip={trip} />;
-  return <TripView trip={trip} reviewed={!!review} />;
+  return <TripView trip={trip} reviewed={!!review} userId={user.id} />;
 }

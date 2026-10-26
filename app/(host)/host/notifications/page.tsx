@@ -6,6 +6,8 @@ import { PageTitle, Tile, TileTitle, toneClass, type Tone } from "@/components/k
 import { listConversations } from "@/components/messaging/inbox";
 import { settleTripStatuses } from "@/lib/trips";
 import { cn, formatDateShort, formatDateTime, formatRange, pluralize } from "@/lib/utils";
+import { MarkRead } from "@/app/(guest)/notifications/_components/mark-read";
+import { isNew, noticeStyle, noticeTime } from "@/app/(guest)/notifications/_components/notice-style";
 
 export const instant = false;
 export const metadata = { title: "Notifications" };
@@ -52,7 +54,7 @@ export default async function HostNotificationsPage() {
   const soon = new Date(now.getTime() + 2 * DAY).toISOString();
   const monthAgo = new Date(now.getTime() - 30 * DAY).toISOString();
 
-  const [requests, pickups, returns, reviews, conversations] = await Promise.all([
+  const [requests, pickups, returns, reviews, conversations, notices] = await Promise.all([
     supabase
       .from("trips")
       .select(TRIP_SELECT)
@@ -80,9 +82,19 @@ export default async function HostNotificationsPage() {
       .from("reviews")
       .select("id, rating_overall, created_at, reviewer:profiles!reviewer_id(full_name), vehicle:vehicles(model)")
       .eq("reviewee_id", user.id)
+      .eq("kind", "guest_to_host")
       .gte("created_at", monthAgo)
       .order("created_at", { ascending: false }),
     listConversations(supabase, user.id, "host"),
+    // What we've told this host about their trips (and emailed them).
+    supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", user.id)
+      .like("href", "/host%")
+      .gte("created_at", monthAgo)
+      .order("created_at", { ascending: false })
+      .limit(40),
   ]);
 
   const car = (t: TripRow) => t.vehicle?.model ?? "car";
@@ -139,15 +151,32 @@ export default async function HostNotificationsPage() {
     detail: formatDateShort(r.created_at),
   }));
 
+  const nowMs = now.getTime();
+  const updates: Item[] = (notices.data ?? []).map((n) => {
+    const style = noticeStyle(n.kind);
+    return {
+      key: `notice-${n.id}`,
+      href: n.href ?? "/host/trips",
+      icon: style.icon,
+      tone: style.tone,
+      title: n.title,
+      detail: [noticeTime(n.created_at, nowMs), n.body?.split("\n")[0]].filter(Boolean).join(" · "),
+      unread: isNew(n, nowMs),
+    };
+  });
+  const unreadIds = (notices.data ?? []).filter((n) => !n.read_at).map((n) => n.id);
+
   const groups = [
     { label: "Needs you", items: needsYou },
     { label: "Next 48 hours", items: comingUp },
+    { label: "Updates this month", items: updates },
     { label: "Reviews this month", items: earlier },
   ].filter((g) => g.items.length > 0);
 
   return (
     <div className="flex flex-col gap-4">
       <PageTitle title="Notifications" />
+      {unreadIds.length > 0 && <MarkRead ids={unreadIds} />}
 
       <div className="flex flex-wrap items-start gap-4">
         <Tile className="flex min-w-0 flex-[999_1_480px] flex-col gap-1.5 p-3.5 sm:p-3.5">
@@ -158,7 +187,8 @@ export default async function HostNotificationsPage() {
               </span>
               <h2 className="text-[26px] leading-tight">All quiet.</h2>
               <p className="max-w-[440px] text-base text-slate">
-                New requests, guest messages, pick-ups and returns in the next two days, and new reviews show up here.
+                New requests, guest messages, pick-ups and returns in the next two days, trip updates and new reviews
+                show up here.
               </p>
             </div>
           ) : (
@@ -176,10 +206,12 @@ export default async function HostNotificationsPage() {
         <Tile className="flex min-w-0 flex-[1_1_320px] flex-col gap-2 p-[22px]">
           <TileTitle>About these</TileTitle>
           <p className="text-[15px] text-slate">
-            Cascade doesn&apos;t send email or text alerts yet, so check here and your inbox for requests. Answer
-            requests before pick-up, or they close on their own and the guest&apos;s card is released.
+            We email you about new requests, bookings, cancellations and pick-ups too. Answer requests before
+            pick-up, or they close on their own and the guest&apos;s card is released.
           </p>
-          <p className="text-[15px] text-slate">Payouts aren&apos;t set up yet, so there are no payout updates here.</p>
+          <p className="text-[15px] text-slate">
+            When a trip ends, your share goes to your bank if you&apos;ve connected it in Earnings.
+          </p>
         </Tile>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { CANCEL_REASON } from "@/lib/trip-status";
 import { applyPaymentIntent, capturePayment, settleCancellation } from "@/lib/trips";
+import { notifyTripLater } from "@/lib/notify";
 
 const schema = z.object({
   action: z.enum(["approve", "reject"]),
@@ -53,6 +54,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ tripId
         updated_at: now,
       })
       .eq("id", tripId);
+    notifyTripLater(tripId, "declined");
     return NextResponse.json({ status: "cancelled_host" });
   }
 
@@ -72,6 +74,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ tripId
     }
   }
 
+  // Tells the guest the host said yes.
   const updated = await applyPaymentIntent(pi);
   if (updated?.status !== "approved") {
     return fail(

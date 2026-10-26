@@ -4,6 +4,8 @@ import { stripe } from "@/lib/stripe/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CANCEL_REASON } from "@/lib/trip-status";
 import { applyPaymentIntent } from "@/lib/trips";
+import { handleIdentityEvent } from "@/lib/identity";
+import { notifyTripLater } from "@/lib/notify";
 
 export async function POST(req: Request) {
   const body = await req.text();
@@ -18,6 +20,9 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
+
+  // Driver verification events are handled on their own.
+  if (await handleIdentityEvent(event)) return NextResponse.json({ received: true });
 
   switch (event.type) {
     case "payment_intent.succeeded":
@@ -40,11 +45,13 @@ export async function POST(req: Request) {
           .update({ payment_status: "refunded", updated_at: now })
           .eq("stripe_payment_intent_id", paymentIntentId);
         // A trip that hasn't started is off once its money is back.
-        await admin
+        const { data: called } = await admin
           .from("trips")
           .update({ status: "cancelled_host", cancellation_reason: CANCEL_REASON.refunded, cancelled_at: now })
           .eq("stripe_payment_intent_id", paymentIntentId)
-          .in("status", ["pending", "approved"]);
+          .in("status", ["pending", "approved"])
+          .select("id");
+        for (const trip of called ?? []) notifyTripLater(trip.id, "cancelled_by_cascade");
       }
       break;
     }

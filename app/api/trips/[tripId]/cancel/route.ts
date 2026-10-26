@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { guestCancellation } from "@/lib/cancellation";
 import { CANCEL_REASON } from "@/lib/trip-status";
 import { settleCancellation } from "@/lib/trips";
+import { notifyTripLater } from "@/lib/notify";
 
 function fail(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -62,5 +63,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ tripId
     .eq("id", tripId);
   if (error) return fail("Failed to cancel trip", 500);
 
-  return NextResponse.json({ status, refundCents: paymentStatus === "refunded" ? refundCents : 0 });
+  const refunded = paymentStatus === "refunded" ? refundCents : 0;
+  if (isGuest) notifyTripLater(tripId, "cancelled_by_guest", { amountCents: refunded || undefined });
+  else notifyTripLater(tripId, "cancelled_by_host");
+
+  return NextResponse.json({ status, refundCents: refunded });
 }

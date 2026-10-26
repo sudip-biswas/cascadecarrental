@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
+import { Bell, Heart, Search } from "lucide-react";
 import { cn, formatRange, zonedInstant } from "@/lib/utils";
 
 /** The search pill in the nav. Shows the current search when there is one. */
@@ -41,7 +41,11 @@ const linkClass =
 interface Account {
   initial: string;
   unread: number;
+  notices: number;
 }
+
+const iconLinkClass =
+  "relative flex size-[42px] items-center justify-center rounded-[12px] transition-colors hover:bg-board";
 
 export function NavLinks({ account }: { account: Account | null }) {
   const pathname = usePathname();
@@ -76,6 +80,19 @@ export function NavLinks({ account }: { account: Account | null }) {
         Trips
       </Link>
       <Link
+        href="/favorites"
+        aria-label="Favorites"
+        aria-current={isActive("/favorites") ? "page" : undefined}
+        className={cn(
+          linkClass,
+          "px-[11px] lg:px-3.5",
+          isActive("/favorites") && "bg-sky hover:bg-sky"
+        )}
+      >
+        <Heart className="size-5" strokeWidth={1.9} />
+        <span className="hidden lg:inline">Favorites</span>
+      </Link>
+      <Link
         href="/messages"
         aria-current={isActive("/messages") ? "page" : undefined}
         className={cn(linkClass, "hidden md:flex", isActive("/messages") && "bg-sky hover:bg-sky")}
@@ -84,6 +101,19 @@ export function NavLinks({ account }: { account: Account | null }) {
         {account.unread > 0 && (
           <span className="rounded-[7px] bg-cobalt px-1.5 py-px text-[12px] font-extrabold text-white">
             {account.unread}
+          </span>
+        )}
+      </Link>
+      <Link
+        href="/notifications"
+        aria-label={account.notices > 0 ? `Notifications, ${account.notices} new` : "Notifications"}
+        aria-current={isActive("/notifications") ? "page" : undefined}
+        className={cn(iconLinkClass, isActive("/notifications") && "bg-sky hover:bg-sky")}
+      >
+        <Bell className="size-5" strokeWidth={1.9} />
+        {account.notices > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 rounded-[7px] bg-cobalt px-1.5 py-px text-[11px] font-extrabold text-white">
+            {account.notices > 99 ? "99+" : account.notices}
           </span>
         )}
       </Link>

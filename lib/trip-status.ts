@@ -3,8 +3,8 @@ import type { Trip } from "@/lib/supabase/types";
 
 type StatusTrip = Pick<Trip, "status" | "payment_status">;
 
-/** How a trip's state reads to the guest or the host, with the fill colour for its label. */
-export function tripStatus(trip: StatusTrip, viewer: "guest" | "host"): { label: string; tone: Tone } {
+/** How a trip's state reads to the guest, the host or Cascade, with the fill colour for its label. */
+export function tripStatus(trip: StatusTrip, viewer: "guest" | "host" | "admin"): { label: string; tone: Tone } {
   switch (trip.status) {
     case "pending":
       if (trip.payment_status !== "authorized") return { label: "Finishing payment", tone: "board" };

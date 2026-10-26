@@ -10,11 +10,12 @@ export const getGuestNav = cache(async () => {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const [{ data: profile }, unread] = await Promise.all([
+  const [{ data: profile }, unread, { count: notices }] = await Promise.all([
     supabase.from("profiles").select("full_name").eq("id", user.id).single(),
     unreadCount(supabase, user.id, "guest"),
+    supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", user.id).is("read_at", null),
   ]);
-  return { initial: (profile?.full_name || user.email || "?")[0].toUpperCase(), unread };
+  return { initial: (profile?.full_name || user.email || "?")[0].toUpperCase(), unread, notices: notices ?? 0 };
 });
 
 export const getHostNav = cache(async (hostId: string) => {

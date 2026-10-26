@@ -78,7 +78,7 @@ export default async function HostTripsPage({ searchParams }: PageProps<"/host/t
 function TripLine({ trip, detail }: { trip: HostTrip; detail: string }) {
   const status = tripStatus(trip, "host");
   return (
-    <div className="flex items-center gap-3 rounded-[18px] bg-board p-3.5">
+    <Link href={`/host/trips/${trip.id}`} className="flex items-center gap-3 rounded-[18px] bg-board p-3.5 hover:bg-line">
       <span aria-hidden className={cn("w-2 self-stretch rounded-[4px]", trip.status === "active" ? "bg-cobalt" : "bg-ink")} />
       <span className="min-w-0 flex-1">
         <span className="block text-base font-extrabold">
@@ -92,7 +92,7 @@ function TripLine({ trip, detail }: { trip: HostTrip; detail: string }) {
         <span className="block text-base font-extrabold">{formatCurrency(hostEarningsCents(trip.subtotal_cents))}</span>
         <span className="text-[13px] text-slate">to you</span>
       </span>
-    </div>
+    </Link>
   );
 }
 

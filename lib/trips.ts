@@ -4,6 +4,8 @@ import type { Database, Trip } from "@/lib/supabase/types";
 import { stripe } from "@/lib/stripe/server";
 import { CANCEL_REASON } from "@/lib/trip-status";
 import { hostEarningsCents, type DailyPrices } from "@/lib/pricing";
+import { notifyTrip, notifyTripLater, type TripEvent } from "@/lib/notify";
+import { holdDeposit } from "@/lib/charges";
 
 type TripUpdate = Database["public"]["Tables"]["trips"]["Update"];
 
@@ -151,7 +153,10 @@ export async function applyPaymentIntent(pi: Stripe.PaymentIntent) {
 
   const now = new Date().toISOString();
   const cancelled = isCancelled(trip.status);
+  // The saved card, so charges after the trip can use it.
+  const paymentMethod = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id;
   let update: TripUpdate | null = null;
+  let event: TripEvent | null = null;
 
   switch (pi.status) {
     case "succeeded": {
@@ -166,15 +171,22 @@ export async function applyPaymentIntent(pi: Stripe.PaymentIntent) {
       update = {
         payment_status: "captured",
         stripe_charge_id: charge ?? null,
+        ...(paymentMethod ? { stripe_payment_method_id: paymentMethod } : {}),
         ...(trip.status === "pending" ? { status: "approved" as const, approved_at: now } : {}),
       };
+      // A held card being charged means the host accepted; otherwise it was instant book.
+      if (trip.status === "pending") event = trip.payment_status === "authorized" ? "accepted" : "booked";
       break;
     }
     case "requires_capture": {
       if (cancelled) {
         update = { payment_status: await releasePayment(pi.id) };
       } else if (trip.payment_status === "pending" || trip.payment_status === "failed") {
-        update = { payment_status: "authorized" };
+        update = {
+          payment_status: "authorized",
+          ...(paymentMethod ? { stripe_payment_method_id: paymentMethod } : {}),
+        };
+        event = "requested";
       }
       break;
     }
@@ -187,6 +199,7 @@ export async function applyPaymentIntent(pi: Stripe.PaymentIntent) {
           cancellation_reason: expired ? CANCEL_REASON.hostMissed : CANCEL_REASON.paymentCancelled,
           cancelled_at: now,
         };
+        if (expired && trip.payment_status === "authorized") event = "expired";
       } else if (trip.payment_status === "pending" || trip.payment_status === "authorized") {
         update = { payment_status: "voided" };
       }
@@ -206,6 +219,8 @@ export async function applyPaymentIntent(pi: Stripe.PaymentIntent) {
   }
 
   if (update) await updateTrip(trip.id, update);
+  // Both the webhook and the page can get here for one change; the notice is sent once.
+  if (event) notifyTripLater(trip.id, event);
   return { ...trip, ...update };
 }
 
@@ -232,16 +247,19 @@ export async function settleCancellation(
   return trip.payment_status;
 }
 
-/**
- * Transfers the host's share of a completed trip to their Stripe Connect
- * account. Idempotent — Stripe deduplicates on the idempotency key.
- */
-async function payoutHost(trip: {
+interface PayoutTrip {
   id: string;
   host_id: string;
   subtotal_cents: number;
   stripe_charge_id: string | null;
-}) {
+}
+
+/**
+ * Transfers the host's share of a completed trip to their Stripe Connect
+ * account and marks it paid out. Idempotent — Stripe deduplicates on the
+ * idempotency key. False when the host has no bank to pay yet.
+ */
+async function payoutHost(trip: PayoutTrip): Promise<boolean> {
   const admin = createAdminClient();
   const { data: profile } = await admin
     .from("profiles")
@@ -249,77 +267,165 @@ async function payoutHost(trip: {
     .eq("id", trip.host_id)
     .single();
 
-  if (!profile?.stripe_account_id) return; // host hasn't connected their bank yet
+  if (!profile?.stripe_account_id) return false; // host hasn't connected their bank yet
 
   const amount = hostEarningsCents(trip.subtotal_cents);
-  if (amount <= 0) return;
-
-  await stripe.transfers.create(
-    {
-      amount,
-      currency: "usd",
-      destination: profile.stripe_account_id,
-      transfer_group: trip.id,
-      ...(trip.stripe_charge_id ? { source_transaction: trip.stripe_charge_id } : {}),
-    },
-    { idempotencyKey: `payout-${trip.id}` }
-  );
+  if (amount > 0) {
+    await stripe.transfers.create(
+      {
+        amount,
+        currency: "usd",
+        destination: profile.stripe_account_id,
+        transfer_group: trip.id,
+        ...(trip.stripe_charge_id ? { source_transaction: trip.stripe_charge_id } : {}),
+      },
+      { idempotencyKey: `payout-${trip.id}` }
+    );
+  }
+  await updateTrip(trip.id, { paid_out_at: new Date().toISOString() });
+  return true;
 }
 
+export interface SettleResult {
+  completed: number;
+  started: number;
+  expired: number;
+  paidOut: number;
+}
+
+const PAYOUT_SELECT = "id, host_id, subtotal_cents, stripe_charge_id";
+
 /**
- * Moves a person's trips along as time passes: paid trips start and finish,
- * requests nobody answered before pick-up are dropped, and so are checkouts
- * that never got paid.
+ * Moves trips along as time passes: paid trips start and finish, requests
+ * nobody answered before pick-up are dropped, and so are checkouts that never
+ * got paid. `scope` is an `.or()` filter that limits it to someone's trips.
+ * Each update only returns the rows it changed, so two runs at once can't
+ * both act on a trip.
  */
-export async function settleTripStatuses(userId: string) {
+async function settle(scope: string | null): Promise<SettleResult> {
   const admin = createAdminClient();
   const now = new Date().toISOString();
-  const mine = `guest_id.eq.${userId},host_id.eq.${userId}`;
+  const scoped = <Q extends { or: (filter: string) => Q }>(query: Q) => (scope ? query.or(scope) : query);
+  const result: SettleResult = { completed: 0, started: 0, expired: 0, paidOut: 0 };
 
-  // Fetch trips to complete so we can trigger payouts after the status update
-  const { data: toComplete } = await admin
-    .from("trips")
-    .select("id, host_id, subtotal_cents, stripe_charge_id")
-    .in("status", ["approved", "active"])
-    .eq("payment_status", "captured")
-    .lte("ends_at", now)
-    .or(mine);
-
-  if (toComplete?.length) {
-    await admin
+  const { data: completed } = await scoped(
+    admin
       .from("trips")
-      .update({ status: "completed", updated_at: now })
-      .in("id", toComplete.map((t) => t.id));
+      .update({ status: "completed", completed_at: now, updated_at: now })
+      .in("status", ["approved", "active"])
+      .eq("payment_status", "captured")
+      .lte("ends_at", now)
+  ).select("id");
+  for (const trip of completed ?? []) notifyTripLater(trip.id, "completed");
+  result.completed = completed?.length ?? 0;
 
-    // Fire payouts in the background; errors are non-fatal
-    await Promise.allSettled(toComplete.map(payoutHost));
-  }
+  // Pay hosts for finished trips, including ones an earlier run couldn't pay
+  // (no bank connected yet, or Stripe was down). Trips completed before
+  // completed_at existed were paid by the old code, so they're left alone.
+  const { data: unpaid } = await scoped(
+    admin
+      .from("trips")
+      .select(PAYOUT_SELECT)
+      .eq("status", "completed")
+      .eq("payment_status", "captured")
+      .not("completed_at", "is", null)
+      .is("paid_out_at", null)
+  );
+  const payouts = await Promise.allSettled((unpaid ?? []).map(payoutHost));
+  for (const p of payouts) if (p.status === "rejected") console.error("[payout]", p.reason);
+  result.paidOut = payouts.filter((p) => p.status === "fulfilled" && p.value).length;
 
-  await admin
-    .from("trips")
-    .update({ status: "active", updated_at: now })
-    .eq("status", "approved")
-    .eq("payment_status", "captured")
-    .lte("starts_at", now)
-    .or(mine);
+  const { data: started } = await scoped(
+    admin
+      .from("trips")
+      .update({ status: "active", updated_at: now })
+      .eq("status", "approved")
+      .eq("payment_status", "captured")
+      .lte("starts_at", now)
+  ).select("id");
+  // holdDeposit never throws, so one card can't stop the rest.
+  await Promise.all((started ?? []).map((t) => holdDeposit(t.id)));
+  result.started = started?.length ?? 0;
 
-  const { data: lapsed } = await admin
-    .from("trips")
-    .select("id, payment_status, stripe_payment_intent_id")
-    .eq("status", "pending")
-    .lte("starts_at", now)
-    .or(mine);
+  const { data: lapsed } = await scoped(
+    admin
+      .from("trips")
+      .select("id, payment_status, stripe_payment_intent_id")
+      .eq("status", "pending")
+      .lte("starts_at", now)
+  );
 
   for (const trip of lapsed ?? []) {
     const wasRequest = trip.payment_status === "authorized";
-    const released = await releasePayment(trip.stripe_payment_intent_id);
-    await updateTrip(trip.id, {
-      status: wasRequest ? "cancelled_host" : "cancelled_guest",
-      payment_status: released === "voided" && trip.payment_status === "failed" ? "failed" : released,
-      cancellation_reason: wasRequest ? CANCEL_REASON.hostMissed : CANCEL_REASON.checkoutNotFinished,
-      cancelled_at: now,
-    });
+    try {
+      const released = await releasePayment(trip.stripe_payment_intent_id);
+      await updateTrip(trip.id, {
+        status: wasRequest ? "cancelled_host" : "cancelled_guest",
+        payment_status: released === "voided" && trip.payment_status === "failed" ? "failed" : released,
+        cancellation_reason: wasRequest ? CANCEL_REASON.hostMissed : CANCEL_REASON.checkoutNotFinished,
+        cancelled_at: now,
+      });
+    } catch (err) {
+      // Left pending, so the next run tries again.
+      console.error("[settle] couldn't close", trip.id, err);
+      continue;
+    }
+    if (wasRequest) {
+      notifyTripLater(trip.id, "expired");
+      result.expired++;
+    }
   }
+
+  return result;
+}
+
+/** Settles one person's trips, as a guest or a host. Pages call this on load. */
+export function settleTripStatuses(userId: string) {
+  return settle(`guest_id.eq.${userId},host_id.eq.${userId}`);
+}
+
+/** Settles every trip. The cron calls this. */
+export function settleAllTrips() {
+  return settle(null);
+}
+
+const HOUR = 60 * 60 * 1000;
+
+/**
+ * Cron: reminds guests and hosts about pick-ups in the next day and guests
+ * about returns in the next 3 hours. Each trip is claimed before the notice
+ * goes out, so it's only reminded once.
+ */
+export async function sendTripReminders() {
+  const admin = createAdminClient();
+  const now = Date.now();
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  const { data: pickups } = await admin
+    .from("trips")
+    .update({ pickup_reminded_at: iso(now) })
+    .eq("status", "approved")
+    .eq("payment_status", "captured")
+    .is("pickup_reminded_at", null)
+    .gt("starts_at", iso(now))
+    .lte("starts_at", iso(now + 24 * HOUR))
+    .select("id");
+
+  const { data: returns } = await admin
+    .from("trips")
+    .update({ return_reminded_at: iso(now) })
+    .in("status", ["approved", "active"])
+    .eq("payment_status", "captured")
+    .is("return_reminded_at", null)
+    .gt("ends_at", iso(now))
+    .lte("ends_at", iso(now + 3 * HOUR))
+    .select("id");
+
+  await Promise.all([
+    ...(pickups ?? []).map((t) => notifyTrip(t.id, "pickup_soon")),
+    ...(returns ?? []).map((t) => notifyTrip(t.id, "return_soon")),
+  ]);
+  return { pickups: pickups?.length ?? 0, returns: returns?.length ?? 0 };
 }
 
 /** Charges a held card when the host accepts a request. */
