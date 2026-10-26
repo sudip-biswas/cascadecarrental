@@ -15,6 +15,10 @@ import {
   Shield,
   Star,
   TrendingUp,
+  Gavel,
+  TicketPercent,
+  UserRound,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,7 +45,16 @@ export function HostSidebar({ requests, unread, isAdmin = false }: { requests: n
     { href: "/host/business/ratings", label: "Ratings", icon: Star, match: (p) => p.startsWith("/host/business/ratings") },
     { href: "/host/hours", label: "Pickup and hours", icon: MapPin, match: (p) => p.startsWith("/host/hours") },
     { href: "/host/notifications", label: "Notifications", icon: Bell, match: (p) => p.startsWith("/host/notifications") },
-    ...(isAdmin ? [{ href: "/host/admin/personas", label: "Personas", icon: Shield, match: (p: string) => p.startsWith("/host/admin") }] : []),
+    ...(isAdmin
+      ? [
+          { href: "/host/admin", label: "Admin", icon: Shield, match: (p: string) => p === "/host/admin" },
+          { href: "/host/admin/disputes", label: "Disputes", icon: Gavel, match: (p: string) => p.startsWith("/host/admin/disputes") },
+          { href: "/host/admin/trips", label: "All trips", icon: Route, match: (p: string) => p.startsWith("/host/admin/trips") },
+          { href: "/host/admin/users", label: "Users", icon: Users, match: (p: string) => p.startsWith("/host/admin/users") },
+          { href: "/host/admin/promos", label: "Promo codes", icon: TicketPercent, match: (p: string) => p.startsWith("/host/admin/promos") },
+          { href: "/host/admin/personas", label: "Personas", icon: UserRound, match: (p: string) => p.startsWith("/host/admin/personas") },
+        ]
+      : []),
   ];
 
   return (
