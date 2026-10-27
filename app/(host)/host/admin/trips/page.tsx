@@ -10,7 +10,7 @@ import { UUID, emailsFor, requireAdminPage, todayBounds, usersByEmail } from "..
 import { SearchBox } from "../_components/bits";
 
 export const instant = false;
-export const metadata = { title: "Trips · Admin", ...NO_INDEX };
+export const metadata = { title: "Every trip · Admin", ...NO_INDEX };
 
 const FIELDS =
   "id, status, payment_status, starts_at, ends_at, total_cents, guest_id, host_id, guest:profiles!guest_id(full_name), host:profiles!host_id(full_name), vehicle:vehicles(make, model, year)";
@@ -66,7 +66,7 @@ export default async function AdminTripsPage({ searchParams }: PageProps<"/host/
 
   return (
     <div className="mx-auto flex w-full max-w-[1000px] flex-col gap-4">
-      <PageTitle title="Trips" lead="Find a trip by guest or host email, name or trip id. Type today for today's pick-ups and returns." />
+      <PageTitle title="Every trip" lead="Every trip on Cascade, from any host. Search by guest or host email, name or trip id. Type today for today's pick-ups and returns." />
       <SearchBox action="/host/admin/trips" q={q} placeholder="riley@example.com, trip id, or today" />
 
       {trips.length === 0 ? (

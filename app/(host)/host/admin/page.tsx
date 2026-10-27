@@ -68,7 +68,7 @@ export default async function AdminPage() {
       <Tile className="flex flex-wrap gap-2">
         {[
           { href: "/host/admin/disputes", label: "Disputes", icon: Gavel },
-          { href: "/host/admin/trips", label: "Trips", icon: CalendarClock },
+          { href: "/host/admin/trips", label: "Every trip", icon: CalendarClock },
           { href: "/host/admin/users", label: "Users", icon: Users },
           { href: "/host/admin/promos", label: "Promo codes", icon: TicketPercent },
           { href: "/host/admin/personas", label: "Personas", icon: Shield },
