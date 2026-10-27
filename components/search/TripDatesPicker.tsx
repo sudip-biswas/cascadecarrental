@@ -29,6 +29,8 @@ interface Props {
   onTimeChange?: (fromTime: string, untilTime: string) => void;
   /** Days that can't be picked at all, e.g. inside the host's notice window. */
   isDisabled?: (key: DateKey) => boolean;
+  /** The times a guest can pick on a date, e.g. inside the host's pickup hours. All by default. */
+  timeOptions?: (key: DateKey | undefined) => string[];
   /** Nights already taken. Shown struck through. */
   booked?: Set<DateKey>;
   /** Fill of the two fields: board on white tiles, white on board. */
@@ -74,6 +76,7 @@ export function TripDatesPicker({
   onChange,
   onTimeChange,
   isDisabled,
+  timeOptions,
   booked,
   tone = "board",
   note,
@@ -81,6 +84,12 @@ export function TripDatesPicker({
 }: Props) {
   const [open, setOpen] = useState(false);
   const today = todayKey();
+
+  /** Allowed times for a date, plus the current one so the select always shows it. */
+  function optionsFor(key: DateKey | undefined, current: string) {
+    const times = timeOptions?.(key) ?? TIME_STEPS;
+    return times.includes(current) ? times : [...times, current].sort();
+  }
 
   const selected: DateRange | undefined = from
     ? { from: keyToLocalDate(from), to: until ? keyToLocalDate(until) : undefined }
@@ -129,7 +138,7 @@ export function TripDatesPicker({
                 onChange={(e) => onTimeChange(e.target.value, untilTime)}
                 className="rounded-[10px] bg-board px-3 py-2 text-sm font-semibold text-ink outline-none focus:ring-2 focus:ring-ink"
               >
-                {TIME_STEPS.map((t) => (
+                {optionsFor(from, fromTime).map((t) => (
                   <option key={t} value={t}>{formatTime(t)}</option>
                 ))}
               </select>
@@ -141,7 +150,7 @@ export function TripDatesPicker({
                 onChange={(e) => onTimeChange(fromTime, e.target.value)}
                 className="rounded-[10px] bg-board px-3 py-2 text-sm font-semibold text-ink outline-none focus:ring-2 focus:ring-ink"
               >
-                {TIME_STEPS.map((t) => (
+                {optionsFor(until, untilTime).map((t) => (
                   <option key={t} value={t}>{formatTime(t)}</option>
                 ))}
               </select>

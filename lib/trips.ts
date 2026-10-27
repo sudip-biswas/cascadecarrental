@@ -6,6 +6,8 @@ import { CANCEL_REASON } from "@/lib/trip-status";
 import { hostEarningsCents, type DailyPrices } from "@/lib/pricing";
 import { notifyTrip, notifyTripLater, type TripEvent } from "@/lib/notify";
 import { holdDeposit } from "@/lib/charges";
+import { withBuffer } from "@/lib/trip-rules";
+import { sendDueScheduledMessages, syncTripMessagesLater } from "@/lib/scheduled-messages";
 
 type TripUpdate = Database["public"]["Tables"]["trips"]["Update"];
 
@@ -89,9 +91,14 @@ export async function releaseStaleCheckouts(vehicleId: string, guestId: string) 
   }
 }
 
-/** True when the car is booked or blocked for any part of [start, end). */
-export async function hasConflict(vehicleId: string, start: Date, end: Date) {
+/**
+ * True when the car is booked or blocked for any part of [start, end). Other
+ * trips count as `bufferHours` longer on both ends, so the host has time to
+ * turn the car around.
+ */
+export async function hasConflict(vehicleId: string, start: Date, end: Date, bufferHours = 0) {
   const admin = createAdminClient();
+  const bufferMs = bufferHours * 60 * 60 * 1000;
   const [trips, blocks] = await Promise.all([
     admin
       .from("trips")
@@ -99,8 +106,8 @@ export async function hasConflict(vehicleId: string, start: Date, end: Date) {
       .eq("vehicle_id", vehicleId)
       .not("status", "in", ACTIVE_STATUSES)
       .or(holdsDates())
-      .lt("starts_at", end.toISOString())
-      .gt("ends_at", start.toISOString())
+      .lt("starts_at", new Date(end.getTime() + bufferMs).toISOString())
+      .gt("ends_at", new Date(start.getTime() - bufferMs).toISOString())
       .limit(1),
     admin
       .from("vehicle_availability")
@@ -115,10 +122,11 @@ export async function hasConflict(vehicleId: string, start: Date, end: Date) {
   return trips.data.length > 0 || blocks.data.length > 0;
 }
 
-/** Booked and blocked ranges for a car, for date pickers. */
+/** Booked and blocked ranges for a car, for date pickers. Trips include the car's buffer. */
 export async function unavailableRanges(vehicleId: string) {
   const admin = createAdminClient();
-  const [{ data: trips }, { data: blocks }] = await Promise.all([
+  const [{ data: car }, { data: trips }, { data: blocks }] = await Promise.all([
+    admin.from("vehicles").select("trip_buffer_hours").eq("id", vehicleId).maybeSingle(),
     admin
       .from("trips")
       .select("starts_at, ends_at")
@@ -133,7 +141,7 @@ export async function unavailableRanges(vehicleId: string) {
       .gt("blocked_to", new Date().toISOString()),
   ]);
   return [
-    ...(trips ?? []).map((t) => ({ from: t.starts_at, to: t.ends_at })),
+    ...(trips ?? []).map((t) => withBuffer({ from: t.starts_at, to: t.ends_at }, car?.trip_buffer_hours ?? 0)),
     ...(blocks ?? []).map((b) => ({ from: b.blocked_from, to: b.blocked_to })),
   ];
 }
@@ -221,6 +229,7 @@ export async function applyPaymentIntent(pi: Stripe.PaymentIntent) {
   if (update) await updateTrip(trip.id, update);
   // Both the webhook and the page can get here for one change; the notice is sent once.
   if (event) notifyTripLater(trip.id, event);
+  if (event === "booked" || event === "accepted") syncTripMessagesLater(trip.id, { sendDue: true });
   return { ...trip, ...update };
 }
 
@@ -380,8 +389,13 @@ async function settle(scope: string | null): Promise<SettleResult> {
 }
 
 /** Settles one person's trips, as a guest or a host. Pages call this on load. */
-export function settleTripStatuses(userId: string) {
-  return settle(`guest_id.eq.${userId},host_id.eq.${userId}`);
+export async function settleTripStatuses(userId: string) {
+  // Also posts this person's due scheduled messages: one small query when none are.
+  const [result] = await Promise.all([
+    settle(`guest_id.eq.${userId},host_id.eq.${userId}`),
+    sendDueScheduledMessages({ userId }).catch((err) => console.error("[scheduled-messages]", err)),
+  ]);
+  return result;
 }
 
 /** Settles every trip. The cron calls this. */

@@ -22,6 +22,7 @@ export function ConversationList({
   viewer,
   basePath,
   title = "Inbox",
+  action,
   empty,
   className,
 }: {
@@ -30,6 +31,8 @@ export function ConversationList({
   viewer: "guest" | "host";
   basePath: string;
   title?: string;
+  /** Shown beside the title, like a link to scheduled messages. */
+  action?: React.ReactNode;
   empty: React.ReactNode;
   className?: string;
 }) {
@@ -37,7 +40,10 @@ export function ConversationList({
 
   return (
     <aside className={cn("flex min-w-0 flex-col gap-1.5 rounded-[28px] bg-white p-3.5", className)}>
-      <h1 className="mx-2 mt-1.5 mb-2.5 text-[40px] leading-[1.12] tracking-[-0.035em]">{title}</h1>
+      <div className="mx-2 mt-1.5 mb-2.5 flex items-center justify-between gap-3">
+        <h1 className="text-[40px] leading-[1.12] tracking-[-0.035em]">{title}</h1>
+        {action}
+      </div>
       {conversations.length === 0 ? (
         <div className="flex flex-col items-start gap-2 px-2 pb-4">
           <span className="flex size-12 items-center justify-center rounded-[15px] bg-board">

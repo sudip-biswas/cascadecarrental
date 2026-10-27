@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ConversationList } from "@/components/messaging/ConversationList";
+import { ScheduledLink } from "@/components/messaging/scheduled/ScheduledTabs";
 import { InboxShell, NoThread } from "@/components/messaging/InboxShell";
 import { listConversations } from "@/components/messaging/inbox";
 
@@ -25,6 +26,7 @@ export default async function HostInboxPage() {
           conversations={conversations}
           viewer="host"
           basePath="/host/inbox"
+          action={<ScheduledLink />}
           className="md:h-full md:overflow-y-auto"
           empty="Guests' questions and booking chats show up here."
         />

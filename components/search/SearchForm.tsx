@@ -136,7 +136,7 @@ export function SearchForm({ where = "", from, until, fromTime, untilTime, keep,
         className
       )}
     >
-      <div ref={containerRef} className="relative flex min-w-0 flex-[2_1_220px] flex-col">
+      <div ref={containerRef} className="relative flex min-w-0 flex-col sm:flex-[2_1_220px]">
         <label className="flex flex-col gap-0.5 rounded-[16px] bg-board px-4 py-2.5 focus-within:ring-2 focus-within:ring-ink">
           <span className="text-[13px] font-semibold text-slate">Where</span>
           <div className="flex items-center gap-2">
@@ -190,7 +190,7 @@ export function SearchForm({ where = "", from, until, fromTime, untilTime, keep,
         untilTime={times.until}
         onChange={(f, u) => setDates({ from: f, until: u })}
         onTimeChange={(ft, ut) => setTimes({ from: ft, until: ut })}
-        className="flex-[2_1_280px]"
+        className="sm:flex-[2_1_280px]"
       />
       <button
         type="submit"

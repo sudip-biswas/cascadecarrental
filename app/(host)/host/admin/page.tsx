@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BadgeCheck, CalendarClock, Gavel, Receipt, Shield, TicketPercent, Users, type LucideIcon } from "lucide-react";
+import { BadgeCheck, CalendarClock, Flag, Gavel, Receipt, Shield, TicketPercent, Users, type LucideIcon } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NO_INDEX } from "@/lib/site";
 import { PageTitle, Tile, type Tone } from "@/components/kit";
@@ -28,7 +28,7 @@ export default async function AdminPage() {
   const now = new Date().toISOString();
   const count = { count: "exact", head: true } as const;
 
-  const [disputes, awaiting, pickups, returns, verifications, promos] = await Promise.all([
+  const [disputes, awaiting, pickups, returns, verifications, promos, reports] = await Promise.all([
     admin.from("trip_charges").select("id", count).eq("status", "disputed"),
     admin.from("trip_charges").select("id", count).eq("status", "requested"),
     admin
@@ -45,6 +45,7 @@ export default async function AdminPage() {
       .lt("ends_at", day.end),
     admin.from("profiles").select("id", count).eq("identity_status", "pending"),
     admin.from("promo_codes").select("id", count).eq("active", true).or(`expires_at.is.null,expires_at.gt.${now}`),
+    admin.from("listing_reports").select("id", count).eq("status", "open"),
   ]);
 
   return (
@@ -63,6 +64,7 @@ export default async function AdminPage() {
         />
         <Stat href="/host/admin/users?q=pending" label="Pending verifications" count={verifications.count ?? 0} icon={BadgeCheck} tone="lilac" />
         <Stat href="/host/admin/promos" label="Active promo codes" count={promos.count ?? 0} icon={TicketPercent} tone="mint" />
+        <Stat href="/host/admin/reports" label="Reported listings" count={reports.count ?? 0} icon={Flag} tone="peach" />
       </div>
 
       <Tile className="flex flex-wrap gap-2">
@@ -72,6 +74,7 @@ export default async function AdminPage() {
           { href: "/host/admin/users", label: "Users", icon: Users },
           { href: "/host/admin/promos", label: "Promo codes", icon: TicketPercent },
           { href: "/host/admin/personas", label: "Personas", icon: Shield },
+          { href: "/host/admin/reports", label: "Reported listings", icon: Flag },
         ].map(({ href, label, icon: Icon }) => (
           <Link
             key={href}

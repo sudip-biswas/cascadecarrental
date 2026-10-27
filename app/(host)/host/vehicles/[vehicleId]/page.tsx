@@ -15,7 +15,10 @@ import { VehicleStatusToggle } from "@/components/host/VehicleStatusToggle";
 import { VehicleEditDialog } from "@/components/host/VehicleEditDialog";
 import { DeleteVehicleButton } from "@/components/host/DeleteVehicleButton";
 import { CarSettings } from "@/components/host/settings/CarSettings";
+import { formatBuffer } from "@/lib/trip-rules";
+import { PricingDiscounts } from "@/components/host/settings/PricingDiscounts";
 import { ExtrasManager } from "@/components/host/settings/ExtrasManager";
+import { GuestInstructions } from "@/components/host/settings/GuestInstructions";
 import { tripStatus } from "@/lib/trip-status";
 
 export const instant = false;
@@ -120,8 +123,6 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
               note="Trips already booked keep the price they were booked at."
               fields={[
                 { column: "daily_rate_cents", label: "Daily rate", value: car.daily_rate_cents, unit: "dollars", min: 1000, max: 100000 },
-                { column: "weekly_discount_pct", label: "Off trips of 7+ days", value: car.weekly_discount_pct, unit: "percent", min: 0, max: 50 },
-                { column: "monthly_discount_pct", label: "Off trips of 30+ days", value: car.monthly_discount_pct, unit: "percent", min: 0, max: 50 },
               ]}
             />
           </div>
@@ -134,7 +135,7 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
           </p>
           <div className="figures grid grid-cols-2 gap-2">
             <Fact tone="white" label="Week off" value={`${car.weekly_discount_pct}%`} />
-            <Fact tone="white" label="Month off" value={`${car.monthly_discount_pct}%`} />
+            <Fact tone="white" label="Last minute" value={car.last_minute_boost_pct ? `+${car.last_minute_boost_pct}%` : "Off"} />
           </div>
         </section>
 
@@ -159,7 +160,7 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
           </p>
         </section>
 
-        <section className="flex flex-col gap-1.5 rounded-[30px] bg-white p-5 sm:p-6">
+        <section id="trip-preferences" className="flex scroll-mt-24 flex-col gap-1.5 rounded-[30px] bg-white p-5 sm:p-6">
           <div className="mb-1 flex items-center justify-between">
             <h2 className="text-[26px]">Rules</h2>
             <Link href="/host/hours" className="rounded-[10px] bg-board px-3 py-2 text-sm font-bold hover:bg-line">
@@ -168,9 +169,15 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
           </div>
           <Row label="Trip length" value={`${car.min_trip_days} to ${pluralize(car.max_trip_days, "day")}`} />
           <Row label="Notice" value={car.advance_notice_hours ? pluralize(car.advance_notice_hours, "hour") : "None"} />
+          <Row label="Time between trips" value={formatBuffer(car.trip_buffer_hours)} />
+          {car.weekend_min_two_days && <Row label="Weekends" value="2-day minimum" />}
           <Row label="Instant book" value={car.instant_book ? "On" : "Off, you approve"} />
           <Row label="Pickup" value={car.location_name} />
         </section>
+      </div>
+
+      <div id="pricing" className="scroll-mt-24">
+        <PricingDiscounts car={car} />
       </div>
 
       <CarSettings car={car} />
@@ -178,6 +185,8 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
       <section className="rounded-[30px] bg-white p-5 sm:p-6">
         <ExtrasManager vehicleId={car.id} initialExtras={(extras ?? []) as VehicleExtra[]} />
       </section>
+
+      <GuestInstructions vehicleId={car.id} />
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-4">
         <section className="rounded-[30px] bg-white p-5 sm:p-6">

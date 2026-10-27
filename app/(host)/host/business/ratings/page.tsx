@@ -1,11 +1,15 @@
+import Link from "next/link";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Star } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { tripDays } from "@/lib/pricing";
-import { formatDate, pluralize } from "@/lib/utils";
+import { cn, formatDate, pluralize } from "@/lib/utils";
 import type { Review } from "@/lib/supabase/types";
-import { EmptyState, PageTitle, Tile, TileTitle } from "@/components/kit";
+import { EmptyState, PageTitle, Tag, Tile, TileTitle } from "@/components/kit";
 import { Initial, firstName } from "@/components/host/bits";
+import { CATEGORY_BY_KEY, ISSUE_TAGS, averageOf, type CategoryKey } from "@/components/reviews/categories";
+import { RatingsFilters } from "@/components/reviews/RatingsFilters";
+import { columnFor, fiveStars, percent, tagCounts } from "@/components/reviews/stats";
 import { ReplyForm } from "./ReplyForm";
 
 export const instant = false;
@@ -15,27 +19,38 @@ type ReviewRow = Pick<
   Review,
   | "id"
   | "created_at"
+  | "trip_id"
+  | "vehicle_id"
   | "reviewer_id"
   | "rating_overall"
   | "rating_cleanliness"
+  | "rating_maintenance"
+  | "rating_communication"
+  | "rating_convenience"
   | "rating_accuracy"
-  | "rating_value"
+  | "issue_tags"
   | "body"
   | "host_reply"
-> & {
-  reviewer: { full_name: string | null } | null;
-  trips: { starts_at: string; ends_at: string } | null;
-  vehicles: { make: string; model: string } | null;
-};
+> & { reviewer: { full_name: string | null } | null };
 
-function average(values: (number | null)[]): number | null {
-  const set = values.filter((v): v is number => v !== null);
-  return set.length ? set.reduce((a, b) => a + b, 0) / set.length : null;
-}
+type CarRow = { id: string; make: string; model: string; year: number };
 
-function Stars({ value, size = 26 }: { value: number; size?: number }) {
+/** Reviews listed before "Show all". */
+const PAGE = 20;
+
+const PERIODS = [
+  { value: "30", label: "Last 30 days" },
+  { value: "90", label: "Last 90 days" },
+  { value: "365", label: "Last 365 days" },
+  { value: "all", label: "All time" },
+];
+
+// Turo's order on this page: the categories hosts most often lose stars on first.
+const CARD_ORDER: CategoryKey[] = ["maintenance", "cleanliness", "accuracy", "communication", "convenience"];
+
+function Stars({ value, size = 18 }: { value: number; size?: number }) {
   return (
-    <span className="flex gap-1" role="img" aria-label={`${value.toFixed(1)} out of 5`}>
+    <span className="flex gap-0.5" role="img" aria-label={`${value} out of 5`}>
       {Array.from({ length: 5 }, (_, i) => (
         <Star
           key={i}
@@ -48,28 +63,35 @@ function Stars({ value, size = 26 }: { value: number; size?: number }) {
   );
 }
 
-export default async function RatingsPage() {
+function carName(car: CarRow | undefined) {
+  return car ? `${car.make} ${car.model} ${car.year}` : "";
+}
+
+export default async function RatingsPage({ searchParams }: PageProps<"/host/business/ratings">) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?redirectTo=/host/business/ratings");
 
-  const [{ data }, { count: carCount }] = await Promise.all([
+  const [params, { data: carsData }, { data: tripsData }, { data: reviewsData }] = await Promise.all([
+    searchParams,
+    supabase.from("vehicles").select("id, make, model, year").eq("host_id", user.id).order("created_at"),
+    supabase.from("trips").select("id, vehicle_id, ends_at").eq("host_id", user.id).eq("status", "completed"),
     supabase
       .from("reviews")
       .select(
-        "id, created_at, reviewer_id, rating_overall, rating_cleanliness, rating_accuracy, rating_value, body, host_reply, reviewer:profiles!reviewer_id(full_name), trips(starts_at, ends_at), vehicles(make, model)"
+        "id, created_at, trip_id, vehicle_id, reviewer_id, rating_overall, rating_cleanliness, rating_maintenance, rating_communication, rating_convenience, rating_accuracy, issue_tags, body, host_reply, reviewer:profiles!reviewer_id(full_name)"
       )
       .eq("reviewee_id", user.id)
       .eq("kind", "guest_to_host")
       .order("created_at", { ascending: false })
       .overrideTypes<ReviewRow[], { merge: false }>(),
-    supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("host_id", user.id),
   ]);
-  const reviews = data ?? [];
+  const cars = (carsData ?? []) as CarRow[];
+  const carsById = new Map(cars.map((c) => [c.id, c]));
 
-  if (reviews.length === 0) {
+  if (!reviewsData?.length) {
     return (
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
         <PageTitle title="Ratings" />
@@ -82,82 +104,224 @@ export default async function RatingsPage() {
     );
   }
 
-  const overall = average(reviews.map((r) => r.rating_overall)) ?? 0;
-  const parts = [
-    { label: "Clean", value: average(reviews.map((r) => r.rating_cleanliness)) },
-    { label: "As described", value: average(reviews.map((r) => r.rating_accuracy)) },
-    { label: "Value", value: average(reviews.map((r) => r.rating_value)) },
-  ].filter((p): p is { label: string; value: number } => p.value !== null);
-  const multipleCars = (carCount ?? 0) > 1;
+  // Filters live in the URL. Unknown values fall back to the defaults.
+  const pick = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
+  const carId = carsById.has(pick(params.car) ?? "") ? pick(params.car)! : null;
+  const period = PERIODS.find((p) => p.value === pick(params.period))?.value ?? "365";
+  const categoryParam = pick(params.category);
+  const category: CategoryKey | "overall" =
+    categoryParam && categoryParam in CATEGORY_BY_KEY ? (categoryParam as CategoryKey) : "overall";
+  const column = columnFor(category);
+  const categoryLabel = category === "overall" ? "Overall" : CATEGORY_BY_KEY[category].label;
+
+  // Everything counts by when the trip ended, so a trip and its review land in the same period.
+  const since = period === "all" ? null : new Date(new Date().getTime() - Number(period) * 86_400_000).toISOString();
+  const trips = (tripsData ?? []).filter((t) => (!carId || t.vehicle_id === carId) && (!since || t.ends_at >= since));
+  const tripEnds = new Map(trips.map((t) => [t.id, t.ends_at]));
+  const reviews = reviewsData.filter((r) => tripEnds.has(r.trip_id));
+  const tripCount = Math.max(trips.length, reviews.length);
+
+  // Star shares are of the ratings given. Unrated is the share of trips nobody
+  // rated, kept apart so quiet guests don't drag the five-star share down.
+  const rated = reviews.filter((r) => r[column] != null);
+  const distribution = [5, 4, 3, 2, 1].map((stars) => {
+    const count = rated.filter((r) => r[column] === stars).length;
+    return { label: pluralize(stars, "star"), share: rated.length ? count / rated.length : 0 };
+  });
+  const unrated = tripCount ? (tripCount - rated.length) / tripCount : 0;
+  const average = averageOf(rated.map((r) => r[column]));
+  const fiveStarShare = (key: CategoryKey | "overall") => {
+    const col = columnFor(key);
+    const given = reviews.filter((r) => r[col] != null).length;
+    return given ? fiveStars(reviews, col) / given : null;
+  };
+  const headline = fiveStarShare(category);
+
+  const listed = category === "overall" ? reviews : rated;
+  const showAll = pick(params.show) === "all";
+  const shown = showAll ? listed : listed.slice(0, PAGE);
+  const multipleCars = cars.length > 1;
+  const href = (key: CategoryKey | "overall", all = false) => {
+    const next = new URLSearchParams();
+    if (carId) next.set("car", carId);
+    if (period !== "365") next.set("period", period);
+    if (key !== "overall") next.set("category", key);
+    if (all) next.set("show", "all");
+    const qs = next.toString();
+    return qs ? `/host/business/ratings?${qs}` : "/host/business/ratings";
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
-      <PageTitle title="Ratings" />
+      <PageTitle
+        title="Ratings"
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Suspense>
+              <RatingsFilters
+                filters={[
+                  ...(multipleCars
+                    ? [
+                        {
+                          name: "car",
+                          label: "Car",
+                          fallback: "all",
+                          options: [{ value: "all", label: "All cars" }, ...cars.map((c) => ({ value: c.id, label: carName(c) }))],
+                        },
+                      ]
+                    : []),
+                  { name: "period", label: "Period", fallback: "365", options: PERIODS },
+                  {
+                    name: "category",
+                    label: "Category",
+                    fallback: "overall",
+                    options: [
+                      { value: "overall", label: "Overall" },
+                      ...CARD_ORDER.map((k) => ({ value: k, label: CATEGORY_BY_KEY[k].label })),
+                    ],
+                  },
+                ]}
+              />
+            </Suspense>
+          </div>
+        }
+      />
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-4">
-        <Tile tone="butter" className="flex flex-col gap-2.5 sm:p-[26px]">
-          <span className="text-[15px] font-semibold">{multipleCars ? "Your cars' rating" : "Your car's rating"}</span>
-          <span className="flex flex-wrap items-baseline gap-3">
-            <span className="font-display text-[72px] leading-none font-extrabold tracking-[-0.03em] text-ink sm:text-[96px]">
-              {overall.toFixed(1)}
-            </span>
-            <span className="text-base">from {pluralize(reviews.length, "review")}</span>
-          </span>
-          <Stars value={overall} />
-        </Tile>
-
-        {parts.length > 0 && (
-          <Tile className="figures flex flex-col justify-center gap-3.5 sm:p-[26px]">
-            {parts.map((p) => (
-              <div key={p.label} className="grid grid-cols-[110px_1fr_36px] items-center gap-3 text-[15px]">
-                <span className="font-semibold">{p.label}</span>
-                <span className="h-3 overflow-hidden rounded-[6px] bg-line">
-                  <span className="block h-full rounded-[6px] bg-ink" style={{ width: `${(p.value / 5) * 100}%` }} />
-                </span>
-                <span className="text-right font-extrabold">{p.value.toFixed(1)}</span>
-              </div>
-            ))}
-          </Tile>
-        )}
-      </div>
-
-      <Tile className="flex flex-col gap-4 sm:p-6">
-        <TileTitle>What guests said</TileTitle>
-        {reviews.map((r) => {
-          const name = firstName(r.reviewer?.full_name);
-          const context = r.trips
-            ? `${pluralize(tripDays(r.trips.starts_at, r.trips.ends_at), "day")} in ${formatDate(r.trips.starts_at, {
-                month: "long",
-                day: undefined,
-                year: undefined,
-              })}`
-            : formatDate(r.created_at);
-          return (
-            <article key={r.id} className="flex flex-col gap-3 rounded-[22px] bg-board p-[18px]">
-              <div className="flex items-center gap-3">
-                <Initial name={name} seed={r.reviewer_id} className="size-11 rounded-[14px] text-[18px]" />
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-base font-extrabold">
-                    {name} · ★ {r.rating_overall}
-                  </span>
-                  <span className="text-sm text-slate">
-                    {multipleCars && r.vehicles ? `${r.vehicles.make} ${r.vehicles.model} · ` : ""}
-                    {context}
-                  </span>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+        <div className="flex flex-col gap-4">
+          <Tile tone="butter" className="figures flex flex-col gap-4 sm:p-6">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-baseline justify-between gap-3">
+                <TileTitle>{categoryLabel}</TileTitle>
+                <span className="font-display text-[28px] font-extrabold">
+                  {headline === null ? "–" : percent(headline)}
                 </span>
               </div>
-              {r.body && <p className="text-[17px] leading-normal">&ldquo;{r.body}&rdquo;</p>}
-              {r.host_reply ? (
-                <div className="rounded-2xl bg-white px-3.5 py-3 text-[15px]">
-                  <span className="font-extrabold">You replied:</span> {r.host_reply}
+              <span className="text-sm">Share of guest ratings that were five stars.</span>
+            </div>
+            <div className="flex flex-col gap-2.5">
+              {[...distribution, { label: "Unrated", share: unrated }].map((d) => (
+                <div
+                  key={d.label}
+                  className={cn(
+                    "grid grid-cols-[72px_1fr_44px] items-center gap-3 text-[15px]",
+                    d.label === "Unrated" && "mt-1 border-t-2 border-ink/10 pt-3.5"
+                  )}
+                >
+                  <span className="font-semibold">{d.label}</span>
+                  <span className="h-2.5 overflow-hidden rounded-[5px] bg-white">
+                    <span
+                      className={cn("block h-full rounded-[5px]", d.label === "Unrated" ? "bg-ink/40" : "bg-ink")}
+                      style={{ width: `${d.share * 100}%` }}
+                    />
+                  </span>
+                  <span className="text-right font-bold">{percent(d.share)}</span>
                 </div>
-              ) : (
-                <ReplyForm reviewId={r.id} guestName={name} />
-              )}
-            </article>
-          );
-        })}
-      </Tile>
+              ))}
+              <span className="text-[13px]">Unrated is the share of trips the guest didn&apos;t rate.</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: "Trips", value: String(tripCount) },
+                { label: "Ratings", value: String(rated.length) },
+                { label: "Average", value: average === null ? "–" : `${average.toFixed(1)} ★` },
+              ].map((f) => (
+                <div key={f.label} className="flex flex-col gap-0.5 rounded-[14px] bg-white px-3 py-2.5">
+                  <span className="text-[12px] font-semibold text-slate">{f.label}</span>
+                  <span className="text-[20px] font-extrabold">{f.value}</span>
+                </div>
+              ))}
+            </div>
+          </Tile>
+
+          {CARD_ORDER.map((key) => {
+            const c = CATEGORY_BY_KEY[key];
+            const tags = tagCounts(reviews, key);
+            const share = fiveStarShare(key);
+            return (
+              <Tile key={key} className={cn("flex flex-col gap-3", category === key && "ring-2 ring-ink")}>
+                <Link
+                  href={href(category === key ? "overall" : key)}
+                  scroll={false}
+                  className="flex items-baseline justify-between gap-3 hover:underline"
+                >
+                  <span className="text-[19px] font-extrabold">{c.label}</span>
+                  <span className="figures text-[19px] font-extrabold">{share === null ? "–" : percent(share)}</span>
+                </Link>
+                {tags.length ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.map((t) => (
+                      <Tag key={t.id} className="px-2.5 py-1.5 text-[13px]">
+                        {t.label} ({t.count})
+                      </Tag>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-sm text-slate">No issues flagged.</span>
+                )}
+              </Tile>
+            );
+          })}
+        </div>
+
+        <Tile className="flex flex-col gap-4 sm:p-6">
+          <div className="flex flex-col gap-1">
+            <TileTitle>Reviews ({listed.length})</TileTitle>
+            <span className="text-sm text-slate">
+              {categoryLabel} rating · most recent first
+            </span>
+          </div>
+          {listed.length === 0 && <p className="text-[15px] text-slate">No reviews in this period.</p>}
+          {shown.map((r) => {
+            const name = firstName(r.reviewer?.full_name);
+            const stars = r[column] ?? r.rating_overall;
+            const tags = (r.issue_tags ?? []).flatMap((id) => {
+              const tag = ISSUE_TAGS.get(id);
+              return tag && (category === "overall" || tag.category === category) ? [{ id, label: tag.label }] : [];
+            });
+            return (
+              <article key={r.id} className="flex flex-col gap-3 rounded-[22px] bg-board p-[18px]">
+                <div className="flex items-center gap-3">
+                  <Initial name={name} seed={r.reviewer_id} className="size-11 rounded-[14px] text-[18px]" />
+                  <span className="flex min-w-0 flex-1 flex-col gap-1">
+                    <Stars value={stars} />
+                    <span className="text-sm text-slate">
+                      <span className="font-bold text-ink">{name}</span> · {formatDate(r.created_at)}
+                    </span>
+                  </span>
+                </div>
+                {multipleCars && <span className="text-sm font-semibold">{carName(carsById.get(r.vehicle_id))}</span>}
+                {r.body && <p className="text-[17px] leading-normal">&ldquo;{r.body}&rdquo;</p>}
+                {tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.map((t) => (
+                      <Tag key={t.id} tone="white" className="px-2.5 py-1.5">
+                        {t.label}
+                      </Tag>
+                    ))}
+                  </div>
+                )}
+                {r.host_reply ? (
+                  <div className="rounded-2xl bg-white px-3.5 py-3 text-[15px]">
+                    <span className="font-extrabold">You replied:</span> {r.host_reply}
+                  </div>
+                ) : (
+                  <ReplyForm reviewId={r.id} guestName={name} />
+                )}
+              </article>
+            );
+          })}
+          {shown.length < listed.length && (
+            <Link
+              href={href(category, true)}
+              scroll={false}
+              className="self-center rounded-[12px] bg-board px-4 py-2.5 text-[15px] font-bold transition-colors hover:bg-line"
+            >
+              Show all {listed.length} reviews
+            </Link>
+          )}
+        </Tile>
+      </div>
     </div>
   );
 }

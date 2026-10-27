@@ -3,9 +3,9 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarX, CarFront, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarX, CarFront, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,20 +20,30 @@ import {
 import { addDays, daysBetween, occupantsByDay, OCCUPANT_FILL, type Occupant } from "./days";
 import { BlockDateModal } from "./BlockDateModal";
 import { LegendItem } from "./bits";
+import { CalendarToolbar } from "./calendar/CalendarToolbar";
+import { DateJump } from "./calendar/DateJump";
+import {
+  applyFilters,
+  NO_FILTERS,
+  readFilters,
+  STATUS_LABEL,
+  writeFilters,
+  type CalendarFilters,
+  type FilterableCar,
+} from "./calendar/filters";
 import type { PriceChanges } from "@/lib/pricing";
 
-export interface MultiCalendarCar {
-  id: string;
-  name: string;
+export interface MultiCalendarCar extends FilterableCar {
   cover: string | null;
-  dailyRateCents: number;
   occupants: Occupant[];
 }
 
 /** priceOverrides[vehicleId][dateKey] = price_cents */
 export type PriceOverrides = Record<string, Record<string, number>>;
 
-const CAR_COL_W = 212;
+/** The car column is narrower on phones so a few days still fit beside it. */
+const CAR_COL = "[--car-col:140px] sm:[--car-col:212px]";
+const CAR_COL_W = "var(--car-col)";
 const DAY_COL_W = 76;
 const WINDOW_DAYS = 90;
 const ROW_H = 72;
@@ -71,7 +81,7 @@ function rect(a: Cell, b: Cell): Sel {
 type PriceMode = "set" | "raise" | "lower";
 
 export function MultiCalendar({
-  cars,
+  cars: allCars,
   today,
   horizon,
   priceOverrides: initial,
@@ -83,10 +93,32 @@ export function MultiCalendar({
   priceOverrides: PriceOverrides;
 }) {
   const router = useRouter();
+  const params = useSearchParams();
+  const lastStart = addDays(horizon, -(WINDOW_DAYS - 1));
+
+  // Search, sort and filters, read from the link once and written back as they change.
+  // Filtering happens here, on cars already loaded, so it's instant.
+  const [filters, setFilters] = useState<CalendarFilters>(() => readFilters(params));
+  const cars = useMemo(() => applyFilters(allCars, filters), [allCars, filters]);
 
   // Dates window
-  // Opens on today; the back arrow reaches earlier days.
-  const [windowStart, setWindowStart] = useState(today);
+  // Opens on today, or the day in the link; the back arrow reaches earlier days.
+  const [windowStart, setWindowStart] = useState(() => {
+    const from = params.get("from");
+    return from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? (from > lastStart ? lastStart : from) : today;
+  });
+  const jumpTo = (key: string) => setWindowStart(key > lastStart ? lastStart : key);
+
+  useEffect(() => {
+    const next = writeFilters(new URLSearchParams(window.location.search), filters);
+    if (windowStart === today) next.delete("from");
+    else next.set("from", windowStart);
+    const qs = next.toString();
+    if (qs !== window.location.search.replace(/^\?/, "")) {
+      window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+    }
+  }, [filters, windowStart, today]);
+
   const dates = useMemo(() => makeDates(windowStart, WINDOW_DAYS), [windowStart]);
   const headers = useMemo(() => dates.map(headerLabel), [dates]);
   const dayNames = useMemo(
@@ -96,7 +128,6 @@ export function MultiCalendar({
       ),
     [dates]
   );
-  const lastStart = addDays(horizon, -(WINDOW_DAYS - 1));
 
   // Who holds each car on each day, worked out once per window rather than per cell.
   // Starts a day early so a stay that began before the window doesn't get relabelled.
@@ -115,6 +146,12 @@ export function MultiCalendar({
   // and a drag only re-renders the rows it crosses.
   const [{ selection }, setPick] = useState<Picking>({ selection: null, anchor: null, origin: null });
   const clearSelection = () => setPick({ selection: null, anchor: null, origin: null });
+
+  /** Rows shift when the list changes, so a selection made before would point at other cars. */
+  function changeFilters(next: CalendarFilters) {
+    setFilters(next);
+    clearSelection();
+  }
 
   // Right panel
   const [activeTab, setActiveTab] = useState<"prices" | "availability" | "trips">("prices");
@@ -269,49 +306,33 @@ export function MultiCalendar({
     <div className="flex flex-col gap-4">
       <h1 className="headline text-[clamp(46px,6vw,72px)]">Calendar</h1>
 
-      <div className="flex items-start gap-4">
+      <CalendarToolbar
+        cars={allCars}
+        filters={filters}
+        onChange={changeFilters}
+        onPrev={() => setWindowStart((s) => addDays(s, -14))}
+        onNext={() => jumpTo(addDays(windowStart, 14))}
+        canNext={windowStart < lastStart}
+        onToday={windowStart === today ? null : () => setWindowStart(today)}
+      />
+
+      <div className="flex flex-wrap items-start gap-4">
         {/* ── Grid ─────────────────────────────────────────── */}
         <div className="min-w-0 flex-[999_1_560px] overflow-hidden rounded-[24px] bg-white">
-          <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 178px)" }}>
+          <div className={cn("overflow-auto", CAR_COL)} style={{ maxHeight: "calc(100vh - 234px)" }}>
             {/* Inner div sets the total width so horizontal scroll works */}
-            <div style={{ minWidth: CAR_COL_W + dates.length * DAY_COL_W }}>
+            <div style={{ minWidth: `calc(${CAR_COL_W} + ${dates.length * DAY_COL_W}px)` }}>
 
               {/* ── Date header (sticky top) ── */}
               <div
                 className="sticky top-0 z-20 flex border-b border-line bg-white"
               >
-                {/* Corner – nav arrows */}
+                {/* Corner – month and date pickers */}
                 <div
-                  className="sticky left-0 z-30 flex shrink-0 items-center justify-between border-r border-line bg-white px-2 py-2"
+                  className="sticky left-0 z-30 flex shrink-0 items-center border-r border-line bg-white px-1.5 py-2 sm:px-2"
                   style={{ width: CAR_COL_W }}
                 >
-                  <button
-                    type="button"
-                    aria-label="Back 14 days"
-                    onClick={() => setWindowStart((s) => addDays(s, -14))}
-                    className="rounded-[8px] p-1.5 transition-colors hover:bg-board"
-                  >
-                    <ChevronLeft className="size-4" />
-                  </button>
-                  <span className="text-[12px] font-bold text-slate">
-                    {new Date(`${windowStart}T12:00:00Z`).toLocaleDateString("en-US", {
-                      month: "short",
-                      year: "numeric",
-                      timeZone: "UTC",
-                    })}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Forward 14 days"
-                    onClick={() => setWindowStart((s) => {
-                      const next = addDays(s, 14);
-                      return next > lastStart ? lastStart : next;
-                    })}
-                    disabled={windowStart >= lastStart}
-                    className="rounded-[8px] p-1.5 transition-colors hover:bg-board disabled:opacity-30"
-                  >
-                    <ChevronRight className="size-4" />
-                  </button>
+                  <DateJump start={windowStart} today={today} horizon={horizon} onJump={jumpTo} />
                 </div>
 
                 {/* Date columns */}
@@ -370,6 +391,19 @@ export function MultiCalendar({
               })}
             </div>
           </div>
+
+          {cars.length === 0 && (
+            <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+              <span className="flex size-12 items-center justify-center rounded-[14px] bg-board">
+                <SearchX className="size-6" />
+              </span>
+              <h2 className="text-[22px] leading-tight font-extrabold">No cars found</h2>
+              <p className="text-[15px] text-slate">Try changing or resetting your filters.</p>
+              <Button variant="secondary" onClick={() => changeFilters({ ...NO_FILTERS, sort: filters.sort })}>
+                Reset filters
+              </Button>
+            </div>
+          )}
 
           {/* Legend */}
           <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-line px-4 py-3 text-sm text-slate">
@@ -662,7 +696,7 @@ const CarRow = memo(function CarRow({
         className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-line bg-white px-2.5 py-2"
         style={{ width: CAR_COL_W, minHeight: ROW_H }}
       >
-        <Link href={`/host/vehicles/${car.id}`} className="shrink-0">
+        <Link href={`/host/vehicles/${car.id}`} className="hidden shrink-0 sm:block">
           {car.cover ? (
             <Image
               src={car.cover}
@@ -678,11 +712,14 @@ const CarRow = memo(function CarRow({
             </span>
           )}
         </Link>
-        <Link
-          href={`/host/vehicles/${car.id}`}
-          className="line-clamp-2 text-[12px] font-bold leading-tight hover:text-cobalt"
-        >
-          {car.name}
+        <Link href={`/host/vehicles/${car.id}`} className="group min-w-0 leading-tight">
+          <span className="line-clamp-2 text-[12px] font-bold group-hover:text-cobalt">
+            {car.name} {car.year}
+          </span>
+          <span className="mt-0.5 block truncate text-[11px] font-semibold text-quiet">
+            {car.plate}
+            {car.status !== "listed" && ` · ${STATUS_LABEL[car.status]}`}
+          </span>
         </Link>
       </div>
 

@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ConversationList } from "@/components/messaging/ConversationList";
+import { ScheduledLink } from "@/components/messaging/scheduled/ScheduledTabs";
 import { InboxShell } from "@/components/messaging/InboxShell";
 import { MessageThread } from "@/components/messaging/MessageThread";
 import { ThreadHeader } from "@/components/messaging/ThreadHeader";
@@ -37,6 +38,7 @@ export default async function HostConversationPage({ params }: PageProps<"/host/
             viewer="host"
             basePath="/host/inbox"
             className="h-full overflow-y-auto"
+            action={<ScheduledLink />}
             empty="No other conversations."
           />
         }

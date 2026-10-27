@@ -73,3 +73,33 @@ export function fuelLabel(fuel: string) {
 export function typeLabel(type: string) {
   return VEHICLE_TYPES.find((t) => t.value === type)?.label ?? type;
 }
+
+export const TRANSMISSIONS = [
+  { value: "automatic", label: "Automatic" },
+  { value: "manual", label: "Manual" },
+];
+
+/** Features guests can filter on, as hosts list them in vehicle_features. */
+export const FEATURES = [
+  { value: "awd", label: "All-wheel drive" },
+  { value: "android-auto", label: "Android Auto" },
+  { value: "carplay", label: "Apple CarPlay" },
+  { value: "backup-camera", label: "Backup camera" },
+  { value: "bike-rack", label: "Bike rack" },
+  { value: "blind-spot", label: "Blind spot warning" },
+  { value: "bluetooth", label: "Bluetooth" },
+  { value: "child-seat", label: "Child seat" },
+  { value: "gps", label: "GPS" },
+  { value: "heated-seats", label: "Heated seats" },
+  { value: "keyless", label: "Keyless entry" },
+  { value: "pet-friendly", label: "Pet friendly" },
+  { value: "ski-rack", label: "Ski rack" },
+  { value: "snow-tires", label: "Snow tires" },
+  { value: "sunroof", label: "Sunroof" },
+  { value: "toll-pass", label: "Toll pass" },
+  { value: "usb", label: "USB charger" },
+];
+
+export function featureLabel(value: string) {
+  return FEATURES.find((f) => f.value === value)?.label ?? null;
+}

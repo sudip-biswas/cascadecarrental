@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { notify, notifyTripLater } from "@/lib/notify";
+import { syncTripMessagesLater } from "@/lib/scheduled-messages";
 import type { Database, Trip, TripChange } from "@/lib/supabase/types";
 import { CHANGEABLE_STATUSES, type ChangePricing, describeChange, hasOtherConflict, loadQuoteTrip, quoteChange } from "@/lib/trip-changes";
 import { formatCurrency, zonedInstant } from "@/lib/utils";
@@ -355,6 +356,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ tripId
     .update({ stripe_payment_intent_id: money.paymentIntentId ?? null, stripe_refund_id: money.refundId ?? null })
     .eq("id", changeId);
 
+  syncTripMessagesLater(tripId);
   const cents = change.difference_cents;
   notifyTripLater(tripId, "change_accepted", {
     key: changeId,

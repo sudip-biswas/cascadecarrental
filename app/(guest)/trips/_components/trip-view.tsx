@@ -7,6 +7,8 @@ import { ReviewForm } from "@/components/trips/ReviewForm";
 import { InspectionPanel } from "@/components/trip-panels/InspectionPanel";
 import { ChargesPanel } from "@/components/trip-panels/ChargesPanel";
 import { ChangePanel } from "@/components/trip-panels/ChangePanel";
+import { DriversPanel } from "@/components/trip-panels/DriversPanel";
+import { InstructionsPanel, InstructionsWelcome } from "@/components/trip-panels/InstructionsPanel";
 import { freeCancellationUntil, guestCancellation } from "@/lib/cancellation";
 import { tripStatus } from "@/lib/trip-status";
 import { cn, formatCurrency, formatDate, formatDateShort, formatDateTime, pluralize } from "@/lib/utils";
@@ -14,6 +16,7 @@ import { receiptLines } from "../[tripId]/receipt/lines";
 import { type TripRow, carName, hostFirstName, paidLabel } from "../_lib/trip-row";
 import { CarSummary, type Step, Steps, daysBetween, mapsUrl } from "./parts";
 import { AutoRefresh } from "./auto-refresh";
+import { HandoverDetails, atNamedSpot, spotDirections } from "@/components/host/locations/HandoverDetails";
 
 function headline(trip: TripRow, host: string, now: Date): string {
   switch (trip.status) {
@@ -106,7 +109,8 @@ export function TripView({ trip, reviewed, userId }: { trip: TripRow; reviewed: 
   const cancelled = trip.status === "cancelled_guest" || trip.status === "cancelled_host";
   const terms = guestCancellation(trip, now);
   // A delivered car comes to the guest, so there's nowhere to get directions to.
-  const directions = trip.delivery_address ? null : mapsUrl(trip);
+  const namedSpot = atNamedSpot(trip);
+  const directions = namedSpot ? spotDirections(trip) : trip.delivery_address ? null : mapsUrl(trip);
   const heroTone = cancelled ? "peach" : "sky";
 
   return (
@@ -130,16 +134,20 @@ export function TripView({ trip, reviewed, userId }: { trip: TripRow; reviewed: 
 
       <Container className="flex flex-wrap items-start gap-4 py-6">
         <main className="flex min-w-0 flex-[999_1_600px] flex-col gap-3.5">
+          <InstructionsWelcome tripId={trip.id} viewer="guest" userId={userId} />
           {!cancelled && (
             <Tile className="flex flex-col gap-3 sm:p-6">
               <span className="flex items-center gap-2 text-sm font-semibold text-slate">
                 <MapPin className="size-4" strokeWidth={1.75} />
-                {trip.delivery_address ? "Delivered to you" : "Pick-up and return"}
+                {trip.delivery_address && !namedSpot ? "Delivered to you" : "Pick-up and return"}
               </span>
               <span className="font-display text-[clamp(24px,3vw,30px)] leading-[1.12] font-extrabold tracking-[-0.02em]">
-                {trip.delivery_address ??
-                  (confirmed && trip.vehicle?.location_address ? trip.vehicle.location_address : trip.pickup_location)}
+                {namedSpot
+                  ? trip.pickup_spot_name
+                  : (trip.delivery_address ??
+                    (confirmed && trip.vehicle?.location_address ? trip.vehicle.location_address : trip.pickup_location))}
               </span>
+              <HandoverDetails trip={trip} show={confirmed} waitingOn={trip.status === "pending" ? host : undefined} />
               {!confirmed && !trip.delivery_address && trip.status === "pending" && (
                 <span className="text-[15px] text-slate">The exact spot shows here once {host} says yes.</span>
               )}
@@ -158,9 +166,12 @@ export function TripView({ trip, reviewed, userId }: { trip: TripRow; reviewed: 
             </Tile>
           )}
 
+          <InstructionsPanel tripId={trip.id} viewer="guest" userId={userId} />
+
           {trip.status === "completed" && !reviewed && <ReviewForm tripId={trip.id} carName={carName(trip)} />}
 
           <ChangePanel tripId={trip.id} viewer="guest" userId={userId} />
+          <DriversPanel tripId={trip.id} userId={userId} />
           <InspectionPanel tripId={trip.id} viewer="guest" userId={userId} />
           <ChargesPanel tripId={trip.id} viewer="guest" userId={userId} />
 

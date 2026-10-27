@@ -3,12 +3,10 @@ import { cache } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import {
-  Check,
   Cog,
   Fuel,
   Gauge,
   MapPin,
-  MessageSquare,
   Star,
   Users,
   Zap,
@@ -16,18 +14,26 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { loadDailyPrices, unavailableRanges } from "@/lib/trips";
-import { PROTECTION_DAILY_CENTS } from "@/lib/pricing";
+import { loadTripRules } from "@/lib/trip-rules";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { loadPickupSpots, publicOption } from "@/lib/locations";
 import { rentalPageFor } from "@/lib/rentals";
 import { NO_INDEX, OPEN_GRAPH, absoluteUrl, carIdFromSlug, carPath } from "@/lib/site";
 import { VEHICLE_PUBLIC, type PublicVehicle } from "@/lib/supabase/columns";
 import type { VehicleImage } from "@/lib/supabase/types";
-import { HANDOVER_TIME, cn, formatCurrency, formatDate, formatPrice, pluralize, toDateKey } from "@/lib/utils";
+import { HANDOVER_TIME, cn, formatDate, formatPrice, pluralize, toDateKey } from "@/lib/utils";
 import { Tag, Tile, TileTitle, toneClass, type Tone } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { PhotoGallery } from "@/components/vehicle/PhotoGallery";
 import { CarBooking } from "@/components/vehicle/BookingSidebar";
 import { FavoriteButton } from "@/components/vehicle/FavoriteButton";
+import { HostCard } from "@/components/vehicle/HostCard";
+import { IncludedWithTrip } from "@/components/vehicle/IncludedWithTrip";
+import { RulesOfTheRoad } from "@/components/vehicle/RulesOfTheRoad";
+import { ShareReport } from "@/components/vehicle/ShareReport";
+import { SimilarCars } from "@/components/vehicle/SimilarCars";
+import { CategoryBars } from "@/components/reviews/CategoryBars";
 import { fuelLabel, typeLabel } from "@/components/search/categories";
 import { daysBetween, readDates } from "@/components/search/dates";
 import { coverImage, firstName } from "@/components/search/vehicle";
@@ -106,17 +112,6 @@ function Spec({ icon: Icon, tone, title, body }: { icon: LucideIcon; tone: Tone;
   );
 }
 
-function Point({ children }: { children: React.ReactNode }) {
-  return (
-    <li className="flex gap-3 text-base leading-[1.4]">
-      <span className="mt-px flex size-6 shrink-0 items-center justify-center rounded-[8px] bg-ink text-white">
-        <Check className="size-3.5" strokeWidth={3} />
-      </span>
-      {children}
-    </li>
-  );
-}
-
 function Stars({ value }: { value: number }) {
   return (
     <span className="flex items-center gap-0.5" aria-label={`${value} out of 5`}>
@@ -154,7 +149,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
     ? await supabase.from("favorites").select("vehicle_id").eq("user_id", user.id).eq("vehicle_id", vehicleId).maybeSingle()
     : { data: null };
 
-  const [{ data: reviewData, count: reviewCount }, { count: hostCars }, unavailable, dailyPrices] = await Promise.all([
+  const [{ data: reviewData, count: reviewCount }, { count: hostCars }, unavailable, dailyPrices, tripRules, spots] = await Promise.all([
     supabase
       .from("reviews")
       .select("id, created_at, rating_overall, body, host_reply, reviewer:profiles!reviewer_id(full_name)", { count: "exact" })
@@ -169,8 +164,20 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
       .eq("status", "listed"),
     unavailableRanges(vehicleId),
     loadDailyPrices(vehicleId, toDateKey(new Date())),
+    loadTripRules(supabase, vehicleId),
+    // Spot addresses are private until booking: read server-side, send names and prices.
+    loadPickupSpots(createAdminClient(), car),
   ]);
+  const pickup = spots.map(publicOption);
   const reviews = (reviewData ?? []) as unknown as ReviewRow[];
+  // Category bars average every guest rating, not just the ten listed.
+  const { data: categoryRatings } = reviews.length
+    ? await supabase
+        .from("reviews")
+        .select("rating_cleanliness, rating_maintenance, rating_communication, rating_convenience, rating_accuracy")
+        .eq("vehicle_id", vehicleId)
+        .eq("kind", "guest_to_host")
+    : { data: null };
 
   const name = `${car.make} ${car.model}`;
   const displayName = car.persona?.name ?? car.host?.full_name;
@@ -178,9 +185,6 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
   const hostSince = car.persona?.host_since ?? car.host?.host_since;
   const hostAvatar = car.persona?.avatar_url ?? car.host?.avatar_url ?? null;
   const hostBio = car.persona?.bio ?? null;
-  const hostRating = car.persona?.rating ?? null;
-  const hostRatingCount = car.persona?.rating_count ?? 0;
-  const hostTripCount = car.persona?.trip_count ?? 0;
   const hostProfileHref = car.persona?.id ? `/hosts/${car.persona.id}` : null;
   const days = dates ? daysBetween(dates.from, dates.until) : null;
   const backParams = new URLSearchParams(dates ?? {}).toString();
@@ -323,80 +327,15 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
         />
       </div>
 
-      <div className="flex flex-wrap items-start gap-4 rounded-[24px] bg-white p-4 sm:p-[18px]">
-        {hostProfileHref ? (
-          <Link href={hostProfileHref} className="shrink-0 transition-opacity hover:opacity-80">
-            {hostAvatar ? (
-              <img src={hostAvatar} alt={host} className="size-16 rounded-[18px] object-cover sm:size-20 sm:rounded-[22px]" />
-            ) : (
-              <span aria-hidden className="flex size-16 items-center justify-center rounded-[18px] bg-mint font-display text-[26px] font-extrabold sm:size-20 sm:rounded-[22px]">
-                {host[0].toUpperCase()}
-              </span>
-            )}
-          </Link>
-        ) : hostAvatar ? (
-          <img src={hostAvatar} alt={host} className="size-16 shrink-0 rounded-[18px] object-cover sm:size-20 sm:rounded-[22px]" />
-        ) : (
-          <span aria-hidden className="flex size-16 shrink-0 items-center justify-center rounded-[18px] bg-mint font-display text-[26px] font-extrabold sm:size-20 sm:rounded-[22px]">
-            {host[0].toUpperCase()}
-          </span>
-        )}
-        <span className="flex min-w-0 flex-[1_1_200px] flex-col gap-1">
-          {hostProfileHref ? (
-            <Link href={hostProfileHref} className="font-display text-[22px] font-extrabold hover:underline sm:text-[24px]">
-              Hosted by {host}
-            </Link>
-          ) : (
-            <span className="font-display text-[22px] font-extrabold sm:text-[24px]">Hosted by {host}</span>
-          )}
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[14px] text-slate">
-            {hostRating != null && (
-              <span className="flex items-center gap-1 font-semibold text-ink">
-                <Star className="size-3.5 fill-ink" strokeWidth={0} />
-                {hostRating.toFixed(1)}
-                {hostRatingCount > 0 && <span className="font-normal text-slate">({hostRatingCount})</span>}
-              </span>
-            )}
-            {hostTripCount > 0 && <span>{pluralize(hostTripCount, "trip")}</span>}
-            {hostSince && <span>Hosting since {formatDate(hostSince, { day: undefined, month: "long" })}</span>}
-            {hostCars ? <span>{pluralize(hostCars, "car")}</span> : null}
-          </span>
-          {hostBio && <p className="mt-1 text-[15px] text-slate">{hostBio}</p>}
-        </span>
-        {!isOwner && car.host && (
-          <Button asChild variant="secondary" className="mt-auto">
-            <Link href={`/messages/new?host=${car.host.id}`}>
-              <MessageSquare strokeWidth={1.75} />
-              Ask {host}
-            </Link>
-          </Button>
-        )}
-      </div>
-
-      <div className="grid gap-2.5 md:grid-cols-2">
-        <Tile tone="mint" className="flex flex-col gap-3.5 rounded-[26px] sm:p-6">
-          <TileTitle className="tracking-[-0.02em] text-ink">What you get</TileTitle>
-          <ul className="flex flex-col gap-3.5 text-ink">
-            <Point>
-              Keys from {host} in person, in {car.location_name}
-            </Point>
-            <Point>
-              {days
-                ? `${(car.distance_included_mi * days).toLocaleString("en-US")} miles for your ${pluralize(days, "day")}`
-                : `${car.distance_included_mi} miles a day`}
-              , then {car.extra_mile_fee_cents}¢ a mile
-            </Point>
-            <Point>
-              Protection from {formatCurrency(PROTECTION_DAILY_CENTS.basic)} a day, picked at checkout
-            </Point>
-            <Point>
-              {car.instant_book
-                ? "Instant book: it's yours as soon as you pay"
-                : `${host} confirms each request. Your card is only held until then`}
-            </Point>
-            <Point>Cancel free until pick-up on the flexible rate</Point>
-          </ul>
-        </Tile>
+      <div className="grid gap-2.5">
+        <IncludedWithTrip
+          host={host}
+          days={days}
+          distanceIncludedMi={car.distance_included_mi}
+          extraMileFeeCents={car.extra_mile_fee_cents}
+          instantBook={car.instant_book}
+          delivery={car.delivery_enabled}
+        />
         <Tile tone="sky" className="flex flex-col gap-3.5 rounded-[26px] sm:p-6">
           <TileTitle className="tracking-[-0.02em] text-ink">Where it is</TileTitle>
           <span className="flex items-center gap-3 rounded-[18px] bg-white px-4 py-3.5 text-ink">
@@ -442,6 +381,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
               </span>
             )}
           </div>
+          <CategoryBars reviews={categoryRatings ?? []} />
           <ul className="flex flex-col gap-2">
             {reviews.map((review) => (
               <li key={review.id} className="flex flex-col gap-2 rounded-[18px] bg-board p-4">
@@ -474,6 +414,29 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
           </span>
         </div>
       )}
+
+      <HostCard
+        hostId={car.host_id}
+        name={host}
+        avatarUrl={hostAvatar}
+        bio={hostBio}
+        hostSince={hostSince ?? null}
+        profileHref={hostProfileHref}
+        persona={
+          car.persona
+            ? { tripCount: car.persona.trip_count, rating: car.persona.rating, ratingCount: car.persona.rating_count }
+            : null
+        }
+        messageHref={!isOwner && car.host ? `/messages/new?host=${car.host.id}` : null}
+        cars={hostCars}
+      />
+      <RulesOfTheRoad
+        host={host}
+        electric={isElectric}
+        distanceIncludedMi={car.distance_included_mi}
+        extraMileFeeCents={car.extra_mile_fee_cents}
+      />
+      <ShareReport vehicleId={car.id} title={`${car.year} ${name}`} path={path} userId={user?.id ?? null} isOwner={isOwner} />
     </>
   );
 
@@ -500,6 +463,10 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
             daily_rate_cents: car.daily_rate_cents,
             weekly_discount_pct: car.weekly_discount_pct,
             monthly_discount_pct: car.monthly_discount_pct,
+            three_day_discount_pct: car.three_day_discount_pct,
+            two_week_discount_pct: car.two_week_discount_pct,
+            three_week_discount_pct: car.three_week_discount_pct,
+            last_minute_boost_pct: car.last_minute_boost_pct,
             min_trip_days: car.min_trip_days,
             max_trip_days: car.max_trip_days,
             advance_notice_hours: car.advance_notice_hours,
@@ -514,16 +481,20 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
           initialUntilTime={untilTime}
           initialRate={rate}
           isLoggedIn={!!user}
+          tripRules={tripRules ?? undefined}
+          pickup={pickup}
           perks={{
             minAge: car.min_age,
             youngDriverFeeCents: car.young_driver_fee_cents,
-            delivery: car.delivery_enabled || car.airport_delivery_fee_cents != null,
+            delivery: pickup.length > 1,
             extras: car.vehicle_extras.filter((e) => e.active).sort((a, b) => a.position - b.position).map((e) => e.name),
           }}
         >
           {details}
         </CarBooking>
       )}
+
+      <SimilarCars vehicleId={car.id} vehicleType={car.vehicle_type} dailyRateCents={car.daily_rate_cents} dates={dates} />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { guestCancellation } from "@/lib/cancellation";
 import { CANCEL_REASON } from "@/lib/trip-status";
 import { settleCancellation } from "@/lib/trips";
 import { notifyTripLater } from "@/lib/notify";
+import { syncTripMessagesLater } from "@/lib/scheduled-messages";
 
 function fail(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -66,6 +67,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ tripId
   const refunded = paymentStatus === "refunded" ? refundCents : 0;
   if (isGuest) notifyTripLater(tripId, "cancelled_by_guest", { amountCents: refunded || undefined });
   else notifyTripLater(tripId, "cancelled_by_host");
+  syncTripMessagesLater(tripId);
 
   return NextResponse.json({ status, refundCents: refunded });
 }

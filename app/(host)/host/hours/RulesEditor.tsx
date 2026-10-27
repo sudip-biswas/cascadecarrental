@@ -17,10 +17,38 @@ import {
   formatDays,
 } from "@/components/listing-wizard/controls";
 import { LIMITS } from "@/lib/listing-limits";
+import { BUFFER_OPTIONS, formatBuffer } from "@/lib/trip-rules";
+
+/** Hours kept free between one trip's return and the next pickup. */
+function BufferSelect({ value, onChange, disabled }: { value: number; onChange: (hours: number) => void; disabled?: boolean }) {
+  const options = BUFFER_OPTIONS.includes(value) ? BUFFER_OPTIONS : [...BUFFER_OPTIONS, value].sort((a, b) => a - b);
+  return (
+    <select
+      aria-label="Time between trips"
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="h-[38px] cursor-pointer rounded-[10px] bg-board px-3 text-[15px] font-bold outline-none hover:bg-line focus-visible:ring-2 focus-visible:ring-ink"
+    >
+      {options.map((h) => (
+        <option key={h} value={h}>
+          {formatBuffer(h)}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 type Rules = Pick<
   Vehicle,
-  "location_name" | "location_address" | "min_trip_days" | "max_trip_days" | "advance_notice_hours" | "instant_book"
+  | "location_name"
+  | "location_address"
+  | "min_trip_days"
+  | "max_trip_days"
+  | "advance_notice_hours"
+  | "trip_buffer_hours"
+  | "weekend_min_two_days"
+  | "instant_book"
 >;
 type VehicleUpdate = Database["public"]["Tables"]["vehicles"]["Update"];
 
@@ -126,6 +154,20 @@ export function RulesEditor({ vehicleId, initial, locked }: { vehicleId: string;
             onChange={(advance_notice_hours) => change({ advance_notice_hours })}
           />
         </RuleRow>
+        <RuleRow label="Time between trips">
+          <BufferSelect
+            value={rules.trip_buffer_hours}
+            disabled={locked}
+            onChange={(trip_buffer_hours) => change({ trip_buffer_hours })}
+          />
+        </RuleRow>
+        <Toggle
+          label="2-day minimum on weekends"
+          hint="Trips starting Friday, Saturday or Sunday last at least 2 days"
+          checked={rules.weekend_min_two_days}
+          disabled={locked}
+          onChange={(weekend_min_two_days) => change({ weekend_min_two_days })}
+        />
         <Toggle
           label="Instant book"
           hint={rules.instant_book ? "On: guests book and pay straight away" : "Off: you approve each request"}

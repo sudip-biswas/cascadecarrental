@@ -13,6 +13,7 @@ import {
   PROTECTION_DAILY_CENTS,
   computePricing,
   dayRates,
+  lastMinuteBoostPct,
   tripDays,
   type DailyPrices,
   type DeliverySettings,
@@ -26,10 +27,11 @@ import { Container, Divider, Fact, Tile } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { Choice, Notice, Section } from "./parts";
 import { ExtrasSection, type CheckoutExtra } from "./ExtrasSection";
-import { DeliverySection, type DeliveryMode, type Place } from "./DeliverySection";
+import { DeliverySection, type Place } from "./DeliverySection";
 import { DriverSection } from "./DriverSection";
 import { PromoField, type AppliedPromo } from "./PromoField";
-import { driverCheck, offersDelivery, quoteDelivery, type DeliveryChoice, type DriverRules } from "./rules";
+import { driverCheck, type DriverRules } from "./rules";
+import { CAR_SPOT, quotePickup, type PickupChoice, type PickupOption } from "@/lib/locations";
 
 export interface CheckoutVehicle extends DeliverySettings, DriverRules {
   id: string;
@@ -41,6 +43,10 @@ export interface CheckoutVehicle extends DeliverySettings, DriverRules {
   daily_rate_cents: number;
   weekly_discount_pct: number;
   monthly_discount_pct: number;
+  three_day_discount_pct: number;
+  two_week_discount_pct: number;
+  three_week_discount_pct: number;
+  last_minute_boost_pct: number;
   distance_included_mi: number;
   instant_book: boolean;
   deposit_cents: number;
@@ -59,6 +65,10 @@ interface Props {
   dailyPrices: DailyPrices;
   /** The car's active extras. */
   extras: CheckoutExtra[];
+  /** Where the guest can get the car: its own spot first, then the host's spots. */
+  pickup: PickupOption[];
+  /** The spot picked on the car page. */
+  initialSpot?: string;
   driver: {
     userId: string;
     dateOfBirth: string | null;
@@ -70,7 +80,7 @@ interface Props {
 /** What the server needs on top of dates, rate and protection. */
 interface AddOnRequest {
   extras: { id: string; quantity: number }[];
-  delivery: DeliveryChoice | null;
+  delivery: PickupChoice | null;
   promoCode: string | null;
 }
 
@@ -126,11 +136,11 @@ function coverOf(vehicle: CheckoutVehicle) {
   return images[0]?.url ?? null;
 }
 
-export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initialRate, dailyPrices, extras, driver }: Props) {
+export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initialRate, dailyPrices, extras, pickup, initialSpot, driver }: Props) {
   const [rateType, setRateType] = useState<RateType>(initialRate);
   const [plan, setPlan] = useState<ProtectionPlan | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("pickup");
+  const [spot, setSpot] = useState(() => (pickup.some((o) => o.id === initialSpot) ? initialSpot! : CAR_SPOT));
   const [place, setPlace] = useState<Place | null>(null);
   const [promo, setPromo] = useState<AppliedPromo | null>(null);
   const [dateOfBirth, setDateOfBirth] = useState(driver.dateOfBirth);
@@ -140,9 +150,9 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
   const days = tripDays(start, end);
 
   const check = driverCheck(vehicle, dateOfBirth, from);
-  const delivery: DeliveryChoice | null =
-    deliveryMode === "address" ? (place ? { mode: "address", ...place } : null) : { mode: deliveryMode };
-  const deliveryResult = delivery ? quoteDelivery(vehicle, delivery) : null;
+  const custom = pickup.find((o) => o.id === spot)?.kind === "custom";
+  const delivery: PickupChoice | null = custom ? (place ? { spot, ...place } : null) : { spot };
+  const deliveryResult = delivery ? quotePickup(vehicle, pickup, delivery, days) : null;
   const picked = extras
     .filter((e) => (quantities[e.id] ?? 0) > 0)
     .map((e) => ({
@@ -160,8 +170,8 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
     dayRatesCents: dayRates(vehicle.daily_rate_cents, from, days, dailyPrices),
     protectionPlan: plan,
     rateType,
-    weeklyDiscountPct: vehicle.weekly_discount_pct,
-    monthlyDiscountPct: vehicle.monthly_discount_pct,
+    discounts: vehicle,
+    boostPct: lastMinuteBoostPct(vehicle, start),
     extras: picked,
     deliveryCents: deliveryResult?.ok ? deliveryResult.cents : 0,
     youngDriverDailyCents: check.ok ? check.youngDriverDailyCents : 0,
@@ -174,7 +184,7 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
     : !check.ok
       ? check.message
       : !delivery
-        ? "Pick a delivery address, or pick the car up."
+        ? "Pick a delivery address, or another spot."
         : deliveryResult && !deliveryResult.ok
           ? deliveryResult.reason
           : null;
@@ -194,13 +204,14 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
         userId={driver.userId}
         onDateOfBirth={setDateOfBirth}
       />
-      {offersDelivery(vehicle) && (
+      {pickup.length > 1 && (
         <DeliverySection
-          car={vehicle}
-          mode={deliveryMode}
+          options={pickup}
+          days={days}
+          spot={spot}
           place={place}
           quote={deliveryResult}
-          onMode={setDeliveryMode}
+          onSpot={setSpot}
           onPlace={setPlace}
         />
       )}
@@ -248,7 +259,7 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
         }
         request={request}
         blocker={blocker}
-        deliveryLabel={deliveryMode === "airport" ? "Airport delivery" : "Delivery"}
+        deliveryLabel={deliveryResult?.ok && !custom ? `Delivery to ${deliveryResult.spot.name}` : "Delivery"}
       />
     </Elements>
   );
@@ -272,7 +283,7 @@ function CheckoutLayout({
   request,
   blocker,
   deliveryLabel,
-}: Omit<Props, "initialRate" | "dailyPrices" | "extras" | "driver"> & {
+}: Omit<Props, "initialRate" | "dailyPrices" | "extras" | "pickup" | "initialSpot" | "driver"> & {
   start: Date;
   end: Date;
   pricing: PricingResult;
@@ -540,8 +551,12 @@ function Breakdown({
         : `${pluralize(pricing.days, "day")} × ${formatPrice(pricing.dailyRateCents)}`,
       value: pricing.baseCents,
     },
+    pricing.boostCents > 0 && {
+      label: `Last-minute price, ${pricing.boostPct}%`,
+      value: pricing.boostCents,
+    },
     pricing.lengthDiscountCents > 0 && {
-      label: `${pricing.days >= 30 ? "Monthly" : "Weekly"} discount, ${pricing.lengthDiscountPct}%`,
+      label: `Trip savings, ${pricing.lengthDiscountLabel}`,
       value: -pricing.lengthDiscountCents,
     },
     pricing.savingsCents > 0 && {

@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { CalendarX } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { loadDailyPrices } from "@/lib/trips";
+import { loadPickupSpots, publicOption } from "@/lib/locations";
 import { tripDays } from "@/lib/pricing";
 import { NO_INDEX, carIdFromSlug, carPath } from "@/lib/site";
 import { pluralize, toDateKey, zonedInstant, HANDOVER_TIME } from "@/lib/utils";
@@ -31,6 +33,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
   const fromTime = typeof query.fromTime === "string" && TIME_RE.test(query.fromTime) ? query.fromTime : HANDOVER_TIME;
   const untilTime = typeof query.untilTime === "string" && TIME_RE.test(query.untilTime) ? query.untilTime : HANDOVER_TIME;
   const initialRate = query.rate === "refundable" ? "refundable" : "non_refundable";
+  const initialSpot = typeof query.spot === "string" ? query.spot : undefined;
 
   const supabase = await createClient();
   const {
@@ -44,7 +47,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
   const { data } = await supabase
     .from("vehicles")
     .select(
-      "id, host_id, make, model, year, trim, location_name, daily_rate_cents, weekly_discount_pct, monthly_discount_pct, distance_included_mi, instant_book, min_trip_days, max_trip_days, location_lat, location_lng, min_age, young_driver_fee_cents, deposit_cents, delivery_enabled, delivery_radius_mi, delivery_fee_cents, delivery_fee_per_mi_cents, airport_delivery_fee_cents, vehicle_images(url, is_cover, position), host:profiles!host_id(full_name)"
+      "id, host_id, make, model, year, trim, location_name, daily_rate_cents, weekly_discount_pct, monthly_discount_pct, three_day_discount_pct, two_week_discount_pct, three_week_discount_pct, last_minute_boost_pct, distance_included_mi, instant_book, min_trip_days, max_trip_days, location_lat, location_lng, min_age, young_driver_fee_cents, deposit_cents, delivery_enabled, delivery_radius_mi, delivery_fee_cents, delivery_fee_per_mi_cents, airport_delivery_fee_cents, vehicle_images(url, is_cover, position), host:profiles!host_id(full_name)"
     )
     .eq("id", vehicleId)
     .eq("status", "listed")
@@ -86,7 +89,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
     );
   }
 
-  const [dailyPrices, { data: extras }, { data: profile }] = await Promise.all([
+  const [dailyPrices, { data: extras }, { data: profile }, spots] = await Promise.all([
     loadDailyPrices(vehicle.id, from, until),
     supabase
       .from("vehicle_extras")
@@ -96,6 +99,8 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
       .order("position")
       .order("created_at"),
     supabase.from("profiles").select("date_of_birth, driving_license_verified").eq("id", user.id).single(),
+    // Spot addresses are private until booking: read server-side, send names and prices.
+    loadPickupSpots(createAdminClient(), vehicle),
   ]);
   return (
     <CheckoutForm
@@ -107,6 +112,8 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
       initialRate={initialRate}
       dailyPrices={dailyPrices}
       extras={extras ?? []}
+      pickup={spots.map(publicOption)}
+      initialSpot={initialSpot}
       driver={{
         userId: user.id,
         dateOfBirth: profile?.date_of_birth ?? null,

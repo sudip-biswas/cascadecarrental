@@ -5,7 +5,16 @@ import { Tag } from "@/components/kit";
 import { FavoriteButton } from "@/components/vehicle/FavoriteButton";
 import { cn, formatPrice } from "@/lib/utils";
 import { fuelLabel } from "./categories";
-import { carHref, coverImage, firstName, roughPrice, tripTotalCents, type ListedVehicle } from "./vehicle";
+import {
+  carHref,
+  coverImage,
+  firstName,
+  formatMiles,
+  offersUnlimitedMiles,
+  roughPrice,
+  tripPrice,
+  type ListedVehicle,
+} from "./vehicle";
 import type { DateKey } from "./dates";
 
 interface Props {
@@ -16,6 +25,8 @@ interface Props {
   priority?: boolean;
   /** Shows the heart. Leave out where saving makes no sense. */
   favorite?: { userId: string | null; saved: boolean };
+  /** Miles from the place the guest searched. */
+  distanceMi?: number | null;
 }
 
 function Photo({ vehicle, className, sizes, priority }: { vehicle: ListedVehicle; className?: string; sizes: string; priority?: boolean }) {
@@ -75,12 +86,26 @@ export function VehicleCard({ favorite, ...props }: Props) {
   );
 }
 
-function Card({ vehicle, dates, layout = "tile", priority, heart }: Omit<Props, "favorite"> & { heart?: boolean }) {
+/** The pre-discount total struck through, when a trip-length discount applies. */
+function WasPrice({ cents, className }: { cents: number | null; className?: string }) {
+  if (cents === null) return null;
+  return (
+    <s className={cn("font-sans font-semibold text-quiet", className)}>
+      <span className="sr-only">Was </span>
+      {roughPrice(cents)}
+    </s>
+  );
+}
+
+function Card({ vehicle, dates, layout = "tile", priority, heart, distanceMi }: Omit<Props, "favorite"> & { heart?: boolean }) {
   const href = carHref(vehicle, dates);
   const name = `${vehicle.make} ${vehicle.model}`;
-  const total = dates ? tripTotalCents(vehicle, dates.from, dates.until) : null;
+  const price = dates ? tripPrice(vehicle, dates.from, dates.until) : null;
+  const total = price?.totalCents ?? null;
   const isNew = vehicle.trip_count === 0;
+  const unlimited = offersUnlimitedMiles(vehicle);
   const host = firstName(vehicle.persona?.name ?? vehicle.host?.full_name);
+  const place = distanceMi != null ? `${vehicle.location_name} · ${formatMiles(distanceMi)}` : vehicle.location_name;
 
   if (layout === "compact") {
     return (
@@ -89,12 +114,18 @@ function Card({ vehicle, dates, layout = "tile", priority, heart }: Omit<Props, 
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[17px] font-extrabold">{name}</span>
           <span className="truncate text-sm text-slate">
-            {vehicle.year} · {vehicle.seats} seats · {vehicle.location_name}
+            {vehicle.year} · {isNew ? "New listing" : `${vehicle.seats} seats`} · {place}
           </span>
           <span className="figures text-[17px] font-extrabold">
             {formatPrice(vehicle.daily_rate_cents)}{" "}
             <span className="text-[13px] font-semibold text-slate">
-              /day{total !== null && ` · ${roughPrice(total)} total`}
+              /day
+              {total !== null && (
+                <>
+                  {" · "}
+                  <WasPrice cents={price?.beforeDiscountCents ?? null} /> {roughPrice(total)} total
+                </>
+              )}
             </span>
           </span>
         </span>
@@ -117,10 +148,10 @@ function Card({ vehicle, dates, layout = "tile", priority, heart }: Omit<Props, 
         <span className="flex min-w-0 flex-1 flex-col gap-2 px-2 pb-2 sm:py-2 sm:pl-0">
           <span className="flex items-start justify-between gap-2">
             <span className="font-display text-[26px] leading-[1.1] font-extrabold tracking-[-0.025em]">{name}</span>
-            {isNew ? <Tag tone="mint">New</Tag> : <Rating vehicle={vehicle} />}
+            {isNew ? <Tag tone="mint">New listing</Tag> : <Rating vehicle={vehicle} />}
           </span>
           <span className="text-[15px] text-slate">
-            {[`${vehicle.year}${vehicle.trim ? ` ${vehicle.trim}` : ""}`, host, vehicle.location_name]
+            {[`${vehicle.year}${vehicle.trim ? ` ${vehicle.trim}` : ""}`, host, place]
               .filter(Boolean)
               .join(" · ")}
           </span>
@@ -129,14 +160,21 @@ function Card({ vehicle, dates, layout = "tile", priority, heart }: Omit<Props, 
             <Tag className="font-semibold">{fuelLabel(vehicle.fuel_type)}</Tag>
             <Tag className="font-semibold capitalize">{vehicle.transmission}</Tag>
             <Tag className="font-semibold">{vehicle.distance_included_mi} mi/day</Tag>
+            {unlimited && <Tag tone="lilac">Unlimited miles add-on</Tag>}
             {vehicle.instant_book && <Tag tone="sky">Instant book</Tag>}
           </span>
           <span className="figures mt-auto flex items-baseline justify-between gap-3 pt-1">
             <span className="text-[15px] text-slate">{formatPrice(vehicle.daily_rate_cents)} a day</span>
             {total !== null ? (
-              <span className="font-display text-[28px] font-extrabold">
-                {roughPrice(total)}
-                <span className="font-sans text-sm font-medium text-slate"> total</span>
+              <span className="flex flex-col items-end gap-1">
+                <span className="font-display text-[28px] font-extrabold">
+                  <WasPrice cents={price?.beforeDiscountCents ?? null} className="mr-1.5 text-[17px]" />
+                  {roughPrice(total)}
+                  <span className="font-sans text-sm font-medium text-slate"> total</span>
+                </span>
+                {price?.beforeDiscountCents != null && price.discountLabel && (
+                  <Tag tone="mint" className="mt-0.5">{price.discountLabel}</Tag>
+                )}
               </span>
             ) : (
               <span className="text-sm text-slate">Add dates for a total</span>
@@ -156,7 +194,7 @@ function Card({ vehicle, dates, layout = "tile", priority, heart }: Omit<Props, 
           className="aspect-[4/3] w-full rounded-[20px]"
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 300px"
         />
-        {isNew && <Tag tone="mint" className="absolute top-2.5 left-2.5">New</Tag>}
+        {isNew && <Tag tone="mint" className="absolute top-2.5 left-2.5">New listing</Tag>}
         {vehicle.instant_book && (
           <Tag tone="white" className={cn("absolute", heart ? "bottom-2.5 left-2.5" : "top-2.5 right-2.5")}>
             Instant book
@@ -169,7 +207,7 @@ function Card({ vehicle, dates, layout = "tile", priority, heart }: Omit<Props, 
           <Rating vehicle={vehicle} />
         </span>
         <span className="text-[15px] text-slate">
-          {vehicle.year} · {vehicle.seats} seats · {vehicle.location_name}
+          {vehicle.year} · {vehicle.seats} seats · {place}
         </span>
         <span className="figures flex items-baseline justify-between gap-2 pt-2">
           <span className="text-[22px] font-extrabold">
@@ -177,7 +215,9 @@ function Card({ vehicle, dates, layout = "tile", priority, heart }: Omit<Props, 
             <span className="text-sm font-medium text-slate"> /day</span>
           </span>
           {total !== null && (
-            <span className="text-sm text-slate">{roughPrice(total)} for your dates</span>
+            <span className="text-sm text-slate">
+              <WasPrice cents={price?.beforeDiscountCents ?? null} /> {roughPrice(total)} for your dates
+            </span>
           )}
         </span>
       </span>

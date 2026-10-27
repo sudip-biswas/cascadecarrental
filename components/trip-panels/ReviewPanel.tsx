@@ -1,16 +1,29 @@
 import { Star } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { Tile, TileTitle } from "@/components/kit";
+import { Tag, Tile, TileTitle } from "@/components/kit";
 import { firstName } from "@/components/host/bits";
 import { ReplyForm } from "@/app/(host)/host/business/ratings/ReplyForm";
 import { formatDate } from "@/lib/utils";
+import { ISSUE_TAGS } from "@/components/reviews/categories";
 import type { Review } from "@/lib/supabase/types";
 import { HostReviewForm } from "./review/HostReviewForm";
 import { GUEST_RATING_LABELS, HOST_RATING_LABELS, hostReviewCloses } from "./review/window";
 
 type ReviewRow = Pick<
   Review,
-  "id" | "kind" | "rating_overall" | "rating_cleanliness" | "rating_accuracy" | "rating_value" | "body" | "host_reply" | "created_at"
+  | "id"
+  | "kind"
+  | "rating_overall"
+  | "rating_cleanliness"
+  | "rating_maintenance"
+  | "rating_communication"
+  | "rating_convenience"
+  | "rating_accuracy"
+  | "rating_value"
+  | "issue_tags"
+  | "body"
+  | "host_reply"
+  | "created_at"
 >;
 
 function Stars({ value }: { value: number }) {
@@ -27,9 +40,10 @@ function Stars({ value }: { value: number }) {
 function ReviewBody({ review }: { review: ReviewRow }) {
   const labels = review.kind === "host_to_guest" ? HOST_RATING_LABELS : GUEST_RATING_LABELS;
   const extras = (Object.keys(labels) as (keyof typeof labels)[]).flatMap((key) => {
-    const value = review[key];
-    return value == null ? [] : [[labels[key] as string, value] as const];
+    const value = (review as Record<string, unknown>)[key];
+    return typeof value === "number" ? [[labels[key] as string, value] as const] : [];
   });
+  const tags = (review.issue_tags ?? []).flatMap((id) => ISSUE_TAGS.get(id)?.label ?? []);
   return (
     <>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -38,6 +52,15 @@ function ReviewBody({ review }: { review: ReviewRow }) {
       </div>
       {extras.length > 0 && (
         <p className="text-sm text-slate">{extras.map(([label, value]) => `${label} ${value}/5`).join(" · ")}</p>
+      )}
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map((t) => (
+            <Tag key={t} tone="white" className="px-2.5 py-1.5">
+              {t}
+            </Tag>
+          ))}
+        </div>
       )}
       {review.body && <p className="text-base leading-normal">&ldquo;{review.body}&rdquo;</p>}
     </>
@@ -61,7 +84,9 @@ export async function ReviewPanel({ tripId, viewer, userId }: { tripId: string; 
       .maybeSingle(),
     admin
       .from("reviews")
-      .select("id, kind, rating_overall, rating_cleanliness, rating_accuracy, rating_value, body, host_reply, created_at")
+      .select(
+        "id, kind, rating_overall, rating_cleanliness, rating_maintenance, rating_communication, rating_convenience, rating_accuracy, rating_value, issue_tags, body, host_reply, created_at"
+      )
       .eq("trip_id", tripId)
       .overrideTypes<ReviewRow[], { merge: false }>(),
   ]);

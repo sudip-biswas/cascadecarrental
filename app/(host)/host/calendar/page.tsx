@@ -14,11 +14,24 @@ import { MultiCalendar, type PriceOverrides } from "@/components/host/MultiCalen
 import { coverUrl } from "@/components/host/bits";
 import { loadHostTrips, occupantsFor } from "@/components/host/data";
 import { addDays } from "@/components/host/days";
+import { cityOf } from "@/components/host/calendar/filters";
 
 export const instant = false;
 export const metadata = { title: "Calendar" };
 
-type CarRow = Pick<Vehicle, "id" | "make" | "model" | "daily_rate_cents"> & {
+type CarRow = Pick<
+  Vehicle,
+  | "id"
+  | "make"
+  | "model"
+  | "trim"
+  | "year"
+  | "license_plate"
+  | "status"
+  | "location_name"
+  | "location_address"
+  | "daily_rate_cents"
+> & {
   vehicle_images: Pick<VehicleImage, "url" | "is_cover" | "position">[];
 };
 
@@ -62,7 +75,9 @@ export default async function HostCalendarPage() {
   const [{ data }] = await Promise.all([
     supabase
       .from("vehicles")
-      .select("id, make, model, daily_rate_cents, vehicle_images(url, is_cover, position)")
+      .select(
+        "id, make, model, trim, year, license_plate, status, location_name, location_address, daily_rate_cents, vehicle_images(url, is_cover, position)"
+      )
       .eq("host_id", user.id)
       .order("created_at", { ascending: true }),
     settleTripStatuses(user.id),
@@ -117,6 +132,12 @@ export default async function HostCalendarPage() {
         cars={cars.map((c) => ({
           id: c.id,
           name: `${c.make} ${c.model}`,
+          trim: c.trim,
+          year: c.year,
+          plate: c.license_plate,
+          status: c.status,
+          place: c.location_name,
+          city: cityOf(c.location_address, c.location_name),
           cover: coverUrl(c.vehicle_images),
           dailyRateCents: c.daily_rate_cents,
           occupants: occupantsFor(c.id, trips, blocksData ?? []),

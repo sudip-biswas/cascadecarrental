@@ -6,19 +6,39 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Divider, PriceRow } from "@/components/kit";
-import { computePricing, dayRates, NON_REFUNDABLE_DISCOUNT, YOUNG_DRIVER_AGE, type DailyPrices, type RateType } from "@/lib/pricing";
+import {
+  computePricing,
+  dayRates,
+  DISCOUNT_TIERS,
+  lastMinuteBoostPct,
+  NON_REFUNDABLE_DISCOUNT,
+  YOUNG_DRIVER_AGE,
+  type DailyPrices,
+  type RateType,
+} from "@/lib/pricing";
 import { cn, formatCurrency, formatPrice, formatRange, pluralize, zonedInstant } from "@/lib/utils";
 import type { Vehicle } from "@/lib/supabase/types";
 import { TripDatesPicker } from "@/components/search/TripDatesPicker";
+import { PickupPicker } from "@/components/checkout/DeliverySection";
+import { CAR_SPOT, spotFeeCents, type PickupOption } from "@/lib/locations";
 import {
   DEFAULT_TIME,
   bookedNights,
   daysBetween,
-  overlapsBooked,
   todayKey,
   type DateKey,
   type Range,
 } from "@/components/search/dates";
+import {
+  ALWAYS_AVAILABLE,
+  hoursHint,
+  isClosedOn,
+  overlapsRanges,
+  snapTime,
+  timesOn,
+  tripRuleProblem,
+  type TripRules,
+} from "@/lib/trip-rules";
 
 export type BookingVehicle = Pick<
   Vehicle,
@@ -26,6 +46,10 @@ export type BookingVehicle = Pick<
   | "daily_rate_cents"
   | "weekly_discount_pct"
   | "monthly_discount_pct"
+  | "three_day_discount_pct"
+  | "two_week_discount_pct"
+  | "three_week_discount_pct"
+  | "last_minute_boost_pct"
   | "min_trip_days"
   | "max_trip_days"
   | "advance_notice_hours"
@@ -69,32 +93,31 @@ interface Props {
   isLoggedIn: boolean;
   /** Age rule, delivery and extras, for one light line under the button. */
   perks?: BookingPerks;
+  /** Weekend minimum and the host's pickup and return hours. Booked ranges already include the buffer. */
+  tripRules?: Pick<TripRules, "weekend_min_two_days" | "hours">;
+  /** Where the guest can get the car: its own spot first, then the host's spots. */
+  pickup?: PickupOption[];
   /** The details column, rendered by the page. */
   children: React.ReactNode;
 }
 
 /** Why a date range can't be booked, or null when it can. */
 function problemWith(
-  vehicle: BookingVehicle,
+  rules: TripRules,
   from: DateKey | undefined,
   until: DateKey | undefined,
-  nights: Set<DateKey>,
+  unavailable: Range[],
   fromTime: string,
   untilTime: string,
 ): string | null {
   if (!from) return "Pick dates first";
   if (!until) return "Pick a return date";
   if (from < todayKey()) return "Pick-up can't be in the past.";
-  const hoursAhead = (zonedInstant(from, fromTime).getTime() - Date.now()) / 3_600_000;
-  if (hoursAhead < vehicle.advance_notice_hours) {
-    return `The host needs ${pluralize(vehicle.advance_notice_hours, "hour")} notice. Pick a later day.`;
-  }
-  const days = daysBetween(from, until, fromTime, untilTime);
-  if (days < vehicle.min_trip_days) return `This car needs at least ${pluralize(vehicle.min_trip_days, "day")}.`;
-  if (vehicle.max_trip_days && days > vehicle.max_trip_days) {
-    return `This car can be booked for up to ${pluralize(vehicle.max_trip_days, "day")}.`;
-  }
-  if (overlapsBooked(from, until, nights)) return "Some of those days are taken. Try other dates.";
+  const start = zonedInstant(from, fromTime);
+  const end = zonedInstant(until, untilTime);
+  const broken = tripRuleProblem(rules, start, end);
+  if (broken) return broken;
+  if (overlapsRanges(unavailable, start, end)) return "Some of those days are taken. Try other dates.";
   return null;
 }
 
@@ -110,6 +133,8 @@ export function CarBooking({
   initialRate,
   isLoggedIn,
   perks,
+  tripRules,
+  pickup = [],
   children,
 }: Props) {
   const router = useRouter();
@@ -119,9 +144,18 @@ export function CarBooking({
   const [fromTime, setFromTime] = useState(initialFromTime ?? DEFAULT_TIME);
   const [untilTime, setUntilTime] = useState(initialUntilTime ?? DEFAULT_TIME);
   const [rate, setRate] = useState<RateType>(initialRate);
+  const [spot, setSpot] = useState(CAR_SPOT);
+  const pickedSpot = pickup.find((o) => o.id === spot);
 
   const nights = useMemo(() => bookedNights(unavailable), [unavailable]);
-  const problem = problemWith(vehicle, from, until, nights, fromTime, untilTime);
+  const hours = tripRules?.hours ?? ALWAYS_AVAILABLE;
+  const rules: TripRules = {
+    ...vehicle,
+    trip_buffer_hours: 0,
+    weekend_min_two_days: tripRules?.weekend_min_two_days ?? false,
+    hours,
+  };
+  const problem = problemWith(rules, from, until, unavailable, fromTime, untilTime);
   const ready = !problem && from && until;
 
   const days = from && until ? daysBetween(from, until, fromTime, untilTime) : 0;
@@ -131,10 +165,14 @@ export function CarBooking({
       days: Math.max(days, 1),
       dayRatesCents: from ? dayRates(vehicle.daily_rate_cents, from, Math.max(days, 1), dailyPrices) : undefined,
       rateType,
-      weeklyDiscountPct: vehicle.weekly_discount_pct,
-      monthlyDiscountPct: vehicle.monthly_discount_pct,
+      discounts: vehicle,
+      boostPct: from ? lastMinuteBoostPct(vehicle, zonedInstant(from, fromTime)) : 0,
+      // The custom radius adds a per-mile part once the address is known, at checkout.
+      deliveryCents: pickedSpot ? spotFeeCents(pickedSpot, Math.max(days, 1)) : 0,
     });
   const pricing = priceFor(rate);
+  const firstTier = DISCOUNT_TIERS.find((tier) => vehicle[tier.column] > 0);
+  const longTripDeal = firstTier && `Save ${vehicle[firstTier.column]}% on trips of ${firstTier.days}+ days.`;
   const payNow = priceFor("non_refundable");
   const flexible = priceFor("refundable");
 
@@ -158,7 +196,14 @@ export function CarBooking({
   function changeDates(nextFrom?: DateKey, nextUntil?: DateKey) {
     setFrom(nextFrom);
     setUntil(nextUntil);
-    if (!nextFrom || nextUntil) sync({ from: nextFrom, until: nextUntil, fromTime, untilTime, rate });
+    // Move the times into the host's hours for the new days.
+    const nextFromTime = nextFrom ? snapTime(hours, nextFrom, fromTime) : fromTime;
+    const nextUntilTime = nextUntil ? snapTime(hours, nextUntil, untilTime) : untilTime;
+    setFromTime(nextFromTime);
+    setUntilTime(nextUntilTime);
+    if (!nextFrom || nextUntil) {
+      sync({ from: nextFrom, until: nextUntil, fromTime: nextFromTime, untilTime: nextUntilTime, rate });
+    }
   }
 
   function changeTimes(nextFromTime: string, nextUntilTime: string) {
@@ -172,11 +217,13 @@ export function CarBooking({
     sync({ from, until, fromTime, untilTime, rate: next });
   }
 
-  const checkoutUrl = `/cars/${vehicle.id}/checkout?${query({ from, until, fromTime, untilTime, rate })}`;
+  const checkoutUrl = `/cars/${vehicle.id}/checkout?${query({ from, until, fromTime, untilTime, rate })}${spot === CAR_SPOT ? "" : `&spot=${spot}`}`;
   const reserveHref = isLoggedIn ? checkoutUrl : `/login?redirectTo=${encodeURIComponent(checkoutUrl)}`;
 
+  // Days inside the notice window, or when the host can't meet guests at all.
   const insideNotice = (key: DateKey) =>
-    (zonedInstant(key, fromTime).getTime() - Date.now()) / 3_600_000 < vehicle.advance_notice_hours;
+    (zonedInstant(key, fromTime).getTime() - Date.now()) / 3_600_000 < vehicle.advance_notice_hours ||
+    isClosedOn(hours, key);
 
   const chargeNote = vehicle.instant_book
     ? "Instant book: you're charged when you book."
@@ -198,6 +245,8 @@ export function CarBooking({
           {days > 0 && <span className="text-[15px] text-slate">{pluralize(days, "day")}</span>}
         </div>
 
+        {!ready && longTripDeal && <p className="rounded-[14px] bg-mint px-3.5 py-2.5 text-sm font-semibold text-mint-ink">{longTripDeal}</p>}
+
         <TripDatesPicker
           from={from}
           until={until}
@@ -207,8 +256,11 @@ export function CarBooking({
           onTimeChange={changeTimes}
           isDisabled={insideNotice}
           booked={nights}
-          note={from && until && problem ? problem : undefined}
+          timeOptions={(key) => timesOn(hours, key)}
+          note={from && until ? (problem ?? hoursHint(hours, from, until) ?? undefined) : undefined}
         />
+
+        {pickup.length > 1 && <PickupPicker options={pickup} days={days} spot={spot} onSpot={setSpot} />}
 
         <div role="radiogroup" aria-label="How to pay" className="grid grid-cols-2 gap-2">
           {(
@@ -272,9 +324,19 @@ export function CarBooking({
               }
               value={formatCurrency(pricing.baseCents)}
             />
+            {pricing.boostCents > 0 && (
+              <PriceRow
+                label={`Last-minute price, ${pricing.boostPct}%`}
+                value={`+${formatCurrency(pricing.boostCents)}`}
+              />
+            )}
             {pricing.lengthDiscountCents > 0 && (
               <PriceRow
-                label={`${days >= 30 ? "Month" : "Week"} discount, ${pricing.lengthDiscountPct}%`}
+                label={
+                  <>
+                    Trip savings <span className="text-slate">· {pricing.lengthDiscountLabel}</span>
+                  </>
+                }
                 value={`−${formatCurrency(pricing.lengthDiscountCents)}`}
               />
             )}
@@ -282,6 +344,12 @@ export function CarBooking({
               <PriceRow
                 label={`Pay-now discount, ${Math.round(NON_REFUNDABLE_DISCOUNT * 100)}%`}
                 value={`−${formatCurrency(pricing.savingsCents)}`}
+              />
+            )}
+            {pricing.deliveryCents > 0 && pickedSpot && (
+              <PriceRow
+                label={pickedSpot.kind === "custom" ? "Delivery to you" : `Delivery to ${pickedSpot.name}`}
+                value={formatCurrency(pricing.deliveryCents)}
               />
             )}
             <PriceRow label="Tax" value={formatCurrency(pricing.taxCents)} />

@@ -4,9 +4,10 @@ import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { cn } from "cn";
 
 /** Starts Stripe Connect Express onboarding by POSTing to /api/connect/onboard. */
-export function ConnectPayoutsButton() {
+export function ConnectPayoutsButton({ className }: { className?: string }) {
   const [loading, setLoading] = useState(false);
 
   async function start() {
@@ -23,7 +24,7 @@ export function ConnectPayoutsButton() {
   }
 
   return (
-    <Button onClick={start} disabled={loading} className="shrink-0">
+    <Button onClick={start} disabled={loading} className={cn("shrink-0", className)}>
       {loading ? "Redirecting…" : "Connect bank account"}
     </Button>
   );

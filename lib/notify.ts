@@ -105,7 +105,10 @@ export type TripEvent =
   | "deposit_held"
   | "deposit_released"
   | "review_from_guest"
-  | "review_from_host";
+  | "review_from_host"
+  | "driver_added"
+  | "driver_approved"
+  | "driver_declined";
 
 /**
  * The emails and feed items for one moment in a trip, to whoever needs them.
@@ -219,6 +222,16 @@ export async function notifyTrip(
       return;
     case "review_from_host":
       await toGuest(`${host} reviewed you`, `${car}, ${when}.${extra.note ? `\n${extra.note}` : ""}`);
+      return;
+    // `note` is the driver's name, `key` their row.
+    case "driver_added":
+      await toHost(`${guest} added a driver: ${extra.note ?? "someone new"}`, `${car}, ${when}.\nApprove or decline them from the trip page. They can't drive until you approve.`, "Review the driver", `${hostTrip}#drivers`);
+      return;
+    case "driver_approved":
+      await toGuest(`${host} approved ${extra.note ?? "your driver"}`, `${car}, ${when}.\nThey can drive the car on this trip. You still have to be there for pick-up and return.`);
+      return;
+    case "driver_declined":
+      await toGuest(`${host} declined ${extra.note ?? "your driver"}`, `${car}, ${when}.\nThey can't drive the car on this trip. Message ${host} if you're not sure why.`);
       return;
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { processDueCharges } from "@/lib/charges";
 import { sendTripReminders, settleAllTrips } from "@/lib/trips";
+import { sendDueScheduledMessages } from "@/lib/scheduled-messages";
 
 export const maxDuration = 60;
 
@@ -28,6 +29,7 @@ export async function GET(req: Request) {
   const settled = await run("settle", settleAllTrips);
   const reminders = await run("reminders", sendTripReminders);
   const charges = await run("charges", processDueCharges);
+  const messages = await run("scheduled messages", () => sendDueScheduledMessages());
 
-  return NextResponse.json({ settled, reminders, charges: charges ?? "done" });
+  return NextResponse.json({ settled, reminders, charges: charges ?? "done", messages });
 }

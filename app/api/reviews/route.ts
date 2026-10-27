@@ -5,17 +5,23 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { settleTripStatuses } from "@/lib/trips";
 import { notifyTripLater } from "@/lib/notify";
 import { hostReviewCloses } from "@/components/trip-panels/review/window";
+import { CATEGORY_BY_KEY, ISSUE_TAGS } from "@/components/reviews/categories";
 
 const rating = z.number().int().min(1).max(5);
 
-// The same fields both ways. From a host, the three extras mean returned
-// clean, on time and followed the rules (see review/window.ts).
+// The same fields both ways. From a host, cleanliness, accuracy and value mean
+// returned clean, on time and followed the rules (see review/window.ts). Guests
+// rate Turo's five categories instead of value, and can tag what went wrong.
 const schema = z.object({
   trip_id: z.string().uuid(),
   rating_overall: rating,
   rating_cleanliness: rating.optional(),
   rating_accuracy: rating.optional(),
   rating_value: rating.optional(),
+  rating_maintenance: rating.optional(),
+  rating_communication: rating.optional(),
+  rating_convenience: rating.optional(),
+  issue_tags: z.array(z.string().max(40)).max(40).optional(),
   body: z.string().trim().max(2000).optional(),
 });
 
@@ -30,7 +36,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Pick a rating from 1 to 5." }, { status: 400 });
   }
-  const { trip_id, ...ratings } = parsed.data;
+  const { trip_id, issue_tags, ...ratings } = parsed.data;
 
   await settleTripStatuses(user.id);
 
@@ -54,6 +60,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Reviews close 14 days after the trip." }, { status: 409 });
   }
 
+  // Hosts don't rate these. A guest's tags only count for a category they
+  // rated under 5 stars.
+  if (asHost) {
+    delete ratings.rating_maintenance;
+    delete ratings.rating_communication;
+    delete ratings.rating_convenience;
+  }
+  const tags = asHost
+    ? []
+    : [...new Set(issue_tags ?? [])].filter((id) => {
+        const tag = ISSUE_TAGS.get(id);
+        const given = tag && ratings[CATEGORY_BY_KEY[tag.category].column];
+        return typeof given === "number" && given < 5;
+      });
+
   const row = {
     trip_id,
     vehicle_id: trip.vehicle_id,
@@ -61,6 +82,7 @@ export async function POST(req: Request) {
     reviewee_id: asHost ? trip.guest_id : trip.host_id,
     kind: asHost ? ("host_to_guest" as const) : ("guest_to_host" as const),
     ...ratings,
+    issue_tags: tags,
     body: ratings.body || null,
   };
   // The insert policy only lets guests write, so host reviews use the admin

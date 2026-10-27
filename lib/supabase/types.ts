@@ -158,6 +158,10 @@ export type Database = {
           daily_rate_cents: number;
           weekly_discount_pct: number;
           monthly_discount_pct: number;
+          three_day_discount_pct: number;
+          two_week_discount_pct: number;
+          three_week_discount_pct: number;
+          last_minute_boost_pct: number;
           distance_included_mi: number;
           extra_mile_fee_cents: number;
           min_trip_days: number;
@@ -179,6 +183,8 @@ export type Database = {
           delivery_fee_cents: number;
           delivery_fee_per_mi_cents: number;
           airport_delivery_fee_cents: number | null;
+          trip_buffer_hours: number;
+          weekend_min_two_days: boolean;
         };
         Insert: {
           id?: string;
@@ -204,6 +210,10 @@ export type Database = {
           daily_rate_cents: number;
           weekly_discount_pct?: number;
           monthly_discount_pct?: number;
+          three_day_discount_pct?: number;
+          two_week_discount_pct?: number;
+          three_week_discount_pct?: number;
+          last_minute_boost_pct?: number;
           distance_included_mi?: number;
           extra_mile_fee_cents?: number;
           min_trip_days?: number;
@@ -225,6 +235,8 @@ export type Database = {
           delivery_fee_cents?: number;
           delivery_fee_per_mi_cents?: number;
           airport_delivery_fee_cents?: number | null;
+          trip_buffer_hours?: number;
+          weekend_min_two_days?: boolean;
         };
         Update: {
           id?: string;
@@ -250,6 +262,10 @@ export type Database = {
           daily_rate_cents?: number;
           weekly_discount_pct?: number;
           monthly_discount_pct?: number;
+          three_day_discount_pct?: number;
+          two_week_discount_pct?: number;
+          three_week_discount_pct?: number;
+          last_minute_boost_pct?: number;
           distance_included_mi?: number;
           extra_mile_fee_cents?: number;
           min_trip_days?: number;
@@ -270,6 +286,8 @@ export type Database = {
           delivery_fee_cents?: number;
           delivery_fee_per_mi_cents?: number;
           airport_delivery_fee_cents?: number | null;
+          trip_buffer_hours?: number;
+          weekend_min_two_days?: boolean;
         };
         Relationships: [
           {
@@ -351,6 +369,35 @@ export type Database = {
             columns: ["vehicle_id"];
             isOneToOne: false;
             referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      host_hours: {
+        Row: {
+          host_id: string;
+          always_available: boolean;
+          week: Json;
+          updated_at: string;
+        };
+        Insert: {
+          host_id: string;
+          always_available?: boolean;
+          week?: Json;
+          updated_at?: string;
+        };
+        Update: {
+          host_id?: string;
+          always_available?: boolean;
+          week?: Json;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "host_hours_host_id_fkey";
+            columns: ["host_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           }
         ];
@@ -470,6 +517,11 @@ export type Database = {
           return_reminded_at: string | null;
           completed_at: string | null;
           paid_out_at: string | null;
+          pickup_spot_id: string | null;
+          pickup_spot_kind: PickupSpotKind | null;
+          pickup_spot_name: string | null;
+          vehicle_access: VehicleAccess | null;
+          handover_note: string | null;
         };
         Insert: {
           id?: string;
@@ -518,6 +570,11 @@ export type Database = {
           return_reminded_at?: string | null;
           completed_at?: string | null;
           paid_out_at?: string | null;
+          pickup_spot_id?: string | null;
+          pickup_spot_kind?: PickupSpotKind | null;
+          pickup_spot_name?: string | null;
+          vehicle_access?: VehicleAccess | null;
+          handover_note?: string | null;
         };
         Update: {
           id?: string;
@@ -565,6 +622,11 @@ export type Database = {
           return_reminded_at?: string | null;
           completed_at?: string | null;
           paid_out_at?: string | null;
+          pickup_spot_id?: string | null;
+          pickup_spot_kind?: PickupSpotKind | null;
+          pickup_spot_name?: string | null;
+          vehicle_access?: VehicleAccess | null;
+          handover_note?: string | null;
         };
         Relationships: [
           {
@@ -682,6 +744,10 @@ export type Database = {
           rating_cleanliness: number | null;
           rating_accuracy: number | null;
           rating_value: number | null;
+          rating_maintenance: number | null;
+          rating_communication: number | null;
+          rating_convenience: number | null;
+          issue_tags: string[];
           body: string | null;
           host_reply: string | null;
           host_replied_at: string | null;
@@ -698,6 +764,10 @@ export type Database = {
           rating_cleanliness?: number | null;
           rating_accuracy?: number | null;
           rating_value?: number | null;
+          rating_maintenance?: number | null;
+          rating_communication?: number | null;
+          rating_convenience?: number | null;
+          issue_tags?: string[];
           body?: string | null;
           host_reply?: string | null;
           host_replied_at?: string | null;
@@ -714,6 +784,10 @@ export type Database = {
           rating_cleanliness?: number | null;
           rating_accuracy?: number | null;
           rating_value?: number | null;
+          rating_maintenance?: number | null;
+          rating_communication?: number | null;
+          rating_convenience?: number | null;
+          issue_tags?: string[];
           body?: string | null;
           host_reply?: string | null;
           host_replied_at?: string | null;
@@ -782,6 +856,148 @@ export type Database = {
             foreignKeyName: "vehicle_extras_vehicle_id_fkey";
             columns: ["vehicle_id"];
             isOneToOne: false;
+            referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      host_locations: {
+        Row: {
+          id: string;
+          host_id: string;
+          kind: HostLocationKind;
+          name: string;
+          address: string | null;
+          lat: number | null;
+          lng: number | null;
+          fee_cents: number;
+          fee_per_mi_cents: number;
+          radius_mi: number | null;
+          free_from_days: number | null;
+          vehicle_access: VehicleAccess;
+          handover_note: string | null;
+          all_vehicles: boolean;
+          enabled: boolean;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          host_id: string;
+          kind: HostLocationKind;
+          name: string;
+          address?: string | null;
+          lat?: number | null;
+          lng?: number | null;
+          fee_cents?: number;
+          fee_per_mi_cents?: number;
+          radius_mi?: number | null;
+          free_from_days?: number | null;
+          vehicle_access?: VehicleAccess;
+          handover_note?: string | null;
+          all_vehicles?: boolean;
+          enabled?: boolean;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          host_id?: string;
+          kind?: HostLocationKind;
+          name?: string;
+          address?: string | null;
+          lat?: number | null;
+          lng?: number | null;
+          fee_cents?: number;
+          fee_per_mi_cents?: number;
+          radius_mi?: number | null;
+          free_from_days?: number | null;
+          vehicle_access?: VehicleAccess;
+          handover_note?: string | null;
+          all_vehicles?: boolean;
+          enabled?: boolean;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "host_locations_host_id_fkey";
+            columns: ["host_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      host_location_vehicles: {
+        Row: {
+          location_id: string;
+          vehicle_id: string;
+          fee_cents: number | null;
+        };
+        Insert: {
+          location_id: string;
+          vehicle_id: string;
+          fee_cents?: number | null;
+        };
+        Update: {
+          location_id?: string;
+          vehicle_id?: string;
+          fee_cents?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "host_location_vehicles_location_id_fkey";
+            columns: ["location_id"];
+            isOneToOne: false;
+            referencedRelation: "host_locations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "host_location_vehicles_vehicle_id_fkey";
+            columns: ["vehicle_id"];
+            isOneToOne: false;
+            referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      vehicle_guest_instructions: {
+        Row: {
+          vehicle_id: string;
+          check_in_method: "in_person" | "lockbox" | "keyless";
+          pickup_instructions: string | null;
+          welcome_message: string | null;
+          car_guide: string | null;
+          faqs: { question: string; answer: string }[];
+          updated_at: string;
+        };
+        Insert: {
+          vehicle_id: string;
+          check_in_method?: "in_person" | "lockbox" | "keyless";
+          pickup_instructions?: string | null;
+          welcome_message?: string | null;
+          car_guide?: string | null;
+          faqs?: { question: string; answer: string }[];
+          updated_at?: string;
+        };
+        Update: {
+          vehicle_id?: string;
+          check_in_method?: "in_person" | "lockbox" | "keyless";
+          pickup_instructions?: string | null;
+          welcome_message?: string | null;
+          car_guide?: string | null;
+          faqs?: { question: string; answer: string }[];
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_guest_instructions_vehicle_id_fkey";
+            columns: ["vehicle_id"];
+            isOneToOne: true;
             referencedRelation: "vehicles";
             referencedColumns: ["id"];
           }
@@ -981,6 +1197,72 @@ export type Database = {
           }
         ];
       };
+      trip_drivers: {
+        Row: {
+          id: string;
+          trip_id: string;
+          added_by: string;
+          profile_id: string | null;
+          full_name: string;
+          email: string;
+          date_of_birth: string;
+          licence_last4: string;
+          licence_state: string;
+          licence_expiry: string;
+          status: "pending" | "approved" | "declined" | "removed";
+          created_at: string;
+          updated_at: string;
+          responded_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          trip_id: string;
+          added_by: string;
+          profile_id?: string | null;
+          full_name: string;
+          email: string;
+          date_of_birth: string;
+          licence_last4: string;
+          licence_state: string;
+          licence_expiry: string;
+          status?: "pending" | "approved" | "declined" | "removed";
+          created_at?: string;
+          updated_at?: string;
+          responded_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          trip_id?: string;
+          added_by?: string;
+          profile_id?: string | null;
+          full_name?: string;
+          email?: string;
+          date_of_birth?: string;
+          licence_last4?: string;
+          licence_state?: string;
+          licence_expiry?: string;
+          status?: "pending" | "approved" | "declined" | "removed";
+          created_at?: string;
+          updated_at?: string;
+          responded_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "trip_drivers_trip_id_fkey";
+            columns: ["trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "trip_drivers_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       favorites: {
         Row: {
           user_id: string;
@@ -1003,6 +1285,50 @@ export type Database = {
             columns: ["vehicle_id"];
             isOneToOne: false;
             referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      listing_reports: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          reporter_id: string;
+          reason: "inaccurate" | "photos" | "scam" | "unsafe" | "offensive" | "other";
+          details: string | null;
+          status: "open" | "resolved";
+          created_at: string;
+          resolved_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          reporter_id: string;
+          reason: "inaccurate" | "photos" | "scam" | "unsafe" | "offensive" | "other";
+          details?: string | null;
+          status?: "open" | "resolved";
+          created_at?: string;
+          resolved_at?: string | null;
+        };
+        Update: {
+          reason?: "inaccurate" | "photos" | "scam" | "unsafe" | "offensive" | "other";
+          details?: string | null;
+          status?: "open" | "resolved";
+          resolved_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "listing_reports_vehicle_id_fkey";
+            columns: ["vehicle_id"];
+            isOneToOne: false;
+            referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "listing_reports_reporter_id_fkey";
+            columns: ["reporter_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           }
         ];
@@ -1052,6 +1378,99 @@ export type Database = {
           expires_at?: string | null;
           active?: boolean;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      message_templates: {
+        Row: {
+          id: string;
+          host_id: string;
+          name: string;
+          body: string;
+          event: "booked" | "trip_start" | "three_quarters" | "trip_end";
+          offset_minutes: number;
+          direction: "before" | "after";
+          trip_type: "all" | "any_delivery" | "no_delivery" | "custom_delivery" | "airport_delivery";
+          vehicle_ids: string[] | null;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          host_id: string;
+          name: string;
+          body: string;
+          event: "booked" | "trip_start" | "three_quarters" | "trip_end";
+          offset_minutes?: number;
+          direction?: "before" | "after";
+          trip_type?: "all" | "any_delivery" | "no_delivery" | "custom_delivery" | "airport_delivery";
+          vehicle_ids?: string[] | null;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          host_id?: string;
+          name?: string;
+          body?: string;
+          event?: "booked" | "trip_start" | "three_quarters" | "trip_end";
+          offset_minutes?: number;
+          direction?: "before" | "after";
+          trip_type?: "all" | "any_delivery" | "no_delivery" | "custom_delivery" | "airport_delivery";
+          vehicle_ids?: string[] | null;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      scheduled_messages: {
+        Row: {
+          id: string;
+          template_id: string | null;
+          trip_id: string;
+          host_id: string;
+          guest_id: string;
+          name: string;
+          body: string;
+          send_at: string;
+          status: "scheduled" | "sent" | "skipped" | "cancelled";
+          sent_at: string | null;
+          message_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          template_id?: string | null;
+          trip_id: string;
+          host_id: string;
+          guest_id: string;
+          name: string;
+          body: string;
+          send_at: string;
+          status?: "scheduled" | "sent" | "skipped" | "cancelled";
+          sent_at?: string | null;
+          message_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          template_id?: string | null;
+          trip_id?: string;
+          host_id?: string;
+          guest_id?: string;
+          name?: string;
+          body?: string;
+          send_at?: string;
+          status?: "scheduled" | "sent" | "skipped" | "cancelled";
+          sent_at?: string | null;
+          message_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -1114,8 +1533,19 @@ export type PaymentStatus = Trip["payment_status"];
 export type Review = Tables["reviews"]["Row"];
 export type Message = Tables["messages"]["Row"];
 export type VehicleExtra = Tables["vehicle_extras"]["Row"];
+export type GuestInstructions = Tables["vehicle_guest_instructions"]["Row"];
 export type TripInspection = Tables["trip_inspections"]["Row"];
 export type TripCharge = Tables["trip_charges"]["Row"];
 export type TripChange = Tables["trip_changes"]["Row"];
+export type TripDriver = Tables["trip_drivers"]["Row"];
 export type PromoCode = Tables["promo_codes"]["Row"];
+export type ListingReport = Tables["listing_reports"]["Row"];
+export type HostLocationKind = "home" | "airport" | "hotel" | "transit" | "other" | "custom";
+export type VehicleAccess = "lockbox" | "in_person" | "remote_unlock";
+/** Where a trip's handover is: "car" is the car's own spot. */
+export type PickupSpotKind = "car" | HostLocationKind;
+export type HostLocation = Tables["host_locations"]["Row"];
+export type HostLocationVehicle = Tables["host_location_vehicles"]["Row"];
 export type Notification = Tables["notifications"]["Row"];
+export type MessageTemplate = Tables["message_templates"]["Row"];
+export type ScheduledMessage = Tables["scheduled_messages"]["Row"];

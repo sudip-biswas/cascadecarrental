@@ -29,13 +29,16 @@ import { TripActionButtons } from "@/components/trips/TripActionButtons";
 import { CarPhoto, Initial, coverUrl, firstName } from "@/components/host/bits";
 import { PROTECTION_LABEL, answerBy, isRequest, timeLeft } from "@/components/host/data";
 import { GuestRecord } from "@/components/host/GuestRecord";
+import { DriversCard } from "@/components/host/DriversCard";
 import { MessageThread } from "@/components/messaging/MessageThread";
 import { HOST_REPLIES } from "@/components/messaging/replies";
 import { InspectionPanel } from "@/components/trip-panels/InspectionPanel";
 import { ChargesPanel } from "@/components/trip-panels/ChargesPanel";
 import { ChangePanel } from "@/components/trip-panels/ChangePanel";
 import { ReviewPanel } from "@/components/trip-panels/ReviewPanel";
+import { InstructionsHostNote } from "@/components/trip-panels/InstructionsHostNote";
 import type { Message, Trip } from "@/lib/supabase/types";
+import { HandoverDetails, atNamedSpot } from "@/components/host/locations/HandoverDetails";
 
 export const instant = false;
 export const metadata = { title: "Trip" };
@@ -163,14 +166,22 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
             </div>
             <Divider />
             <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-              <Detail icon={MapPin} label={trip.delivery_address ? "Delivery" : "Pick-up and return"}>
+              <Detail
+                icon={MapPin}
+                label={atNamedSpot(trip) ? `Handover at ${trip.pickup_spot_name}` : trip.delivery_address ? "Delivery" : "Pick-up and return"}
+              >
                 <span className="font-semibold">{place}</span>
                 <a href={directions} target="_blank" rel="noreferrer" className="font-bold text-cobalt hover:underline">
                   Get directions
                 </a>
+                {trip.vehicle && <InstructionsHostNote vehicleId={trip.vehicle.id} />}
                 {trip.delivery_address && (
-                  <span className="text-slate">You bring the car to {guest}, {formatCurrency(trip.delivery_cents)} added to your earnings.</span>
+                  <span className="text-slate">
+                    {atNamedSpot(trip) ? `You leave the car here for ${guest}` : `You bring the car to ${guest}`}
+                    {trip.delivery_cents > 0 ? `, ${formatCurrency(trip.delivery_cents)} added to your earnings.` : ", free delivery."}
+                  </span>
                 )}
+                <HandoverDetails trip={{ ...trip, delivery_address: null }} show />
               </Detail>
 
               <Detail icon={Gauge} label="Miles">
@@ -243,6 +254,7 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
             </dl>
           </Tile>
 
+          <DriversCard tripId={trip.id} userId={user.id} />
           <ChangePanel {...panel} />
           <div id="check-in" className="scroll-mt-4">
             <InspectionPanel {...panel} />

@@ -1,18 +1,37 @@
 "use client";
 
+import { useState, type ComponentType } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, ChevronDown, PlaneLanding } from "lucide-react";
+import { ArrowDownUp, ChevronDown, Truck } from "lucide-react";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { FUEL_TYPES, VEHICLE_TYPES } from "./categories";
-import { FILTER_KEYS, parseSearchParams, type SortKey } from "./params";
+import { fuelLabel } from "./categories";
+import { AllFilters } from "./AllFilters";
+import type { FilterOptions } from "./listings";
+import { FILTER_KEYS, parseSearchParams, type SearchFilters } from "./params";
+import {
+  FuelSection,
+  MakeSection,
+  MpgSection,
+  PriceSection,
+  SeatsSection,
+  TypeSection,
+  YearsSection,
+  showLabel,
+  sortChoices,
+  typesLabel,
+  useDraft,
+  useSearchStats,
+  type SectionProps,
+} from "./FilterSections";
 
 const chip =
   "flex h-11 shrink-0 items-center gap-1.5 rounded-[12px] px-3.5 text-[15px] font-semibold whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-cobalt";
@@ -21,171 +40,137 @@ function chipTone(active: boolean) {
   return active ? "bg-ink text-white hover:bg-graphite" : "bg-white text-ink hover:bg-line";
 }
 
-const SEATS = [
-  { value: "", label: "Any" },
-  { value: "4", label: "4 or more" },
-  { value: "5", label: "5 or more" },
-  { value: "7", label: "7 or more" },
+interface Pill {
+  /** URL params this pill sets, cleared by its Clear button. */
+  keys: string[];
+  label: (f: SearchFilters) => string | null;
+  idle: string;
+  Section: ComponentType<SectionProps>;
+  wide?: boolean;
+}
+
+function priceLabel(f: SearchFilters) {
+  if (f.minPrice && f.maxPrice) return `$${f.minPrice}–$${f.maxPrice}`;
+  if (f.maxPrice) return `Up to $${f.maxPrice}`;
+  if (f.minPrice) return `$${f.minPrice}+ a day`;
+  return null;
+}
+
+function yearsLabel(f: SearchFilters) {
+  if (f.minYear && f.maxYear) return f.minYear === f.maxYear ? String(f.minYear) : `${f.minYear}–${f.maxYear}`;
+  if (f.minYear) return `${f.minYear} or newer`;
+  if (f.maxYear) return `${f.maxYear} or older`;
+  return null;
+}
+
+function makesLabel(f: SearchFilters) {
+  const makes = new Set([...f.makes, ...f.models.map((m) => m.split(":")[0])]);
+  if (!makes.size) return null;
+  if (f.models.length === 1 && makes.size === 1) return f.models[0].replace(":", " ");
+  return makes.size === 1 ? [...makes][0] : `Makes · ${makes.size}`;
+}
+
+/** Turo's quick filters, in Turo's order. The rest live in All filters. */
+const PILLS: Pill[] = [
+  { keys: ["minPrice", "maxPrice"], idle: "Price", label: priceLabel, Section: PriceSection, wide: true },
+  { keys: ["type"], idle: "Vehicle type", label: (f) => (f.types.length ? typesLabel(f.types) : null), Section: TypeSection },
+  { keys: ["make", "model"], idle: "Make & model", label: makesLabel, Section: MakeSection, wide: true },
+  { keys: ["minYear", "maxYear"], idle: "Years", label: yearsLabel, Section: YearsSection },
+  { keys: ["seats"], idle: "Seats", label: (f) => (f.minSeats ? `${f.minSeats}+ seats` : null), Section: SeatsSection },
+  { keys: ["mpg"], idle: "Fuel efficiency", label: (f) => (f.minMpg ? `${f.minMpg}+ MPG` : null), Section: MpgSection },
+  {
+    keys: ["fuel"],
+    idle: "Fuel type",
+    label: (f) => (f.fuels.length === 1 ? fuelLabel(f.fuels[0]) : f.fuels.length ? `Fuel · ${f.fuels.length}` : null),
+    Section: FuelSection,
+  },
 ];
 
-const PRICES = [
-  { value: "", label: "Any price" },
-  { value: "50", label: "Up to $50" },
-  { value: "75", label: "Up to $75" },
-  { value: "100", label: "Up to $100" },
-  { value: "150", label: "Up to $150" },
-];
+function href(params: Record<string, string>) {
+  const qs = new URLSearchParams(params).toString();
+  return qs ? `/search?${qs}` : "/search";
+}
 
-export function FilterBar() {
+function FilterPill({ pill, filters, options }: { pill: Pill; filters: SearchFilters; options: FilterOptions }) {
+  const [open, setOpen] = useState(false);
+  const label = pill.label(filters);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger data-pill={pill.idle} className={cn(chip, chipTone(label !== null))}>
+        {label ?? pill.idle}
+        <ChevronDown className="size-4" />
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        collisionPadding={16}
+        className={cn("gap-4 rounded-[22px] bg-white p-4", pill.wide ? "w-[min(400px,calc(100vw-2rem))]" : "w-[min(340px,calc(100vw-2rem))]")}
+      >
+        {open && <PillPanel pill={pill} options={options} onDone={() => setOpen(false)} />}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function PillPanel({ pill, options, onDone }: { pill: Pill; options: FilterOptions; onDone: () => void }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { draft, set, filters } = useDraft(Object.fromEntries(searchParams));
+  const { stats, loading } = useSearchStats(draft, true);
+  const { Section } = pill;
+
+  function apply() {
+    router.push(href(draft), { scroll: false });
+    onDone();
+  }
+
+  return (
+    <>
+      <span className="text-[17px] font-extrabold">{pill.idle}</span>
+      <Section filters={filters} set={set} options={options} stats={stats} />
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <Button variant="ghost" size="sm" onClick={() => set(Object.fromEntries(pill.keys.map((k) => [k, null])))}>
+          Clear
+        </Button>
+        <Button size="sm" onClick={apply} disabled={stats?.count === 0} aria-busy={loading}>
+          {showLabel(stats)}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+export function FilterBar({ options }: { options: FilterOptions }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filters = parseSearchParams(Object.fromEntries(searchParams));
-  const hasDates = !!filters.dates;
-
-  const sorts: { value: SortKey; label: string }[] = [
-    { value: "price", label: hasDates ? "Lowest total" : "Lowest price" },
-    { value: "rating", label: "Top rated" },
-    { value: "newest", label: "Newest" },
-  ];
 
   function update(changes: Record<string, string | null>) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = Object.fromEntries(searchParams);
     for (const [key, value] of Object.entries(changes)) {
-      if (value) params.set(key, value);
-      else params.delete(key);
+      if (value) params[key] = value;
+      else delete params[key];
     }
-    const qs = params.toString();
-    router.push(qs ? `/search?${qs}` : "/search", { scroll: false });
-  }
-
-  function toggleIn(key: string, current: string[], value: string) {
-    const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
-    update({ [key]: next.join(",") || null });
+    router.push(href(params), { scroll: false });
   }
 
   const anyFilter = FILTER_KEYS.some((key) => searchParams.has(key));
 
   return (
     <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
-      <button
-        type="button"
-        aria-pressed={filters.nearSea}
-        onClick={() => update({ near: filters.nearSea ? null : "sea" })}
-        className={cn(chip, chipTone(filters.nearSea))}
-      >
-        <PlaneLanding className="size-[18px]" strokeWidth={2} />
-        Near SEA
-      </button>
+      <AllFilters options={options} data-all-filters="" />
 
-      <DropdownMenu>
-        <DropdownMenuTrigger className={cn(chip, chipTone(filters.types.length > 0))}>
-          {filters.types.length ? `Type · ${filters.types.length}` : "Type"}
-          <ChevronDown className="size-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-48">
-          {VEHICLE_TYPES.map((t) => (
-            <DropdownMenuCheckboxItem
-              key={t.value}
-              checked={filters.types.includes(t.value)}
-              onCheckedChange={() => toggleIn("type", filters.types, t.value)}
-              onSelect={(e) => e.preventDefault()}
-            >
-              {t.label}
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger className={cn(chip, chipTone(filters.minSeats !== null))}>
-          {filters.minSeats ? `${filters.minSeats}+ seats` : "Seats"}
-          <ChevronDown className="size-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-44">
-          <DropdownMenuRadioGroup
-            value={filters.minSeats ? String(filters.minSeats) : ""}
-            onValueChange={(v) => update({ seats: v || null })}
-          >
-            {SEATS.map((s) => (
-              <DropdownMenuRadioItem key={s.value} value={s.value}>
-                {s.label}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger className={cn(chip, chipTone(filters.fuels.length > 0))}>
-          {filters.fuels.length ? `Fuel · ${filters.fuels.length}` : "Fuel"}
-          <ChevronDown className="size-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-44">
-          {FUEL_TYPES.map((f) => (
-            <DropdownMenuCheckboxItem
-              key={f.value}
-              checked={filters.fuels.includes(f.value)}
-              onCheckedChange={() => toggleIn("fuel", filters.fuels, f.value)}
-              onSelect={(e) => e.preventDefault()}
-            >
-              {f.label}
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger className={cn(chip, chipTone(filters.maxPrice !== null))}>
-          {filters.maxPrice ? `Up to $${filters.maxPrice}/day` : "Price per day"}
-          <ChevronDown className="size-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-44">
-          <DropdownMenuRadioGroup
-            value={filters.maxPrice ? String(filters.maxPrice) : ""}
-            onValueChange={(v) => update({ maxPrice: v || null })}
-          >
-            {PRICES.map((p) => (
-              <DropdownMenuRadioItem key={p.value} value={p.value}>
-                {p.label}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {PILLS.map((pill) => (
+        <FilterPill key={pill.idle} pill={pill} filters={filters} options={options} />
+      ))}
 
       <button
         type="button"
-        aria-pressed={filters.weekDiscount}
-        onClick={() => update({ discount: filters.weekDiscount ? null : "week" })}
-        className={cn(chip, chipTone(filters.weekDiscount))}
+        aria-pressed={filters.delivery}
+        onClick={() => update({ deliver: filters.delivery ? null : "1" })}
+        className={cn(chip, chipTone(filters.delivery))}
       >
-        Week discount
-      </button>
-
-      <button
-        type="button"
-        role="switch"
-        aria-checked={filters.instant}
-        onClick={() => update({ instant: filters.instant ? null : "1" })}
-        className={cn(chip, "gap-2.5 bg-white text-ink hover:bg-line")}
-      >
-        <span
-          aria-hidden
-          className={cn(
-            "relative inline-flex h-[22px] w-9 items-center rounded-[7px] px-[3px] transition-colors",
-            filters.instant ? "bg-cobalt" : "bg-line"
-          )}
-        >
-          <span
-            className={cn(
-              "flex size-4 items-center justify-center rounded-[5px] bg-white transition-transform",
-              filters.instant && "translate-x-[14px]"
-            )}
-          >
-            {filters.instant && <Check className="size-3 text-cobalt" strokeWidth={3} />}
-          </span>
-        </span>
-        Instant book
+        <Truck className="size-[18px]" strokeWidth={2} />
+        Deliver to me
       </button>
 
       {anyFilter && (
@@ -197,28 +182,40 @@ export function FilterBar() {
           Clear
         </button>
       )}
-
-      <span className="ml-auto flex shrink-0 items-center gap-2 text-[15px] text-slate">
-        <span className="hidden sm:inline">Sort</span>
-        <DropdownMenu>
-          <DropdownMenuTrigger className={cn(chip, "bg-white font-bold text-ink hover:bg-line")}>
-            {sorts.find((s) => s.value === filters.sort)?.label}
-            <ChevronDown className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuRadioGroup
-              value={filters.sort}
-              onValueChange={(v) => update({ sort: v === "price" ? null : v })}
-            >
-              {sorts.map((s) => (
-                <DropdownMenuRadioItem key={s.value} value={s.value}>
-                  {s.label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </span>
     </div>
+  );
+}
+
+/** The order of the results, beside the list and map switch. */
+export function SortMenu() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const filters = parseSearchParams(Object.fromEntries(searchParams));
+  const sorts = sortChoices(filters);
+
+  function choose(sort: string) {
+    const params = Object.fromEntries(searchParams);
+    if (sort === "price") delete params.sort;
+    else params.sort = sort;
+    router.push(href(params), { scroll: false });
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className={cn(chip, "bg-white font-bold text-ink hover:bg-line")}>
+        <ArrowDownUp className="size-[18px]" strokeWidth={2} />
+        {sorts.find((s) => s.value === filters.sort)?.label}
+        <ChevronDown className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuRadioGroup value={filters.sort} onValueChange={choose}>
+          {sorts.map((s) => (
+            <DropdownMenuRadioItem key={s.value} value={s.value}>
+              {s.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

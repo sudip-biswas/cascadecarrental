@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
-import { CalendarSearch, List, Map as MapIcon, SearchX } from "lucide-react";
+import { CalendarSearch, Hourglass, List, Map as MapIcon, SearchX } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Container, EmptyState, Tile } from "@/components/kit";
 import { Button } from "@/components/ui/button";
-import { FilterBar } from "@/components/search/FilterBar";
+import { FilterBar, SortMenu } from "@/components/search/FilterBar";
 import { SearchForm } from "@/components/search/SearchForm";
 import { VehicleCard } from "@/components/search/VehicleCard";
 import { VehicleGridSkeleton } from "@/components/search/VehicleCardSkeleton";
 import { SearchMap } from "@/components/search/SearchMap";
-import { availableFor } from "@/components/search/availability";
 import { loadFavorites } from "@/components/search/favorites";
 import { mapPins } from "@/components/search/map";
 import { FILTER_KEYS, hasFilters, parseSearchParams, type SearchFilters } from "@/components/search/params";
-import { listedCars } from "@/components/search/listings";
-import { tripTotalCents } from "@/components/search/vehicle";
+import { filterOptions } from "@/components/search/listings";
+import { distanceFrom, searchCars } from "@/components/search/search";
+import type { ListedVehicle } from "@/components/search/vehicle";
+import { isLastMinute } from "@/lib/pricing";
 import { cn, formatRange, pluralize, zonedInstant } from "@/lib/utils";
 
 export const instant = false;
@@ -30,16 +31,16 @@ export const metadata: Metadata = {
 type View = "list" | "map";
 
 async function loadCars(filters: SearchFilters) {
-  let cars = await listedCars(await createClient(), filters);
-  if (filters.dates) {
-    const { from, until } = filters.dates;
-    cars = await availableFor(cars, from, until);
-    // Long-trip discounts can reorder cars, so sort by what the guest will pay.
-    if (filters.sort === "price") {
-      cars.sort((a, b) => tripTotalCents(a, from, until) - tripTotalCents(b, from, until));
-    }
-  }
-  return cars;
+  return searchCars(await createClient(), filters);
+}
+
+/** The filter pills, with the makes and years that are actually listed. */
+async function Filters() {
+  return <FilterBar options={await filterOptions(await createClient())} />;
+}
+
+function placeName(filters: SearchFilters) {
+  return filters.where ?? (filters.nearSea ? "SEA" : "Seattle");
 }
 
 function heading(count: number, filters: SearchFilters) {
@@ -48,6 +49,21 @@ function heading(count: number, filters: SearchFilters) {
     ? `, ${formatRange(zonedInstant(filters.dates.from), zonedInstant(filters.dates.until))}`
     : "";
   return `${pluralize(count, "car")} for rent${place}${when}`;
+}
+
+/** Turo's "book soon" nudge, shown only when it's true: some of these hosts raise prices at the last minute. */
+function BookSoon({ cars, filters }: { cars: ListedVehicle[]; filters: SearchFilters }) {
+  if (!filters.dates || isLastMinute(zonedInstant(filters.dates.from))) return null;
+  if (!cars.some((car) => car.last_minute_boost_pct > 0)) return null;
+  return (
+    <Tile tone="lilac" className="flex items-center justify-between gap-4 rounded-[24px] py-4">
+      <span className="flex flex-col gap-0.5">
+        <span className="text-[17px] font-extrabold">Book soon to avoid higher prices</span>
+        <span className="text-[15px]">Some of these hosts charge more for trips booked less than a day before pick-up.</span>
+      </span>
+      <Hourglass className="size-7 shrink-0" strokeWidth={1.75} />
+    </Tile>
+  );
 }
 
 /** The current URL with the filters dropped, keeping where and when. */
@@ -121,10 +137,19 @@ async function Results({ filters, raw, view }: { filters: SearchFilters; raw: Re
   }
 
   const title = (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <h1 className="headline my-1 text-[30px] sm:text-[40px]">{heading(cars.length, filters)}</h1>
-      <ViewToggle raw={raw} view={view} />
-    </div>
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="headline my-1 text-[30px] sm:text-[40px]">{heading(cars.length, filters)}</h1>
+          <p className="text-[15px] text-slate">These cars are parked in and around {placeName(filters)}.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <SortMenu />
+          <ViewToggle raw={raw} view={view} />
+        </div>
+      </div>
+      <BookSoon cars={cars} filters={filters} />
+    </>
   );
 
   if (view === "map") {
@@ -134,6 +159,7 @@ async function Results({ filters, raw, view }: { filters: SearchFilters; raw: Re
         dates={filters.dates}
         layout="compact"
         favorite={{ userId, saved: saved.has(car.id) }}
+        distanceMi={distanceFrom(filters, car)}
       />
     );
     return (
@@ -167,6 +193,7 @@ async function Results({ filters, raw, view }: { filters: SearchFilters; raw: Re
             layout="row"
             priority={i < 2}
             favorite={{ userId, saved: saved.has(car.id) }}
+            distanceMi={distanceFrom(filters, car)}
           />
         ))}
       </div>
@@ -205,7 +232,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
         size="md"
       />
       <Suspense fallback={<div className="h-11" />}>
-        <FilterBar />
+        <Filters />
       </Suspense>
       <Suspense key={JSON.stringify(raw)} fallback={<VehicleGridSkeleton layout="row" count={4} />}>
         <Results filters={filters} raw={raw} view={view} />

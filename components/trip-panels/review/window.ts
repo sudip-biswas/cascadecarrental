@@ -19,8 +19,12 @@ export const HOST_RATING_LABELS = {
   rating_value: "Followed the rules",
 } as const;
 
+// Turo's five categories. Older reviews may carry rating_value instead.
 export const GUEST_RATING_LABELS = {
-  rating_cleanliness: "Clean",
-  rating_accuracy: "As described",
+  rating_cleanliness: "Cleanliness",
+  rating_maintenance: "Maintenance",
+  rating_communication: "Communication",
+  rating_convenience: "Convenience",
+  rating_accuracy: "Accuracy",
   rating_value: "Worth the price",
 } as const;

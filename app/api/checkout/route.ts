@@ -3,24 +3,23 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
-import { computePricing, dayRates, tripDays, type ExtraLine } from "@/lib/pricing";
+import { computePricing, dayRates, lastMinuteBoostPct, tripDays, type ExtraLine } from "@/lib/pricing";
 import { hasConflict, loadDailyPrices, releaseStaleCheckouts } from "@/lib/trips";
-import { pluralize, zonedInstant } from "@/lib/utils";
-import { driverCheck, quoteDelivery } from "@/components/checkout/rules";
+import { formatBuffer, loadHostHours, tripRuleProblem } from "@/lib/trip-rules";
+import { zonedInstant } from "@/lib/utils";
+import { driverCheck } from "@/components/checkout/rules";
+import { CAR_SPOT, loadPickupSpots, quotePickup } from "@/lib/locations";
 import { checkPromo } from "@/app/api/promo/check";
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-const delivery = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("pickup") }),
-  z.object({
-    mode: z.literal("address"),
-    address: z.string().trim().min(3).max(300),
-    lat: z.number().min(-90).max(90),
-    lng: z.number().min(-180).max(180),
-  }),
-  z.object({ mode: z.literal("airport") }),
-]);
+/** The car's own spot, one of the host's named spots, or an address inside the custom radius. */
+const delivery = z.object({
+  spot: z.string().min(1).max(64),
+  address: z.string().trim().min(3).max(300).optional(),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+});
 
 const schema = z.object({
   vehicleId: z.string().uuid(),
@@ -38,7 +37,7 @@ const schema = z.object({
   untilTime: z.string().regex(/^\d{2}:\d{2}$/).default("10:00"),
   /** Extras by id. Names and prices come from the car's own list. */
   extras: z.array(z.object({ id: z.string().uuid(), quantity: z.number().int().min(1).max(10) })).max(20).default([]),
-  delivery: delivery.default({ mode: "pickup" }),
+  delivery: delivery.default({ spot: CAR_SPOT }),
   promoCode: z.string().trim().min(1).max(40).optional(),
 });
 
@@ -86,25 +85,23 @@ export async function POST(req: Request) {
   if (vehicle.host_id === user.id) return fail("You can't book your own car.", 400);
 
   const days = tripDays(startsAt, endsAt);
-  if (days < vehicle.min_trip_days) {
-    return fail(`This car needs at least ${pluralize(vehicle.min_trip_days, "day")}.`, 400);
-  }
-  if (vehicle.max_trip_days && days > vehicle.max_trip_days) {
-    return fail(`This car can be booked for up to ${pluralize(vehicle.max_trip_days, "day")}.`, 400);
-  }
-  const noticeMs = vehicle.advance_notice_hours * 60 * 60 * 1000;
-  if (startsAt.getTime() - Date.now() < noticeMs) {
-    return fail(
-      vehicle.advance_notice_hours > 0
-        ? `The host needs ${pluralize(vehicle.advance_notice_hours, "hour")} notice. Pick a later date.`
-        : "Pick-up has to be in the future.",
-      400
-    );
-  }
+  const broken = tripRuleProblem(
+    { ...vehicle, hours: await loadHostHours(admin, vehicle.host_id) },
+    startsAt,
+    endsAt
+  );
+  if (broken) return fail(broken, 400);
 
   await releaseStaleCheckouts(vehicleId, user.id);
-  if (await hasConflict(vehicleId, startsAt, endsAt)) {
-    return fail("Someone just booked these dates. Try others.", 409);
+  if (await hasConflict(vehicleId, startsAt, endsAt, vehicle.trip_buffer_hours)) {
+    // A clash that only the buffer causes isn't someone else's booking.
+    const bufferOnly = vehicle.trip_buffer_hours > 0 && !(await hasConflict(vehicleId, startsAt, endsAt));
+    return fail(
+      bufferOnly
+        ? `The host needs ${formatBuffer(vehicle.trip_buffer_hours)} between trips. Try a later pick-up or an earlier return.`
+        : "Someone just booked these dates. Try others.",
+      409
+    );
   }
 
   const { data: profile } = await admin
@@ -148,8 +145,19 @@ export async function POST(req: Request) {
     });
   }
 
-  const delivered = quoteDelivery(vehicle, deliveryChoice);
-  if (!delivered.ok) return fail(delivered.reason, 400);
+  // Spots and their prices come from the host's own list, never from the request.
+  const spots = await loadPickupSpots(admin, vehicle);
+  const delivered = quotePickup(vehicle, spots, deliveryChoice, days);
+  if (!delivered.ok) return fail(delivered.reason, 409);
+  const spot = delivered.spot;
+  const custom = spot.kind === "custom";
+  // The car's own spot keeps delivery_address empty, as before: the address is the car's.
+  const handover =
+    spot.kind === "car"
+      ? { address: null, lat: null, lng: null }
+      : custom
+        ? { address: deliveryChoice.address!, lat: deliveryChoice.lat!, lng: deliveryChoice.lng! }
+        : { address: spot.address ?? spot.name, lat: spot.lat, lng: spot.lng };
 
   let promo = null;
   if (promoCode) {
@@ -165,8 +173,8 @@ export async function POST(req: Request) {
     dayRatesCents: dayRates(vehicle.daily_rate_cents, from, days, prices),
     protectionPlan,
     rateType,
-    weeklyDiscountPct: vehicle.weekly_discount_pct,
-    monthlyDiscountPct: vehicle.monthly_discount_pct,
+    discounts: vehicle,
+    boostPct: lastMinuteBoostPct(vehicle, startsAt),
     extras,
     deliveryCents: delivered.cents,
     youngDriverDailyCents: driver.youngDriverDailyCents,
@@ -243,9 +251,10 @@ export async function POST(req: Request) {
       host_id: vehicle.host_id,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
-      pickup_location: delivered.address ?? vehicle.location_name,
+      pickup_location: custom ? handover.address! : spot.name,
       daily_rate_cents: pricing.dailyRateCents,
-      base_cents: pricing.baseCents,
+      // The receipt shows a last-minute boost as part of the rental.
+      base_cents: pricing.baseCents + pricing.boostCents,
       rental_cents: pricing.rentalCents,
       extras: pricing.extras.map((e) => ({
         id: e.id,
@@ -259,9 +268,14 @@ export async function POST(req: Request) {
       extras_cents: pricing.extrasCents,
       unlimited_miles: pricing.extras.some((e) => e.unlimited_miles),
       delivery_cents: pricing.deliveryCents,
-      delivery_address: delivered.address,
-      delivery_lat: delivered.lat,
-      delivery_lng: delivered.lng,
+      delivery_address: handover.address,
+      delivery_lat: handover.lat,
+      delivery_lng: handover.lng,
+      pickup_spot_id: spot.kind === "car" ? null : spot.id,
+      pickup_spot_kind: spot.kind,
+      pickup_spot_name: custom ? null : spot.name,
+      vehicle_access: spot.vehicle_access,
+      handover_note: spot.handover_note,
       young_driver_cents: pricing.youngDriverCents,
       promo_code: pricing.promoCode,
       promo_cents: pricing.promoCents,

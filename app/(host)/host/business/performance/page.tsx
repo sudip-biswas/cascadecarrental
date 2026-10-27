@@ -8,6 +8,8 @@ import { EmptyState, PageTitle, Tag, Tile, TileTitle } from "@/components/kit";
 import { blockDateKeys, lastDays, tripDateKeys, weekday } from "../_lib/days";
 import { CANCEL_REASON } from "@/lib/trip-status";
 import { hostTrips, isPaidTrip } from "../_lib/trips";
+import type { ScoredReview } from "@/components/reviews/stats";
+import { TopHost } from "./TopHost";
 
 export const instant = false;
 export const metadata = { title: "Performance" };
@@ -54,7 +56,7 @@ export default async function PerformancePage({ searchParams }: PageProps<"/host
   if (!user) redirect("/login?redirectTo=/host/business/performance");
 
   await settleTripStatuses(user.id);
-  const [{ car: carParam }, { data: carsData }, trips, { data: convData }] = await Promise.all([
+  const [{ car: carParam }, { data: carsData }, trips, { data: convData }, { data: reviewData }] = await Promise.all([
     searchParams,
     supabase
       .from("vehicles")
@@ -63,6 +65,14 @@ export default async function PerformancePage({ searchParams }: PageProps<"/host
       .order("created_at", { ascending: true }),
     hostTrips(user.id),
     supabase.from("conversations").select("messages(sender_id, created_at)").eq("host_id", user.id),
+    supabase
+      .from("reviews")
+      .select(
+        "trip_id, rating_overall, rating_cleanliness, rating_maintenance, rating_communication, rating_convenience, rating_accuracy, issue_tags"
+      )
+      .eq("reviewee_id", user.id)
+      .eq("kind", "guest_to_host")
+      .overrideTypes<ScoredReview[], { merge: false }>(),
   ]);
   const cars = (carsData ?? []) as CarRow[];
 
@@ -120,7 +130,16 @@ export default async function PerformancePage({ searchParams }: PageProps<"/host
 
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
-      <PageTitle title="Performance" action={<Tag tone="white" className="px-3.5 py-3 text-[15px]">Last 90 days</Tag>} />
+      <PageTitle title="Performance" />
+
+      <TopHost trips={trips} reviews={reviewData ?? []} now={new Date()} />
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-[28px] leading-tight sm:text-[32px]">Bookings and replies</h2>
+        <Tag tone="white" className="px-3.5 py-3 text-[15px]">
+          Last 90 days
+        </Tag>
+      </div>
 
       {cars.length > 1 && (
         <nav aria-label="Car" className="flex flex-wrap gap-2">

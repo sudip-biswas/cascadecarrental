@@ -15,6 +15,47 @@ export const NON_REFUNDABLE_DISCOUNT = 0.09;
 /** Share of the rental subtotal paid out to the host. Tax and protection stay with Cascade. */
 export const HOST_SHARE = 0.8;
 
+/** Trip-length discounts, shortest first. A trip gets the best one it qualifies for, never a stack. */
+export const DISCOUNT_TIERS = [
+  { column: "three_day_discount_pct", days: 3, name: "3-day", label: "3+ day discount" },
+  { column: "weekly_discount_pct", days: 7, name: "1-week", label: "1+ week discount" },
+  { column: "two_week_discount_pct", days: 14, name: "2-week", label: "2+ week discount" },
+  { column: "three_week_discount_pct", days: 21, name: "3-week", label: "3+ week discount" },
+  { column: "monthly_discount_pct", days: 30, name: "1-month", label: "1+ month discount" },
+] as const;
+
+export type DiscountColumn = (typeof DISCOUNT_TIERS)[number]["column"];
+
+/** A car's discount for each trip length, in percent. A vehicle row fits as is. */
+export type DiscountTiers = Partial<Record<DiscountColumn, number>>;
+
+/** The tier a trip of this many days gets, or null when none applies. */
+export function bestDiscount(days: number, tiers: DiscountTiers): { pct: number; label: string } | null {
+  let best: { pct: number; label: string } | null = null;
+  for (const tier of DISCOUNT_TIERS) {
+    const pct = tiers[tier.column] ?? 0;
+    if (days >= tier.days && pct > 0 && pct >= (best?.pct ?? 0)) best = { pct, label: tier.label };
+  }
+  return best;
+}
+
+/** Pick-up this close to booking counts as last minute, so the car's boost applies. */
+export const LAST_MINUTE_HOURS = 24;
+
+/** True when pick-up is within 24 hours of booking: a same-day or next-morning trip. */
+export function isLastMinute(startsAt: string | Date, bookedAt: string | Date = new Date()): boolean {
+  return new Date(startsAt).getTime() - new Date(bookedAt).getTime() < LAST_MINUTE_HOURS * 3_600_000;
+}
+
+/** The car's boost if this trip is last minute, else 0. */
+export function lastMinuteBoostPct(
+  car: { last_minute_boost_pct?: number | null },
+  startsAt: string | Date,
+  bookedAt: string | Date = new Date()
+): number {
+  return car.last_minute_boost_pct && isLastMinute(startsAt, bookedAt) ? car.last_minute_boost_pct : 0;
+}
+
 /** A host's own prices for single days, in cents, keyed by Pacific date ("2026-10-18"). */
 export type DailyPrices = Record<string, number>;
 
@@ -54,6 +95,10 @@ export interface PricingInput {
   rateType?: RateType;
   weeklyDiscountPct?: number;
   monthlyDiscountPct?: number;
+  /** Every tier, e.g. the vehicle row. Wins over weeklyDiscountPct and monthlyDiscountPct. */
+  discounts?: DiscountTiers;
+  /** Last-minute boost in percent, from lastMinuteBoostPct. Zero when the trip isn't last minute. */
+  boostPct?: number;
   extras?: ExtraLine[];
   deliveryCents?: number;
   /** Per day, for drivers under 25. Zero when it doesn't apply. */
@@ -74,11 +119,16 @@ export interface PricingResult {
   /** True when the days don't all cost the same, so dailyRateCents is an average. */
   ratesVary: boolean;
   days: number;
-  /** Rental before any discount. */
+  /** Rental before any boost or discount. */
   baseCents: number;
-  /** Weekly (7+ days) or monthly (30+ days) discount. */
+  /** Added for a last-minute trip. Discounts apply after it. */
+  boostCents: number;
+  boostPct: number;
+  /** The best trip-length tier, e.g. 3+ days or 1+ week. */
   lengthDiscountCents: number;
   lengthDiscountPct: number;
+  /** "3+ day discount", or null when no tier applies. */
+  lengthDiscountLabel: string | null;
   /** Pay-now discount. */
   savingsCents: number;
   /** Rental after discounts. */
@@ -96,14 +146,9 @@ export interface PricingResult {
   totalCents: number;
 }
 
-export function lengthDiscountPct(
-  days: number,
-  weeklyPct = 0,
-  monthlyPct = 0
-): number {
-  if (days >= 30 && monthlyPct > 0) return monthlyPct;
-  if (days >= 7 && weeklyPct > 0) return weeklyPct;
-  return 0;
+/** Weekly (7+ days) or monthly (30+ days) discount on its own. */
+export function lengthDiscountPct(days: number, weeklyPct = 0, monthlyPct = 0): number {
+  return bestDiscount(days, { weekly_discount_pct: weeklyPct, monthly_discount_pct: monthlyPct })?.pct ?? 0;
 }
 
 export function computePricing(input: PricingInput): PricingResult {
@@ -114,6 +159,8 @@ export function computePricing(input: PricingInput): PricingResult {
     rateType = "non_refundable",
     weeklyDiscountPct = 0,
     monthlyDiscountPct = 0,
+    discounts,
+    boostPct = 0,
     extras = [],
     deliveryCents = 0,
     youngDriverDailyCents = 0,
@@ -129,9 +176,15 @@ export function computePricing(input: PricingInput): PricingResult {
       ? Math.round(baseCents / days)
       : dayRatesCents[0]
     : input.dailyRateCents;
-  const pct = lengthDiscountPct(days, weeklyDiscountPct, monthlyDiscountPct);
-  const lengthDiscountCents = Math.round((baseCents * pct) / 100);
-  const afterLength = baseCents - lengthDiscountCents;
+  const boostCents = Math.round((baseCents * boostPct) / 100);
+  const boostedCents = baseCents + boostCents;
+  const tier = bestDiscount(
+    days,
+    discounts ?? { weekly_discount_pct: weeklyDiscountPct, monthly_discount_pct: monthlyDiscountPct }
+  );
+  const pct = tier?.pct ?? 0;
+  const lengthDiscountCents = Math.round((boostedCents * pct) / 100);
+  const afterLength = boostedCents - lengthDiscountCents;
 
   const savingsCents =
     rateType === "non_refundable" ? Math.round(afterLength * NON_REFUNDABLE_DISCOUNT) : 0;
@@ -164,8 +217,11 @@ export function computePricing(input: PricingInput): PricingResult {
     ratesVary,
     days,
     baseCents,
+    boostCents,
+    boostPct: boostCents > 0 ? boostPct : 0,
     lengthDiscountCents,
     lengthDiscountPct: pct,
+    lengthDiscountLabel: tier?.label ?? null,
     savingsCents,
     rentalCents,
     extras: pricedExtras,
@@ -192,6 +248,12 @@ export function tripDays(startsAt: string | Date, endsAt: string | Date): number
 
 export function hostEarningsCents(subtotalCents: number): number {
   return Math.round(subtotalCents * HOST_SHARE);
+}
+
+/** What the host takes home from a flexible trip at the car's rate, after a discount and Cascade's fee. */
+export function takeHomeCents(dailyRateCents: number, days: number, discountPct = 0): number {
+  const base = dailyRateCents * days;
+  return hostEarningsCents(base - Math.round((base * discountPct) / 100));
 }
 
 /** Under this age a driver pays the car's young driver fee. */

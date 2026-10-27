@@ -1,51 +1,22 @@
+import { Suspense } from "react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CheckCircle2, Landmark } from "lucide-react";
+import { ArrowRight, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { settleTripStatuses } from "@/lib/trips";
-import { HOST_SHARE, hostEarningsCents } from "@/lib/pricing";
-import { formatCurrency, formatDate, formatDateShort, toDateKey, zonedInstant } from "@/lib/utils";
-import { EmptyState, PageTitle, Tag, Tile, TileTitle, toneClass, type Tone } from "@/components/kit";
-import { EarningsChart, type MonthEarnings } from "@/components/host/EarningsChart";
-import { firstName } from "@/components/host/bits";
-import { ConnectPayoutsButton, ManagePayoutsButton } from "@/components/host/ConnectPayoutsButton";
-import { stripe } from "@/lib/stripe/server";
-import { hostTrips, isOpenRequest, isPaidTrip, type HostTripRow } from "../_lib/trips";
+import { carName, earningYears, earningsYear, loadEarnings, yearOf } from "@/lib/earnings";
+import { formatPrice } from "@/lib/utils";
+import { EmptyState, PageTitle, Tile } from "@/components/kit";
+import { Button } from "@/components/ui/button";
+import { EarningsChart } from "@/components/host/EarningsChart";
+import { CarRanking } from "@/components/host/earnings/CarRanking";
+import { EarningsFilters } from "@/components/host/earnings/EarningsFilters";
+import { EarningsLegend } from "@/components/host/earnings/EarningsLegend";
+import { PayoutBanner, PayoutStatusFallback } from "@/components/host/earnings/PayoutStatus";
 
 export const instant = false;
 export const metadata = { title: "Earnings" };
-
-const MONTHS_SHOWN = 6;
-
-/** "2026-10" keys for the last few months, oldest first, in Pacific time. */
-function recentMonths(now: Date, count: number): string[] {
-  const [year, month] = toDateKey(now).split("-").map(Number);
-  return Array.from({ length: count }, (_, i) => {
-    const d = new Date(Date.UTC(year, month - 1 - (count - 1 - i), 1));
-    return d.toISOString().slice(0, 7);
-  });
-}
-
-const monthLabel = (key: string) =>
-  formatDate(zonedInstant(`${key}-15`), { month: "short", day: undefined, year: undefined });
-
-function rowStatus(t: HostTripRow): { label: string; tone: Tone } {
-  if (isOpenRequest(t)) return { label: "Waiting on you", tone: "butter" };
-  if (t.status === "completed") return { label: "Earned", tone: "mint" };
-  return { label: "Booked", tone: "sky" };
-}
-
-/** Check if a Connect Express account has completed onboarding. */
-async function connectStatus(accountId: string | null): Promise<"none" | "pending" | "active"> {
-  if (!accountId) return "none";
-  try {
-    const acct = await stripe.accounts.retrieve(accountId);
-    if (acct.charges_enabled && acct.payouts_enabled) return "active";
-    return "pending"; // account exists but onboarding not yet complete
-  } catch {
-    return "none";
-  }
-}
 
 export default async function EarningsPage({ searchParams }: PageProps<"/host/business/earnings">) {
   const supabase = await createClient();
@@ -55,177 +26,98 @@ export default async function EarningsPage({ searchParams }: PageProps<"/host/bu
   if (!user) redirect("/login?redirectTo=/host/business/earnings");
 
   const raw = await searchParams;
-  const justConnected = raw.payout_setup === "done";
-  const needsRefresh  = raw.payout_setup === "refresh";
-
-  const { data: profile } = await createAdminClient()
-    .from("profiles")
-    .select("stripe_account_id")
-    .eq("id", user.id)
-    .single();
-
-  const payoutStatus = await connectStatus(profile?.stripe_account_id ?? null);
+  const setup = raw.payout_setup === "done" || raw.payout_setup === "refresh" ? raw.payout_setup : undefined;
 
   await settleTripStatuses(user.id);
-  const trips = await hostTrips(user.id);
+  const [data, { data: profile }] = await Promise.all([
+    loadEarnings(supabase, user.id),
+    createAdminClient().from("profiles").select("stripe_account_id").eq("id", user.id).single(),
+  ]);
 
-  const now = new Date();
-  const thisYear = toDateKey(now).slice(0, 4);
-  const paid = trips.filter(isPaidTrip);
-  const requests = trips.filter(isOpenRequest);
-  const earn = (list: HostTripRow[]) => list.reduce((sum, t) => sum + hostEarningsCents(t.subtotal_cents), 0);
+  const years = earningYears(data);
+  const year = typeof raw.year === "string" && years.includes(raw.year) ? raw.year : yearOf(new Date());
+  const car = typeof raw.car === "string" ? data.cars.find((c) => c.id === raw.car) : undefined;
+  const { months, totals, earned, ranking } = earningsYear(data, year, car?.id);
+  const hasChartData = months.some((m) => m.trips || m.upcoming || m.reimbursements || m.missed);
 
-  const earnedThisYear = earn(paid.filter((t) => t.status === "completed" && toDateKey(t.ends_at).startsWith(thisYear)));
-  const bookedAhead = earn(paid.filter((t) => t.status !== "completed"));
-  const average = paid.length ? Math.round(earn(paid) / paid.length) : 0;
-  const ifAccepted = earn(requests);
-
-  const months = recentMonths(now, MONTHS_SHOWN);
-  const chart: MonthEarnings[] = months.map((key) => {
-    const inMonth = paid.filter((t) => toDateKey(t.ends_at).startsWith(key));
-    return {
-      month: monthLabel(key),
-      earned: earn(inMonth.filter((t) => t.status === "completed")),
-      booked: earn(inMonth.filter((t) => t.status !== "completed")),
-    };
-  });
-  const hasChartData = chart.some((m) => m.earned > 0 || m.booked > 0);
-
-  const rows = [...requests, ...paid].sort((a, b) => b.ends_at.localeCompare(a.ends_at)).slice(0, 12);
-
-  const stats: { label: string; value: string; tone: Tone; show: boolean }[] = [
-    { label: `Earned in ${thisYear}`, value: formatCurrency(earnedThisYear), tone: "peach", show: true },
-    { label: "Booked, not finished yet", value: formatCurrency(bookedAhead), tone: "butter", show: true },
-    { label: "If you accept your requests", value: formatCurrency(ifAccepted), tone: "lilac", show: ifAccepted > 0 },
-    { label: "Average per trip", value: average ? formatCurrency(average) : "–", tone: "white", show: true },
-  ];
+  const csv = new URLSearchParams({ year, ...(car ? { car: car.id } : {}) });
 
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
-      <PageTitle title="Earnings" />
+      <PageTitle
+        title="Earnings"
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Suspense>
+              <EarningsFilters
+                cars={data.cars.map((c) => ({ id: c.id, name: carName(c) }))}
+                years={years}
+                year={year}
+              />
+            </Suspense>
+          </div>
+        }
+      />
 
-      {payoutStatus === "active" ? (
-        <Tile tone="mint" className="flex flex-wrap items-center gap-[18px]">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-[17px] bg-white/40 text-ink">
-            <CheckCircle2 className="size-[26px]" strokeWidth={1.75} />
-          </span>
-          <span className="flex min-w-0 flex-[1_1_280px] flex-col gap-1.5">
-            <span className="font-display text-[22px] leading-tight font-extrabold sm:text-[26px]">
-              {justConnected ? "Bank account connected!" : "Payouts active"}
-            </span>
-            <span className="text-[15px]">
-              You keep {Math.round(HOST_SHARE * 100)}% of each trip&apos;s price (excluding tax and protection).
-              Transfers are sent every Monday.
-            </span>
-          </span>
-          <ManagePayoutsButton />
-        </Tile>
-      ) : payoutStatus === "pending" ? (
-        <Tile tone="butter" className="flex flex-wrap items-center gap-[18px]">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-[17px] bg-white/40 text-ink">
-            <Landmark className="size-[26px]" strokeWidth={1.75} />
-          </span>
-          <span className="flex min-w-0 flex-[1_1_280px] flex-col gap-1.5">
-            <span className="font-display text-[22px] leading-tight font-extrabold sm:text-[26px]">
-              {needsRefresh ? "Link expired — continue setup" : "Finish connecting your bank"}
-            </span>
-            <span className="text-[15px]">
-              Your Stripe account was created but onboarding isn&apos;t complete yet. Click below to continue.
-            </span>
-          </span>
-          <ConnectPayoutsButton />
-        </Tile>
-      ) : (
-        <Tile tone="ink" className="flex flex-wrap items-center gap-[18px]">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-[17px] bg-butter text-ink">
-            <Landmark className="size-[26px]" strokeWidth={1.75} />
-          </span>
-          <span className="flex min-w-0 flex-[1_1_280px] flex-col gap-1.5">
-            <span className="font-display text-[22px] leading-tight font-extrabold sm:text-[26px]">
-              Connect your bank to get paid
-            </span>
-            <span className="text-[15px] text-[#c9ccd3]">
-              You keep {Math.round(HOST_SHARE * 100)}% of each trip&apos;s price. Connect a bank account through
-              Stripe and earnings are transferred automatically when each trip ends.
-            </span>
-          </span>
-          <ConnectPayoutsButton />
-        </Tile>
-      )}
+      <Suspense fallback={<PayoutStatusFallback tall />}>
+        <PayoutBanner accountId={profile?.stripe_account_id ?? null} setup={setup} />
+      </Suspense>
 
-      <div className="figures grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-3">
-        {stats
-          .filter((s) => s.show)
-          .map((s) => (
-            <div key={s.label} className={`rounded-[26px] p-5 ${toneClass[s.tone]}`}>
-              <div className="text-sm font-semibold opacity-80">{s.label}</div>
-              <div className="font-display text-[40px] leading-tight font-extrabold tracking-[-0.03em] sm:text-[52px]">
-                {s.value}
-              </div>
-            </div>
-          ))}
-      </div>
-
-      {trips.length === 0 ? (
+      {data.trips.length === 0 ? (
         <EmptyState
           title="No trips yet"
           body="Once guests book your cars, what you earn from each trip shows up here."
         />
       ) : (
         <>
-          <Tile className="flex flex-col gap-4 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <TileTitle>By month</TileTitle>
-              <span className="flex gap-3.5 text-sm text-slate">
-                <span className="flex items-center gap-1.5">
-                  <span className="size-3 rounded-[4px] bg-ink" />
-                  Earned
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="size-3 rounded-[4px] bg-butter" />
-                  Booked
-                </span>
-              </span>
+          <Tile className="flex flex-col gap-5 sm:p-7">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex min-w-0 flex-col gap-1">
+                <h2 className="font-display text-[34px] leading-tight font-extrabold tracking-[-0.03em] sm:text-[44px]">
+                  <span className="figures">{formatPrice(Math.round(earned / 100) * 100)}</span> earned in {year}
+                </h2>
+                <p className="text-[15px] text-slate">
+                  {car ? `${carName(car)} only. ` : ""}Finished trips and reimbursements, after Cascade&apos;s fee.
+                </p>
+              </div>
+              <div className="flex max-w-[340px] flex-col items-start gap-2 sm:items-end">
+                <Button asChild variant="secondary" size="sm" className="h-10 text-[15px]">
+                  <a href={`/host/business/earnings/csv?${csv}`} download>
+                    <Download /> Download CSV
+                  </a>
+                </Button>
+                <p className="text-[13px] leading-snug text-slate sm:text-right">
+                  Every trip with its price, Cascade&apos;s fee and when it was paid out, for your bookkeeping.
+                </p>
+              </div>
             </div>
+
             {hasChartData ? (
-              <EarningsChart data={chart} />
+              <EarningsChart data={months} />
             ) : (
-              <p className="py-10 text-center text-[15px] text-slate">
-                Nothing paid in the last {MONTHS_SHOWN} months yet.
+              <p className="py-12 text-center text-[15px] text-slate">
+                No trips {car ? "for this car " : ""}in {year}.
               </p>
             )}
+            <EarningsLegend totals={totals} />
           </Tile>
 
-          {rows.length > 0 && (
-            <Tile className="p-2.5 sm:p-2.5">
-              <div className="hidden grid-cols-[1.2fr_1.6fr_1fr_0.8fr] gap-3 px-3.5 py-3 text-[13px] font-bold text-slate sm:grid">
-                <span>Trip ends</span>
-                <span>Trip</span>
-                <span>Status</span>
-                <span className="text-right">You get</span>
-              </div>
-              {rows.map((t, i) => {
-                const status = rowStatus(t);
-                return (
-                  <div
-                    key={t.id}
-                    className={`figures grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 rounded-2xl p-3.5 text-[15px] sm:grid-cols-[1.2fr_1.6fr_1fr_0.8fr] ${
-                      i % 2 === 0 ? "bg-board" : ""
-                    }`}
-                  >
-                    <span className="max-sm:font-bold">{formatDateShort(t.ends_at)}</span>
-                    <span className="order-3 col-span-2 text-slate sm:order-none sm:col-span-1 sm:text-ink">
-                      {firstName(t.guest?.full_name)} · {t.vehicles ? `${t.vehicles.make} ${t.vehicles.model}` : "Car"}
-                    </span>
-                    <span className="order-4 sm:order-none">
-                      <Tag tone={status.tone}>{status.label}</Tag>
-                    </span>
-                    <span className="text-right font-extrabold">{formatCurrency(hostEarningsCents(t.subtotal_cents))}</span>
-                  </div>
-                );
-              })}
-            </Tile>
-          )}
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/host/business/transactions?year=${year}`}
+              className="flex items-center gap-2 rounded-[12px] bg-white px-3.5 py-2.5 text-[15px] font-bold transition-colors hover:bg-line"
+            >
+              Transactions and payouts <ArrowRight className="size-[18px]" />
+            </Link>
+            <Link
+              href="/host/business/performance"
+              className="flex items-center gap-2 rounded-[12px] bg-white px-3.5 py-2.5 text-[15px] font-bold transition-colors hover:bg-line"
+            >
+              How your cars are doing <ArrowRight className="size-[18px]" />
+            </Link>
+          </div>
+
+          {ranking.length > 0 && <CarRanking ranking={ranking} year={year} selected={car?.id} />}
         </>
       )}
     </div>

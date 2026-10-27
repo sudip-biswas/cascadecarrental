@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { EmptyState, PageTitle, Tile } from "@/components/kit";
 import { CarPhoto, coverUrl } from "@/components/host/bits";
+import { HoursEditor } from "@/components/host/hours/HoursEditor";
+import { loadHostHours } from "@/lib/trip-rules";
 import { RulesEditor } from "./RulesEditor";
 
 export const instant = false;
@@ -23,6 +25,8 @@ type CarRow = Pick<
   | "min_trip_days"
   | "max_trip_days"
   | "advance_notice_hours"
+  | "trip_buffer_hours"
+  | "weekend_min_two_days"
   | "instant_book"
 > & { vehicle_images: Pick<VehicleImage, "url" | "is_cover" | "position">[] };
 
@@ -33,13 +37,14 @@ export default async function PickupAndHoursPage({ searchParams }: PageProps<"/h
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?redirectTo=/host/hours");
 
-  const [{ car: carParam }, { data }] = await Promise.all([
+  const [{ car: carParam }, hours, { data }] = await Promise.all([
     searchParams,
+    loadHostHours(supabase, user.id),
     // The exact address is private: read it server-side, scoped to this host.
     createAdminClient()
       .from("vehicles")
       .select(
-        "id, make, model, status, location_name, location_address, min_trip_days, max_trip_days, advance_notice_hours, instant_book, vehicle_images(url, is_cover, position)"
+        "id, make, model, status, location_name, location_address, min_trip_days, max_trip_days, advance_notice_hours, trip_buffer_hours, weekend_min_two_days, instant_book, vehicle_images(url, is_cover, position)"
       )
       .eq("host_id", user.id)
       .order("created_at", { ascending: true })
@@ -69,7 +74,14 @@ export default async function PickupAndHoursPage({ searchParams }: PageProps<"/h
 
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
-      <PageTitle title="Pickup and hours" lead="Where guests collect each car and the rules for booking it." />
+      <PageTitle
+        title="Pickup and hours"
+        lead="When you can meet guests, where they collect each car, and the rules for booking it."
+      />
+
+      <HoursEditor hostId={user.id} initial={hours} />
+
+      <h2 className="mt-3 text-[22px] leading-tight sm:text-[26px]">Each car</h2>
 
       {cars.length > 1 && (
         <nav aria-label="Car" className="flex flex-wrap gap-2">
@@ -106,6 +118,8 @@ export default async function PickupAndHoursPage({ searchParams }: PageProps<"/h
           min_trip_days: car.min_trip_days,
           max_trip_days: car.max_trip_days,
           advance_notice_hours: car.advance_notice_hours,
+          trip_buffer_hours: car.trip_buffer_hours,
+          weekend_min_two_days: car.weekend_min_two_days,
           instant_book: car.instant_book,
         }}
       />
