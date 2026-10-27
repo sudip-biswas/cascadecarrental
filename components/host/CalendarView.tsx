@@ -315,8 +315,8 @@ function FocusPanel({
       </p>
       <div className="flex flex-wrap gap-2">
         <Button asChild>
-          <Link href={occupant.kind === "request" ? "/host/trips?show=requests" : "/host/trips?show=upcoming"}>
-            {occupant.kind === "request" ? "Answer request" : "See trips"}
+          <Link href={`/host/trips/${occupant.id}`}>
+            {occupant.kind === "request" ? "Answer request" : "Open trip"}
           </Link>
         </Button>
         <Button variant="secondary" onClick={onClose}>

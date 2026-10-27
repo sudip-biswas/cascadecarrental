@@ -582,11 +582,7 @@ export function MultiCalendar({
                         </p>
                         {o.kind !== "blocked" && (
                           <Link
-                            href={
-                              o.kind === "request"
-                                ? "/host/trips?show=requests"
-                                : "/host/trips?show=upcoming"
-                            }
+                            href={`/host/trips/${o.id}`}
                             className="mt-1.5 inline-block text-cobalt font-semibold hover:underline"
                           >
                             View trip →

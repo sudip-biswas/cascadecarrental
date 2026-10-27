@@ -96,10 +96,11 @@ export default async function HostHistoryPage({ searchParams }: PageProps<"/host
             {rows.map(({ trip, status, earnedCents, rating }, i) => {
               const guest = firstName(trip.guest?.full_name);
               return (
-                <div
+                <Link
                   key={trip.id}
+                  href={`/host/trips/${trip.id}`}
                   className={cn(
-                    "grid items-center gap-3 rounded-[16px] p-3.5 text-[15px]",
+                    "grid items-center gap-3 rounded-[16px] p-3.5 text-[15px] hover:bg-line",
                     COLUMNS,
                     i % 2 === 0 && "bg-board"
                   )}
@@ -117,7 +118,7 @@ export default async function HostHistoryPage({ searchParams }: PageProps<"/host
                   </span>
                   <span className="text-right font-bold">{formatCurrency(earnedCents)}</span>
                   <span className={cn("text-right", !rating && "text-slate")}>{rating ? `★ ${rating}` : "–"}</span>
-                </div>
+                </Link>
               );
             })}
           </div>

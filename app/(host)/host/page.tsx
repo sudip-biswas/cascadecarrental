@@ -286,7 +286,11 @@ function ComingUp({ items }: { items: Handover[] }) {
         items.slice(0, 4).map(({ trip, kind, at }) => {
           const guest = firstName(trip.guest?.full_name);
           return (
-            <div key={`${trip.id}-${kind}`} className="flex items-center gap-3 rounded-[18px] bg-board p-3.5">
+            <Link
+              key={`${trip.id}-${kind}`}
+              href={`/host/trips/${trip.id}`}
+              className="flex items-center gap-3 rounded-[18px] bg-board p-3.5 hover:bg-line"
+            >
               <Initial name={guest} seed={trip.guest_id} className="size-11 rounded-[14px] text-[18px]" />
               <span className="min-w-0 flex-1">
                 <span className="block text-base font-extrabold">
@@ -297,7 +301,7 @@ function ComingUp({ items }: { items: Handover[] }) {
                 </span>
               </span>
               <Tag tone={kind === "Pick-up" ? "mint" : "sky"}>{formatRange(trip.starts_at, trip.ends_at)}</Tag>
-            </div>
+            </Link>
           );
         })
       )}
