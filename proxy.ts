@@ -31,10 +31,11 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // Refresh session — do not remove this block
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Refresh session — do not remove this block. getClaims checks the token
+  // against the project's signing keys locally, so it doesn't call the Auth
+  // server on every request and link prefetch the way getUser does.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims.sub ? data.claims : null;
 
   const pathname = request.nextUrl.pathname;
 
