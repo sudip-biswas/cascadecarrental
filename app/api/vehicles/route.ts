@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { LIMITS, VIN_PATTERN } from "@/lib/listing-limits";
+import { refreshAutoPrices } from "@/lib/auto-pricing-refresh";
 
 const STORAGE_PREFIX = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/vehicle-images/`;
 
@@ -163,6 +164,9 @@ export async function POST(req: Request) {
     .update({ is_host: true, host_since: new Date().toISOString() })
     .eq("id", user.id)
     .is("host_since", null);
+
+  // New cars price dynamically from day one, like every other car.
+  await refreshAutoPrices([vehicle.id]).catch((err) => console.error("[vehicles] dynamic prices failed", err));
 
   return NextResponse.json({ vehicleId: vehicle.id, listed: v.images.length >= LIMITS.photosToList });
 }

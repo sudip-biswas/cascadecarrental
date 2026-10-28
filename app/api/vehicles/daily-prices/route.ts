@@ -17,10 +17,12 @@ const schema = z
     change: z.discriminatedUnion("kind", [
       /** Every selected day costs exactly this. */
       z.object({ kind: z.literal("set"), cents: z.number().int().min(100) }),
-      /** Each day's current price moves by this much, rounded to whole dollars. */
+      /** Each day's current price moves by a percent, rounded to whole dollars. */
       z.object({ kind: z.literal("adjust"), pct: z.number().min(-90).max(500) }),
-      /** Back to the car's daily rate, or its automatic price when automatic pricing is on. */
-      z.object({ kind: z.literal("reset") }),
+      /** Each day's current price moves by this many cents, never under $1. */
+      z.object({ kind: z.literal("shift"), cents: z.number().int().min(-100_000).max(100_000) }),
+      /** Back to the dynamic price, which updates daily with demand. */
+      z.object({ kind: z.literal("dynamic") }),
     ]),
   })
   .refine((b) => b.to >= b.from && daysBetween(b.from, b.to) < 366, "Pick up to a year of days.");
@@ -52,7 +54,7 @@ export async function PATCH(req: Request) {
 
   const changes: PriceChanges = Object.fromEntries(cars.map((c) => [c.id, {}]));
 
-  if (change.kind === "reset") {
+  if (change.kind === "dynamic") {
     const results = await Promise.all(
       groups.map((ids) =>
         supabase
@@ -63,35 +65,35 @@ export async function PATCH(req: Request) {
           .lte("date", to)
       )
     );
-    if (results.some((r) => r.error)) return fail("Couldn't reset prices.", 500);
+    if (results.some((r) => r.error)) return fail("Couldn't switch those days back to dynamic.", 500);
     for (const car of cars) for (const d of dates) changes[car.id][d] = null;
 
-    // Cars on automatic pricing get their automatic prices straight back.
-    const autoIds = cars.filter((c) => c.auto_pricing).map((c) => c.id);
+    // Dynamic prices come straight back, switching it on for any car that had it off.
+    const ids = cars.map((c) => c.id);
+    const off = cars.filter((c) => !c.auto_pricing).map((c) => c.id);
+    if (off.length) await supabase.from("vehicles").update({ auto_pricing: true }).in("id", off);
+    try {
+      await refreshAutoPrices(ids);
+    } catch (err) {
+      console.error("[daily-prices] dynamic refresh failed", err);
+    }
+    const { data: refilled } = await supabase
+      .from("vehicle_daily_prices")
+      .select("vehicle_id, date, price_cents")
+      .in("vehicle_id", ids)
+      .gte("date", from)
+      .lte("date", to);
     const auto: Record<string, string[]> = {};
-    if (autoIds.length) {
-      try {
-        await refreshAutoPrices(autoIds);
-      } catch (err) {
-        console.error("[daily-prices] automatic refresh failed", err);
-      }
-      const { data: refilled } = await supabase
-        .from("vehicle_daily_prices")
-        .select("vehicle_id, date, price_cents")
-        .in("vehicle_id", autoIds)
-        .gte("date", from)
-        .lte("date", to);
-      for (const row of refilled ?? []) {
-        changes[row.vehicle_id][row.date] = row.price_cents;
-        (auto[row.vehicle_id] ??= []).push(row.date);
-      }
+    for (const row of refilled ?? []) {
+      changes[row.vehicle_id][row.date] = row.price_cents;
+      (auto[row.vehicle_id] ??= []).push(row.date);
     }
     return NextResponse.json({ changes, auto });
   }
 
-  // An adjustment starts from what each day costs now: its own price, else the daily rate.
+  // An adjustment starts from what each day costs now: its own or dynamic price, else the daily rate.
   const current = new Map<string, number>();
-  if (change.kind === "adjust") {
+  if (change.kind !== "set") {
     for (const car of cars) for (const d of dates) current.set(`${car.id} ${d}`, car.daily_rate_cents);
     const results = await Promise.all(
       groups.map((ids) =>
@@ -111,13 +113,13 @@ export async function PATCH(req: Request) {
 
   const rows = cars.flatMap((car) =>
     dates.map((date) => {
+      const now = current.get(`${car.id} ${date}`)!;
       const price_cents =
         change.kind === "set"
           ? change.cents
-          : Math.max(
-              100,
-              Math.round((current.get(`${car.id} ${date}`)! * (1 + change.pct / 100)) / 100) * 100
-            );
+          : change.kind === "shift"
+            ? Math.max(100, now + change.cents)
+            : Math.max(100, Math.round((now * (1 + change.pct / 100)) / 100) * 100);
       changes[car.id][date] = price_cents;
       return { vehicle_id: car.id, date, price_cents, source: "host" as const };
     })

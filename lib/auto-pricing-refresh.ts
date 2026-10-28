@@ -113,14 +113,3 @@ export async function refreshAutoPrices(vehicleIds?: string[]): Promise<{ cars: 
   }
   return { cars: cars.length, days };
 }
-
-/** Takes a car's automatic prices off its coming days, back to the daily rate. */
-export async function clearAutoPrices(vehicleId: string) {
-  const { error } = await createAdminClient()
-    .from("vehicle_daily_prices")
-    .delete()
-    .eq("vehicle_id", vehicleId)
-    .eq("source", "auto")
-    .gte("date", toDateKey(new Date()));
-  if (error) throw error;
-}

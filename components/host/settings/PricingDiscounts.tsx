@@ -6,8 +6,6 @@ import type { Vehicle } from "@/lib/supabase/types";
 import { Tag } from "@/components/kit";
 import { VehicleEditDialog } from "@/components/host/VehicleEditDialog";
 import { PricingBoost } from "@/components/host/settings/PricingBoost";
-import { AutomaticPricing } from "@/components/host/settings/AutomaticPricing";
-import { priceLimits, type AutoPrice } from "@/lib/auto-pricing";
 
 type Tier = (typeof DISCOUNT_TIERS)[number];
 
@@ -35,8 +33,8 @@ function TierLine({ car, tier }: { car: Vehicle; tier: Tier }) {
   );
 }
 
-/** Pricing & discounts on the host's car page: automatic pricing, day prices, last-minute boost, and Turo-style trip-length discounts. */
-export function PricingDiscounts({ car, autoPreview }: { car: Vehicle; autoPreview: { date: string; price: AutoPrice }[] }) {
+/** Pricing & discounts on the host's car page: day prices, last-minute boost, and Turo-style trip-length discounts. */
+export function PricingDiscounts({ car }: { car: Vehicle }) {
   const fee = Math.round((1 - HOST_SHARE) * 100);
 
   return (
@@ -49,19 +47,13 @@ export function PricingDiscounts({ car, autoPreview }: { car: Vehicle; autoPrevi
         </p>
       </div>
 
-      <AutomaticPricing
-        vehicleId={car.id}
-        on={car.auto_pricing}
-        minCents={car.auto_price_min_cents}
-        maxCents={car.auto_price_max_cents}
-        defaults={priceLimits({ ...car, auto_price_min_cents: null, auto_price_max_cents: null })}
-        preview={autoPreview}
-      />
-
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-4">
         <div className="flex flex-col gap-3 rounded-[24px] bg-board p-5">
           <h3 className="text-[20px]">Daily prices</h3>
-          <p className="text-[15px] text-slate">Check your prices and set your own for single days, like holidays or game days.</p>
+          <p className="text-[15px] text-slate">
+            Prices are dynamic: they update daily with demand around {car.location_name}. Check them and set custom prices for
+            specific days on your calendar.
+          </p>
           <Link
             href={`/host/calendar?car=${car.id}`}
             className="flex items-center gap-2 self-start rounded-[14px] bg-white px-4 py-3 text-[15px] font-bold hover:bg-line"

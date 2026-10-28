@@ -5,10 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarX, CarFront, SearchX, Sparkles } from "lucide-react";
+import { CalendarX, CarFront, Lightbulb, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   cn,
   formatPrice,
@@ -22,6 +21,7 @@ import { BlockDateModal } from "./BlockDateModal";
 import { LegendItem } from "./bits";
 import { CalendarToolbar } from "./calendar/CalendarToolbar";
 import { DateJump } from "./calendar/DateJump";
+import { PriceInsights } from "./calendar/PriceInsights";
 import {
   applyFilters,
   NO_FILTERS,
@@ -82,7 +82,18 @@ function rect(a: Cell, b: Cell): Sel {
   };
 }
 
-type PriceMode = "set" | "raise" | "lower";
+/** Turo's three ways to price selected days. */
+type PriceMode = "adjust" | "set" | "dynamic";
+
+const PRICE_MODES: { mode: PriceMode; title: string; body: string }[] = [
+  { mode: "adjust", title: "Adjust", body: "Add or reduce all selected prices by a dollar or percentage amount." },
+  { mode: "set", title: "Set", body: "Set all selected prices to the same value." },
+  {
+    mode: "dynamic",
+    title: "Dynamic",
+    body: "Set your price to the current recommendation from Cascade. This price will update daily based on supply and demand in your area.",
+  },
+];
 
 export function MultiCalendar({
   cars: allCars,
@@ -168,8 +179,11 @@ export function MultiCalendar({
   const [autoDays, setAutoDays] = useState<Record<string, Set<string>>>(() =>
     Object.fromEntries(Object.entries(initialAuto).map(([carId, days]) => [carId, new Set(days)]))
   );
-  const [priceMode, setPriceMode] = useState<PriceMode>("set");
+  const [priceMode, setPriceMode] = useState<PriceMode>("adjust");
+  const [adjustUnit, setAdjustUnit] = useState<"usd" | "pct">("usd");
   const [priceInput, setPriceInput] = useState("");
+  /** The car whose insights the panel shows, or null for the usual panel. */
+  const [insightsCar, setInsightsCar] = useState<string | null>(null);
   const [savingPrice, setSavingPrice] = useState(false);
 
   useEffect(() => {
@@ -247,7 +261,13 @@ export function MultiCalendar({
     });
   }
 
-  async function changePrices(change: { kind: "set"; cents: number } | { kind: "adjust"; pct: number } | { kind: "reset" }) {
+  async function changePrices(
+    change:
+      | { kind: "set"; cents: number }
+      | { kind: "adjust"; pct: number }
+      | { kind: "shift"; cents: number }
+      | { kind: "dynamic" }
+  ) {
     if (!selection) return;
     setSavingPrice(true);
     const res = await fetch("/api/vehicles/daily-prices", {
@@ -292,9 +312,17 @@ export function MultiCalendar({
     return true;
   }
 
+  const dateCount = selectedDays * selCars.length;
+  const updateLabel = `Update ${pluralize(dateCount, "date")}`;
+
   async function savePrice() {
-    const value = parseFloat(priceInput);
     const where = `${pluralize(selectedDays, "day")}${selCars.length > 1 ? ` on ${pluralize(selCars.length, "car")}` : ""}`;
+    if (priceMode === "dynamic") {
+      if (await changePrices({ kind: "dynamic" })) toast.success(`Dynamic pricing on for ${where}.`);
+      return;
+    }
+    // "+10", "-10" and "10" all read; a plus sign is optional.
+    const value = parseFloat(priceInput.replace(/[$%\s,]/g, ""));
     if (priceMode === "set") {
       const cents = Math.round(value * 100);
       if (isNaN(cents) || cents < 100) {
@@ -307,19 +335,23 @@ export function MultiCalendar({
       }
       return;
     }
-    if (isNaN(value) || value <= 0 || (priceMode === "lower" && value > 90)) {
-      toast.error(priceMode === "lower" ? "Lower by 1% to 90%." : "Enter a percentage above 0.");
+    if (isNaN(value) || value === 0) {
+      toast.error(adjustUnit === "usd" ? "Enter an amount like +10 or -10." : "Enter a percentage like +10 or -10.");
       return;
     }
-    const pct = priceMode === "raise" ? value : -value;
-    if (await changePrices({ kind: "adjust", pct })) {
-      toast.success(`Prices ${pct > 0 ? "raised" : "lowered"} ${Math.abs(pct)}% for ${where}.`);
+    if (adjustUnit === "pct" && (value < -90 || value > 500)) {
+      toast.error("Adjust by -90% to +500%.");
+      return;
+    }
+    const done =
+      adjustUnit === "usd"
+        ? await changePrices({ kind: "shift", cents: Math.round(value * 100) })
+        : await changePrices({ kind: "adjust", pct: value });
+    if (done) {
+      const amount = adjustUnit === "usd" ? formatPrice(Math.abs(Math.round(value * 100))) : `${Math.abs(value)}%`;
+      toast.success(`Prices ${value > 0 ? "raised" : "lowered"} ${amount} for ${where}.`);
       setPriceInput("");
     }
-  }
-
-  async function resetPrice() {
-    if (await changePrices({ kind: "reset" })) toast.success("Prices reset.");
   }
 
   return (
@@ -433,19 +465,26 @@ export function MultiCalendar({
             <LegendItem swatch="bg-[#c9ccd3]" label="Blocked" />
             <LegendItem swatch="bg-sky" label="Selected" />
             <span className="flex items-center gap-1.5">
-              <span className="size-2.5 rounded-full bg-cobalt" />
-              Custom price
+              <span className="font-bold text-ink">$45</span>
+              Dynamic price
             </span>
             <span className="flex items-center gap-1.5">
-              <Sparkles className="size-3 text-cobalt" aria-hidden />
-              Automatic price
+              <span className="font-bold text-ink">$45 •</span>
+              Custom price
             </span>
           </div>
         </div>
 
         {/* ── Right panel ──────────────────────────────────── */}
         <aside className="flex min-w-0 flex-[1_1_280px] flex-col gap-3 rounded-[30px] bg-white p-5">
-          {selection && selCars.length > 0 ? (
+          {insightsCar ? (
+            <PriceInsights
+              cars={allCars.map((c) => ({ id: c.id, name: c.name, year: c.year, plate: c.plate }))}
+              carId={insightsCar}
+              onCarChange={setInsightsCar}
+              onClose={() => setInsightsCar(null)}
+            />
+          ) : selection && selCars.length > 0 ? (
             <>
               <div>
                 <h2 className="text-[18px] font-extrabold leading-tight">
@@ -497,70 +536,85 @@ export function MultiCalendar({
                         : formatPrice(priceSpan?.lo ?? 0)}
                     </strong>
                   </p>
-                  <div className="flex gap-1 rounded-[12px] bg-board p-1" role="radiogroup" aria-label="How to change prices">
-                    {(
-                      [
-                        ["set", "Set to"],
-                        ["raise", "Raise by"],
-                        ["lower", "Lower by"],
-                      ] as const
-                    ).map(([mode, label]) => (
-                      <button
+                  {PRICE_MODES.map(({ mode, title, body }) => {
+                    const open = priceMode === mode;
+                    return (
+                      <div
                         key={mode}
-                        type="button"
-                        role="radio"
-                        aria-checked={priceMode === mode}
-                        onClick={() => setPriceMode(mode)}
                         className={cn(
-                          "flex-1 rounded-[9px] py-1.5 text-[12px] font-bold transition-colors",
-                          priceMode === mode ? "bg-white text-ink shadow-sm" : "text-slate hover:text-ink"
+                          "flex flex-col gap-2.5 rounded-[18px] border p-4 transition-colors",
+                          open ? "border-cobalt ring-1 ring-cobalt" : "border-line hover:border-quiet"
                         )}
                       >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="price-input" className="text-sm font-semibold">
-                      {priceMode === "set" ? "Price a day, in dollars" : "Percent"}
-                    </Label>
-                    <form
-                      className="flex gap-2"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        savePrice();
-                      }}
-                    >
-                      <Input
-                        id="price-input"
-                        type="number"
-                        min="1"
-                        max={priceMode === "lower" ? 90 : undefined}
-                        step="1"
-                        placeholder={
-                          priceMode === "set"
-                            ? (selCars[0].dailyRateCents / 100).toFixed(0)
-                            : "10"
-                        }
-                        value={priceInput}
-                        onChange={(e) => setPriceInput(e.target.value)}
-                        className="flex-1"
-                      />
-                      <Button type="submit" disabled={savingPrice || !priceInput}>
-                        {savingPrice ? "…" : "Apply"}
-                      </Button>
-                    </form>
-                    {priceMode !== "set" && (
-                      <p className="text-[12px] text-slate">Each day moves from its own price, rounded to whole dollars.</p>
-                    )}
-                  </div>
-                  <Button variant="secondary" size="sm" disabled={savingPrice} onClick={resetPrice}>
-                    {selCars.every((c) => c.autoPricing)
-                      ? "Reset to automatic price"
-                      : selCars.some((c) => c.autoPricing)
-                        ? "Reset to base or automatic price"
-                        : "Reset to base rate"}
-                  </Button>
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          onClick={() => {
+                            setPriceMode(mode);
+                            setPriceInput("");
+                          }}
+                          className="flex flex-col gap-0.5 text-left"
+                        >
+                          <span className="text-[16px] font-extrabold">{title}</span>
+                          <span className="text-[12px] leading-[1.4] text-slate">{body}</span>
+                        </button>
+                        {open && (
+                          <form
+                            className="flex flex-col gap-2"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              savePrice();
+                            }}
+                          >
+                            {mode !== "dynamic" && (
+                              <div className="flex gap-2">
+                                {mode === "adjust" && (
+                                  <div className="flex shrink-0 gap-1 rounded-[12px] bg-board p-1" role="radiogroup" aria-label="Adjust by">
+                                    {(
+                                      [
+                                        ["usd", "$"],
+                                        ["pct", "%"],
+                                      ] as const
+                                    ).map(([unit, label]) => (
+                                      <button
+                                        key={unit}
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={adjustUnit === unit}
+                                        onClick={() => setAdjustUnit(unit)}
+                                        className={cn(
+                                          "w-9 rounded-[9px] py-1.5 text-[13px] font-bold transition-colors",
+                                          adjustUnit === unit ? "bg-ink text-white" : "text-slate hover:text-ink"
+                                        )}
+                                      >
+                                        {label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                <Input
+                                  aria-label={mode === "set" ? "Price a day, in dollars" : adjustUnit === "usd" ? "Dollars to add or take off" : "Percent to add or take off"}
+                                  inputMode={mode === "set" ? "decimal" : "text"}
+                                  placeholder={
+                                    mode === "set"
+                                      ? `$ E.g. ${(selCars[0].dailyRateCents / 100).toFixed(0)}`
+                                      : "E.g. +10, -10"
+                                  }
+                                  value={priceInput}
+                                  onChange={(e) => setPriceInput(e.target.value)}
+                                  className="min-w-0 flex-1"
+                                />
+                              </div>
+                            )}
+                            <Button type="submit" disabled={savingPrice || (mode !== "dynamic" && !priceInput.trim())}>
+                              {savingPrice ? "Updating…" : updateLabel}
+                            </Button>
+                          </form>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <InsightsPrompt onOpen={() => setInsightsCar(selCars[0].id)} />
                 </div>
               )}
 
@@ -668,6 +722,7 @@ export function MultiCalendar({
               <p className="rounded-[18px] bg-sky p-3.5 text-[13px] leading-[1.45] text-sky-ink">
                 Tip: on mobile, tap the first day then tap the last day to select a range.
               </p>
+              {allCars.length > 0 && <InsightsPrompt onOpen={() => setInsightsCar((cars[0] ?? allCars[0]).id)} />}
             </>
           )}
         </aside>
@@ -750,7 +805,6 @@ const CarRow = memo(function CarRow({
           <span className="mt-0.5 block truncate text-[11px] font-semibold text-quiet">
             {car.plate}
             {car.status !== "listed" && ` · ${STATUS_LABEL[car.status]}`}
-            {car.autoPricing && " · Auto"}
           </span>
         </Link>
       </div>
@@ -761,7 +815,7 @@ const CarRow = memo(function CarRow({
         const past = dk < today;
         const isSelected = selFrom !== null && selTo !== null && dk >= selFrom && dk <= selTo;
         const price = prices?.[dk] ?? car.dailyRateCents;
-        const hasCustomPrice = prices?.[dk] != null;
+        const custom = prices?.[dk] != null && !autoDays?.has(dk);
         // Show occupant start label only at the first day it appears in the window
         const prevOccupant = occupancy.get(addDays(dk, -1));
         const occupantStarts = occupant && occupant.id !== prevOccupant?.id;
@@ -792,13 +846,11 @@ const CarRow = memo(function CarRow({
               </span>
             ) : (
               <>
-                <span className="text-[13px] font-bold">{formatPrice(price)}</span>
-                {hasCustomPrice && !past &&
-                  (autoDays?.has(dk) ? (
-                    <Sparkles className="absolute right-1 top-1 size-3 text-cobalt" aria-hidden />
-                  ) : (
-                    <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-cobalt" />
-                  ))}
+                {/* Like Turo: a dot after the price marks a day the host priced themselves. */}
+                <span className="text-[13px] font-bold">
+                  {formatPrice(price)}
+                  {custom && !past && <span aria-label=", custom price"> •</span>}
+                </span>
               </>
             )}
           </button>
@@ -807,3 +859,18 @@ const CarRow = memo(function CarRow({
     </div>
   );
 });
+
+/** Turo's nudge from the price panel to the insights view. */
+function InsightsPrompt({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-[18px] bg-lilac p-4 text-lilac-ink">
+      <p className="flex items-start gap-2 text-[13px] leading-[1.45]">
+        <Lightbulb className="mt-0.5 size-4 shrink-0" />
+        Review your future prices and booked price trends to improve your pricing.
+      </p>
+      <Button size="sm" variant="secondary" className="self-end bg-white hover:bg-white/80" onClick={onOpen}>
+        View insights
+      </Button>
+    </div>
+  );
+}

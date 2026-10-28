@@ -17,7 +17,6 @@ import { DeleteVehicleButton } from "@/components/host/DeleteVehicleButton";
 import { CarSettings } from "@/components/host/settings/CarSettings";
 import { formatBuffer } from "@/lib/trip-rules";
 import { PricingDiscounts } from "@/components/host/settings/PricingDiscounts";
-import { previewAutoPrices } from "@/lib/auto-pricing-refresh";
 import { ExtrasManager } from "@/components/host/settings/ExtrasManager";
 import { GuestInstructions } from "@/components/host/settings/GuestInstructions";
 import { tripStatus } from "@/lib/trip-status";
@@ -51,11 +50,10 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
   if (!data) notFound();
   const car = data as unknown as CarRow;
 
-  const [trips, { count: tripRows }, { data: extras }, autoPreview] = await Promise.all([
+  const [trips, { count: tripRows }, { data: extras }] = await Promise.all([
     loadHostTrips(supabase, user.id, ["pending", "approved", "active", "completed"]),
     supabase.from("trips").select("id", { count: "exact", head: true }).eq("vehicle_id", vehicleId),
     supabase.from("vehicle_extras").select("*").eq("vehicle_id", vehicleId).order("position"),
-    previewAutoPrices(car),
   ]);
   const carTrips = trips.filter((t) => t.vehicle_id === vehicleId);
   const upcoming = carTrips.filter((t) => isRequest(t) || t.status === "approved" || t.status === "active");
@@ -177,7 +175,7 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
       </div>
 
       <div id="pricing" className="scroll-mt-24">
-        <PricingDiscounts car={car} autoPreview={autoPreview} />
+        <PricingDiscounts car={car} />
       </div>
 
       <CarSettings car={car} />
