@@ -1,29 +1,39 @@
 import { addDays, daysBetween, weekdayIndex } from "@/components/host/days";
 
 /**
- * Automatic pricing, step one: plain rules, no model. Each rule moves the car's
- * daily rate by a percent, the moves add up, and the result stays inside the
- * host's floor and ceiling. The numbers are a first guess for Seattle, to be
- * tuned on real trip data.
+ * Automatic pricing: each rule moves the car's daily rate by a percent, the
+ * moves add up, and the result stays inside the host's floor and ceiling.
+ *
+ * The weekday, season and summer holiday numbers, and the default floor and
+ * ceiling, are fitted to 2,299 Seattle airport trips on Turo from March to
+ * October 2026 (a ridge regression on each trip's price against its car's usual
+ * price). There was no winter data, so November to February sit at the level of
+ * March and October. Winter holidays, booking lead time and how busy nearby cars
+ * are still use first guesses: the trips didn't cover them, or couldn't tell
+ * them apart from the season.
  */
 
 /** How far ahead automatic prices are written. */
 export const AUTO_HORIZON_DAYS = 120;
 
-/** With no floor or ceiling set, prices stay between these shares of the daily rate. */
-export const DEFAULT_FLOOR = 0.8;
-export const DEFAULT_CEILING = 1.5;
+/** With no floor or ceiling set, prices stay between these shares of the daily rate: where 90% of the fitted trips fell. */
+export const DEFAULT_FLOOR = 0.6;
+export const DEFAULT_CEILING = 1.45;
 
 /** All the rules together never move a day further than this, before the floor and ceiling. */
-const MIN_PCT = -25;
+const MIN_PCT = -40;
 const MAX_PCT = 50;
 
-/** Monday first. Weekends rent best; midweek is quiet. */
-const WEEKDAY_PCT = [0, -4, -4, 2, 8, 10, 2];
+/** Monday first. Fitted: Friday and Saturday nights cost most, Wednesday least. */
+const WEEKDAY_PCT = [-5, -8, -11, -3, 13, 16, 0];
 const WEEKDAY_NAME = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-/** January first. Seattle's summer and cruise season against its wet winter. */
-const MONTH_PCT = [-8, -6, -4, 0, 4, 10, 14, 14, 6, 0, -4, -4];
+/**
+ * January first. Fitted: prices climb from mid-May, peak in June and July and are
+ * back down by September. June 2026 had World Cup matches in Seattle, so its
+ * number may run a little high for other years.
+ */
+const MONTH_PCT = [-8, -8, -12, -13, -13, 34, 32, 19, 0, -3, -8, -8];
 const SEASON_NAME = ["Winter", "Winter", "Early spring", "Spring", "Late spring", "Summer", "Summer", "Summer", "Early fall", "Fall", "Late fall", "Winter"];
 
 /** Demand only counts once there are this many cars nearby; below that one booking swings it. */
@@ -134,9 +144,9 @@ function holidays(year: number): PricingEvent[] {
     around("New Year", key(1, 1), 2, 0, 15),
     around("MLK Day weekend", nthWeekday(year, 1, 0, 3), 2, 0, 5),
     around("Presidents' Day weekend", nthWeekday(year, 2, 0, 3), 2, 0, 8),
-    around("Memorial Day weekend", lastWeekday(year, 5, 0), 3, 0, 15),
-    around("Fourth of July", key(7, 4), 2, 1, 20),
-    around("Labor Day weekend", nthWeekday(year, 9, 0, 1), 3, 0, 15),
+    around("Memorial Day weekend", lastWeekday(year, 5, 0), 3, 0, 21),
+    around("Fourth of July", key(7, 4), 2, 1, 13),
+    around("Labor Day weekend", nthWeekday(year, 9, 0, 1), 3, 0, 19),
     around("Thanksgiving", nthWeekday(year, 11, 3, 4), 1, 3, 15),
     { name: "Christmas", starts_on: key(12, 20), ends_on: key(12, 29), pct: 12 },
   ];
