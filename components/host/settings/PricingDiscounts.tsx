@@ -6,6 +6,8 @@ import type { Vehicle } from "@/lib/supabase/types";
 import { Tag } from "@/components/kit";
 import { VehicleEditDialog } from "@/components/host/VehicleEditDialog";
 import { PricingBoost } from "@/components/host/settings/PricingBoost";
+import { AutomaticPricing } from "@/components/host/settings/AutomaticPricing";
+import { priceLimits, type AutoPrice } from "@/lib/auto-pricing";
 
 type Tier = (typeof DISCOUNT_TIERS)[number];
 
@@ -33,8 +35,8 @@ function TierLine({ car, tier }: { car: Vehicle; tier: Tier }) {
   );
 }
 
-/** Pricing & discounts on the host's car page: day prices, last-minute boost, and Turo-style trip-length discounts. */
-export function PricingDiscounts({ car }: { car: Vehicle }) {
+/** Pricing & discounts on the host's car page: automatic pricing, day prices, last-minute boost, and Turo-style trip-length discounts. */
+export function PricingDiscounts({ car, autoPreview }: { car: Vehicle; autoPreview: { date: string; price: AutoPrice }[] }) {
   const fee = Math.round((1 - HOST_SHARE) * 100);
 
   return (
@@ -46,6 +48,15 @@ export function PricingDiscounts({ car }: { car: Vehicle }) {
           Cascade&apos;s {fee}% fee.
         </p>
       </div>
+
+      <AutomaticPricing
+        vehicleId={car.id}
+        on={car.auto_pricing}
+        minCents={car.auto_price_min_cents}
+        maxCents={car.auto_price_max_cents}
+        defaults={priceLimits({ ...car, auto_price_min_cents: null, auto_price_max_cents: null })}
+        preview={autoPreview}
+      />
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-4">
         <div className="flex flex-col gap-3 rounded-[24px] bg-board p-5">

@@ -162,6 +162,9 @@ export type Database = {
           two_week_discount_pct: number;
           three_week_discount_pct: number;
           last_minute_boost_pct: number;
+          auto_pricing: boolean;
+          auto_price_min_cents: number | null;
+          auto_price_max_cents: number | null;
           distance_included_mi: number;
           extra_mile_fee_cents: number;
           min_trip_days: number;
@@ -214,6 +217,9 @@ export type Database = {
           two_week_discount_pct?: number;
           three_week_discount_pct?: number;
           last_minute_boost_pct?: number;
+          auto_pricing?: boolean;
+          auto_price_min_cents?: number | null;
+          auto_price_max_cents?: number | null;
           distance_included_mi?: number;
           extra_mile_fee_cents?: number;
           min_trip_days?: number;
@@ -266,6 +272,9 @@ export type Database = {
           two_week_discount_pct?: number;
           three_week_discount_pct?: number;
           last_minute_boost_pct?: number;
+          auto_pricing?: boolean;
+          auto_price_min_cents?: number | null;
+          auto_price_max_cents?: number | null;
           distance_included_mi?: number;
           extra_mile_fee_cents?: number;
           min_trip_days?: number;
@@ -408,6 +417,7 @@ export type Database = {
           vehicle_id: string;
           date: string;
           price_cents: number;
+          source: "host" | "auto";
           created_at: string;
         };
         Insert: {
@@ -415,6 +425,7 @@ export type Database = {
           vehicle_id: string;
           date: string;
           price_cents: number;
+          source?: "host" | "auto";
           created_at?: string;
         };
         Update: {
@@ -422,6 +433,7 @@ export type Database = {
           vehicle_id?: string;
           date?: string;
           price_cents?: number;
+          source?: "host" | "auto";
           created_at?: string;
         };
         Relationships: [
@@ -1333,6 +1345,33 @@ export type Database = {
           }
         ];
       };
+      pricing_events: {
+        Row: {
+          id: string;
+          name: string;
+          starts_on: string;
+          ends_on: string;
+          pct: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          starts_on: string;
+          ends_on: string;
+          pct: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          starts_on?: string;
+          ends_on?: string;
+          pct?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       promo_codes: {
         Row: {
           id: string;
@@ -1518,7 +1557,12 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      upsert_auto_prices: {
+        Args: { rows: { vehicle_id: string; date: string; price_cents: number }[] };
+        Returns: number;
+      };
+    };
     Enums: Record<string, never>;
   };
 };

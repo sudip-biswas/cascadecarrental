@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { processDueCharges } from "@/lib/charges";
 import { sendTripReminders, settleAllTrips } from "@/lib/trips";
 import { sendDueScheduledMessages } from "@/lib/scheduled-messages";
+import { refreshAutoPrices } from "@/lib/auto-pricing-refresh";
 
 export const maxDuration = 60;
 
 /**
  * Runs every 15 minutes (vercel.json). Moves every trip along, sends pick-up
- * and return reminders, then charges and releases whatever is due. Vercel
- * sends `Authorization: Bearer $CRON_SECRET` on cron calls.
+ * and return reminders, charges and releases whatever is due, then reprices
+ * cars on automatic pricing. Vercel sends `Authorization: Bearer $CRON_SECRET`
+ * on cron calls.
  */
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -30,6 +32,7 @@ export async function GET(req: Request) {
   const reminders = await run("reminders", sendTripReminders);
   const charges = await run("charges", processDueCharges);
   const messages = await run("scheduled messages", () => sendDueScheduledMessages());
+  const prices = await run("automatic prices", () => refreshAutoPrices());
 
-  return NextResponse.json({ settled, reminders, charges: charges ?? "done", messages });
+  return NextResponse.json({ settled, reminders, charges: charges ?? "done", messages, prices });
 }

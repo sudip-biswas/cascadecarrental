@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarX, CarFront, SearchX } from "lucide-react";
+import { CalendarX, CarFront, SearchX, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,11 +35,15 @@ import type { PriceChanges } from "@/lib/pricing";
 
 export interface MultiCalendarCar extends FilterableCar {
   cover: string | null;
+  autoPricing: boolean;
   occupants: Occupant[];
 }
 
 /** priceOverrides[vehicleId][dateKey] = price_cents */
 export type PriceOverrides = Record<string, Record<string, number>>;
+
+/** autoPrices[vehicleId] = the days whose price automatic pricing set, not the host. */
+export type AutoPriced = Record<string, string[]>;
 
 /** The car column is narrower on phones so a few days still fit beside it. */
 const CAR_COL = "[--car-col:140px] sm:[--car-col:212px]";
@@ -85,12 +89,14 @@ export function MultiCalendar({
   today,
   horizon,
   priceOverrides: initial,
+  autoPrices: initialAuto,
 }: {
   cars: MultiCalendarCar[];
   today: string;
   /** The last day prices are loaded for; the window doesn't scroll past it. */
   horizon: string;
   priceOverrides: PriceOverrides;
+  autoPrices: AutoPriced;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -159,6 +165,9 @@ export function MultiCalendar({
 
   // Price overrides (client-side cache updated after saves)
   const [overrides, setOverrides] = useState<PriceOverrides>(initial);
+  const [autoDays, setAutoDays] = useState<Record<string, Set<string>>>(() =>
+    Object.fromEntries(Object.entries(initialAuto).map(([carId, days]) => [carId, new Set(days)]))
+  );
   const [priceMode, setPriceMode] = useState<PriceMode>("set");
   const [priceInput, setPriceInput] = useState("");
   const [savingPrice, setSavingPrice] = useState(false);
@@ -252,7 +261,7 @@ export function MultiCalendar({
       }),
     });
     setSavingPrice(false);
-    const body: { error?: string; changes?: PriceChanges } = await res.json().catch(() => ({}));
+    const body: { error?: string; changes?: PriceChanges; auto?: AutoPriced } = await res.json().catch(() => ({}));
     if (!res.ok || !body.changes) {
       toast.error(body.error ?? "Couldn't save prices.");
       return false;
@@ -266,6 +275,17 @@ export function MultiCalendar({
           else car[d] = cents;
         }
         next[carId] = car;
+      }
+      return next;
+    });
+    // Days the host just priced are theirs now; a reset hands auto days back.
+    setAutoDays((prev) => {
+      const next = { ...prev };
+      for (const [carId, days] of Object.entries(body.changes!)) {
+        const set = new Set(next[carId]);
+        for (const d of Object.keys(days)) set.delete(d);
+        for (const d of body.auto?.[carId] ?? []) set.add(d);
+        next[carId] = set;
       }
       return next;
     });
@@ -299,7 +319,7 @@ export function MultiCalendar({
   }
 
   async function resetPrice() {
-    if (await changePrices({ kind: "reset" })) toast.success("Reset to the daily rate.");
+    if (await changePrices({ kind: "reset" })) toast.success("Prices reset.");
   }
 
   return (
@@ -382,6 +402,7 @@ export function MultiCalendar({
                     today={today}
                     occupancy={occupancy.get(car.id)!}
                     prices={overrides[car.id]}
+                    autoDays={autoDays[car.id]}
                     selFrom={selected ? selection.from : null}
                     selTo={selected ? selection.to : null}
                     onStart={startAt}
@@ -414,6 +435,10 @@ export function MultiCalendar({
             <span className="flex items-center gap-1.5">
               <span className="size-2.5 rounded-full bg-cobalt" />
               Custom price
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="size-3 text-cobalt" aria-hidden />
+              Automatic price
             </span>
           </div>
         </div>
@@ -530,7 +555,11 @@ export function MultiCalendar({
                     )}
                   </div>
                   <Button variant="secondary" size="sm" disabled={savingPrice} onClick={resetPrice}>
-                    Reset to base rate
+                    {selCars.every((c) => c.autoPricing)
+                      ? "Reset to automatic price"
+                      : selCars.some((c) => c.autoPricing)
+                        ? "Reset to base or automatic price"
+                        : "Reset to base rate"}
                   </Button>
                 </div>
               )}
@@ -672,6 +701,7 @@ const CarRow = memo(function CarRow({
   today,
   occupancy,
   prices,
+  autoDays,
   selFrom,
   selTo,
   onStart,
@@ -684,6 +714,7 @@ const CarRow = memo(function CarRow({
   today: string;
   occupancy: Map<string, Occupant>;
   prices: Record<string, number> | undefined;
+  autoDays: Set<string> | undefined;
   selFrom: string | null;
   selTo: string | null;
   onStart: (row: number, key: string, extend: boolean) => void;
@@ -719,6 +750,7 @@ const CarRow = memo(function CarRow({
           <span className="mt-0.5 block truncate text-[11px] font-semibold text-quiet">
             {car.plate}
             {car.status !== "listed" && ` · ${STATUS_LABEL[car.status]}`}
+            {car.autoPricing && " · Auto"}
           </span>
         </Link>
       </div>
@@ -761,9 +793,12 @@ const CarRow = memo(function CarRow({
             ) : (
               <>
                 <span className="text-[13px] font-bold">{formatPrice(price)}</span>
-                {hasCustomPrice && !past && (
-                  <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-cobalt" />
-                )}
+                {hasCustomPrice && !past &&
+                  (autoDays?.has(dk) ? (
+                    <Sparkles className="absolute right-1 top-1 size-3 text-cobalt" aria-hidden />
+                  ) : (
+                    <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-cobalt" />
+                  ))}
               </>
             )}
           </button>

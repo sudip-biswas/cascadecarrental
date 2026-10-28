@@ -16,6 +16,7 @@ import {
   ReceiptText,
   Route,
   Shield,
+  Sparkles,
   Star,
   TrendingUp,
   Gavel,
@@ -60,6 +61,7 @@ export function HostSidebar({ requests, unread, isAdmin = false }: { requests: n
         { href: "/host/admin/trips", label: "Every trip", icon: Route, match: (p) => p.startsWith("/host/admin/trips") },
         { href: "/host/admin/users", label: "Users", icon: Users, match: (p) => p.startsWith("/host/admin/users") },
         { href: "/host/admin/promos", label: "Promo codes", icon: TicketPercent, match: (p) => p.startsWith("/host/admin/promos") },
+        { href: "/host/admin/pricing", label: "Pricing events", icon: Sparkles, match: (p) => p.startsWith("/host/admin/pricing") },
         { href: "/host/admin/personas", label: "Personas", icon: UserRound, match: (p) => p.startsWith("/host/admin/personas") },
       ]
     : [];

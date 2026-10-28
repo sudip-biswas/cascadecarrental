@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { addDays, daysBetween } from "@/components/host/days";
 import type { PriceChanges } from "@/lib/pricing";
+import { refreshAutoPrices } from "@/lib/auto-pricing-refresh";
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -18,7 +19,7 @@ const schema = z
       z.object({ kind: z.literal("set"), cents: z.number().int().min(100) }),
       /** Each day's current price moves by this much, rounded to whole dollars. */
       z.object({ kind: z.literal("adjust"), pct: z.number().min(-90).max(500) }),
-      /** Back to the car's daily rate. */
+      /** Back to the car's daily rate, or its automatic price when automatic pricing is on. */
       z.object({ kind: z.literal("reset") }),
     ]),
   })
@@ -44,7 +45,7 @@ export async function PATCH(req: Request) {
 
   const { data: cars } = await supabase
     .from("vehicles")
-    .select("id, daily_rate_cents")
+    .select("id, daily_rate_cents, auto_pricing")
     .in("id", vehicleIds)
     .eq("host_id", user.id);
   if (cars?.length !== new Set(vehicleIds).size) return fail("Forbidden", 403);
@@ -64,7 +65,28 @@ export async function PATCH(req: Request) {
     );
     if (results.some((r) => r.error)) return fail("Couldn't reset prices.", 500);
     for (const car of cars) for (const d of dates) changes[car.id][d] = null;
-    return NextResponse.json({ changes });
+
+    // Cars on automatic pricing get their automatic prices straight back.
+    const autoIds = cars.filter((c) => c.auto_pricing).map((c) => c.id);
+    const auto: Record<string, string[]> = {};
+    if (autoIds.length) {
+      try {
+        await refreshAutoPrices(autoIds);
+      } catch (err) {
+        console.error("[daily-prices] automatic refresh failed", err);
+      }
+      const { data: refilled } = await supabase
+        .from("vehicle_daily_prices")
+        .select("vehicle_id, date, price_cents")
+        .in("vehicle_id", autoIds)
+        .gte("date", from)
+        .lte("date", to);
+      for (const row of refilled ?? []) {
+        changes[row.vehicle_id][row.date] = row.price_cents;
+        (auto[row.vehicle_id] ??= []).push(row.date);
+      }
+    }
+    return NextResponse.json({ changes, auto });
   }
 
   // An adjustment starts from what each day costs now: its own price, else the daily rate.
@@ -97,7 +119,7 @@ export async function PATCH(req: Request) {
               Math.round((current.get(`${car.id} ${date}`)! * (1 + change.pct / 100)) / 100) * 100
             );
       changes[car.id][date] = price_cents;
-      return { vehicle_id: car.id, date, price_cents };
+      return { vehicle_id: car.id, date, price_cents, source: "host" as const };
     })
   );
 
@@ -108,7 +130,7 @@ export async function PATCH(req: Request) {
   );
   if (saved.some((r) => r.error)) return fail("Couldn't save prices.", 500);
 
-  return NextResponse.json({ changes });
+  return NextResponse.json({ changes, auto: {} });
 }
 
 function chunks<T>(items: T[], size: number): T[][] {

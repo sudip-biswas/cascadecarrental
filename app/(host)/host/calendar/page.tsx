@@ -10,7 +10,7 @@ import { toDateKey } from "@/lib/utils";
 import type { Database, Vehicle, VehicleImage } from "@/lib/supabase/types";
 import { EmptyState, PageTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
-import { MultiCalendar, type PriceOverrides } from "@/components/host/MultiCalendar";
+import { MultiCalendar, type AutoPriced, type PriceOverrides } from "@/components/host/MultiCalendar";
 import { coverUrl } from "@/components/host/bits";
 import { loadHostTrips, occupantsFor } from "@/components/host/data";
 import { addDays } from "@/components/host/days";
@@ -31,6 +31,7 @@ type CarRow = Pick<
   | "location_name"
   | "location_address"
   | "daily_rate_cents"
+  | "auto_pricing"
 > & {
   vehicle_images: Pick<VehicleImage, "url" | "is_cover" | "position">[];
 };
@@ -45,11 +46,11 @@ async function loadPrices(
   from: string,
   to: string
 ) {
-  const rows: { vehicle_id: string; date: string; price_cents: number }[] = [];
+  const rows: { vehicle_id: string; date: string; price_cents: number; source: "host" | "auto" }[] = [];
   for (let page = 0; ; page++) {
     const { data } = await supabase
       .from("vehicle_daily_prices")
-      .select("vehicle_id, date, price_cents")
+      .select("vehicle_id, date, price_cents, source")
       .in("vehicle_id", carIds)
       .gte("date", from)
       .lte("date", to)
@@ -76,7 +77,7 @@ export default async function HostCalendarPage() {
     supabase
       .from("vehicles")
       .select(
-        "id, make, model, trim, year, license_plate, status, location_name, location_address, daily_rate_cents, vehicle_images(url, is_cover, position)"
+        "id, make, model, trim, year, license_plate, status, location_name, location_address, daily_rate_cents, auto_pricing, vehicle_images(url, is_cover, position)"
       )
       .eq("host_id", user.id)
       .order("created_at", { ascending: true }),
@@ -118,9 +119,11 @@ export default async function HostCalendarPage() {
 
   // Build price overrides map: { [vehicleId]: { [date]: price_cents } }
   const priceOverrides: PriceOverrides = {};
+  const autoPrices: AutoPriced = {};
   for (const row of priceRows) {
     if (!priceOverrides[row.vehicle_id]) priceOverrides[row.vehicle_id] = {};
     priceOverrides[row.vehicle_id][row.date] = row.price_cents;
+    if (row.source === "auto") (autoPrices[row.vehicle_id] ??= []).push(row.date);
   }
 
   return (
@@ -129,6 +132,7 @@ export default async function HostCalendarPage() {
         today={today}
         horizon={addDays(today, HORIZON_DAYS)}
         priceOverrides={priceOverrides}
+        autoPrices={autoPrices}
         cars={cars.map((c) => ({
           id: c.id,
           name: `${c.make} ${c.model}`,
@@ -140,6 +144,7 @@ export default async function HostCalendarPage() {
           city: cityOf(c.location_address, c.location_name),
           cover: coverUrl(c.vehicle_images),
           dailyRateCents: c.daily_rate_cents,
+          autoPricing: c.auto_pricing,
           occupants: occupantsFor(c.id, trips, blocksData ?? []),
         }))}
       />
