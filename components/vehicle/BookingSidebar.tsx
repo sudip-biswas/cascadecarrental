@@ -85,6 +85,8 @@ interface Props {
   unavailable: Range[];
   /** The host's own prices for single days, from today on. */
   dailyPrices: DailyPrices;
+  /** Today's dynamic or custom price, shown a day before dates are picked. */
+  todayCents: number;
   initialFrom?: DateKey;
   initialUntil?: DateKey;
   initialFromTime?: string;
@@ -126,6 +128,7 @@ export function CarBooking({
   hostName,
   unavailable,
   dailyPrices,
+  todayCents,
   initialFrom,
   initialUntil,
   initialFromTime,
@@ -171,6 +174,8 @@ export function CarBooking({
       deliveryCents: pickedSpot ? spotFeeCents(pickedSpot, Math.max(days, 1)) : 0,
     });
   const pricing = priceFor(rate);
+  // A day's price: the average over the dates once picked, else today's.
+  const perDay = from && until && days > 0 ? pricing.dailyRateCents : todayCents;
   const firstTier = DISCOUNT_TIERS.find((tier) => vehicle[tier.column] > 0);
   const longTripDeal = firstTier && `Save ${vehicle[firstTier.column]}% on trips of ${firstTier.days}+ days.`;
   const payNow = priceFor("non_refundable");
@@ -239,7 +244,7 @@ export function CarBooking({
       >
         <div className="figures flex items-baseline justify-between">
           <span className="font-display text-[46px] leading-none font-extrabold tracking-[-0.03em]">
-            {formatPrice(vehicle.daily_rate_cents)}
+            {formatPrice(perDay)}
             <span className="font-sans text-base font-medium tracking-normal text-slate"> /day</span>
           </span>
           {days > 0 && <span className="text-[15px] text-slate">{pluralize(days, "day")}</span>}
@@ -394,7 +399,7 @@ export function CarBooking({
                 {formatCurrency(pricing.totalCents)} <span className="text-sm font-semibold text-slate">total</span>
               </span>
               <span className="block truncate text-[13px] text-slate">
-                {formatRange(zonedInstant(from, fromTime), zonedInstant(until, untilTime))} · {formatPrice(vehicle.daily_rate_cents)}/day · tax in
+                {formatRange(zonedInstant(from, fromTime), zonedInstant(until, untilTime))} · {formatPrice(perDay)}/day · tax in
               </span>
             </span>
             <Button asChild className="h-[54px] shrink-0 px-6 text-[17px]">
@@ -405,7 +410,7 @@ export function CarBooking({
           <>
             <span className="min-w-0">
               <span className="block text-[22px] font-extrabold">
-                {formatPrice(vehicle.daily_rate_cents)} <span className="text-sm font-semibold text-slate">/day</span>
+                {formatPrice(perDay)} <span className="text-sm font-semibold text-slate">/day</span>
               </span>
               <span className="block truncate text-[13px] text-slate">
                 {from && until && problem ? problem : "Add dates to see the total"}

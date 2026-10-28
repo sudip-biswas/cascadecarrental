@@ -4,6 +4,7 @@ import type { Database } from "@/lib/supabase/types";
 import { FEATURES, SEA_BOUNDS } from "./categories";
 import type { SearchFilters } from "./params";
 import { LISTED_VEHICLE_SELECT, type ListedVehicle } from "./vehicle";
+import { withTodayPrices } from "./prices";
 
 type Client = SupabaseClient<Database>;
 
@@ -151,7 +152,7 @@ export async function listedCars(supabase: Client, filters: Partial<SearchFilter
 
   const { data, error } = await query.limit(MAX_RESULTS);
   if (error) throw error;
-  return data as unknown as ListedVehicle[];
+  return withTodayPrices(data as unknown as ListedVehicle[]);
 }
 
 /** What the filter menus offer: every listed make with its models, the year span and the top daily price. */

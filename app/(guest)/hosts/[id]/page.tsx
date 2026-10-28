@@ -5,6 +5,7 @@ import { NO_INDEX } from "@/lib/site";
 import { formatDate, pluralize } from "@/lib/utils";
 import { LISTED_VEHICLE_SELECT, type ListedVehicle } from "@/components/search/vehicle";
 import { VehicleCard } from "@/components/search/VehicleCard";
+import { withTodayPrices } from "@/components/search/prices";
 
 export const instant = false;
 export const metadata = { ...NO_INDEX };
@@ -39,7 +40,7 @@ export default async function HostProfilePage({ params }: PageProps<"/hosts/[id]
     .eq("status", "listed")
     .order("trip_count", { ascending: false });
 
-  const listed = (vehicles ?? []) as unknown as ListedVehicle[];
+  const listed = await withTodayPrices((vehicles ?? []) as unknown as ListedVehicle[]);
 
   return (
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">

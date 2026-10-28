@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { addDays } from "@/components/host/days";
 import { cache } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
@@ -68,14 +69,14 @@ const getCar = cache(async (id: string) => {
 });
 
 /** "5 seats, gas, automatic, 200 mi a day included. $50 a day, instant book." */
-function summary(car: CarRow) {
+function summary(car: CarRow, todayCents: number) {
   const specs = [
     `${car.seats} seats`,
     fuelLabel(car.fuel_type).toLowerCase(),
     car.transmission === "manual" ? "manual" : "automatic",
     `${car.distance_included_mi} mi a day included`,
   ].join(", ");
-  const price = `${formatPrice(car.daily_rate_cents)} a day${car.instant_book ? ", instant book" : ""}`;
+  const price = `${formatPrice(todayCents)} a day${car.instant_book ? ", instant book" : ""}`;
   return `${specs}. ${price}.`;
 }
 
@@ -86,7 +87,9 @@ export async function generateMetadata({ params }: PageProps<"/cars/[vehicleId]"
 
   const title = `${car.year} ${car.make} ${car.model} for rent in ${car.location_name}`;
   const host = firstName(car.host?.full_name);
-  const description = `Rent this ${car.year} ${car.make} ${car.model}${host ? ` from ${host}` : ""} in ${car.location_name}. ${summary(car)}`;
+  const today = toDateKey(new Date());
+  const todayCents = (await loadDailyPrices(car.id, today, addDays(today, 1)))[today] ?? car.daily_rate_cents;
+  const description = `Rent this ${car.year} ${car.make} ${car.model}${host ? ` from ${host}` : ""} in ${car.location_name}. ${summary(car, todayCents)}`;
   const cover = coverImage(car.vehicle_images);
   return {
     title,
@@ -168,6 +171,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
     loadPickupSpots(createAdminClient(), car),
   ]);
   const pickup = spots.map(publicOption);
+  const todayCents = dailyPrices[toDateKey(new Date())] ?? car.daily_rate_cents;
   const reviews = (reviewData ?? []) as unknown as ReviewRow[];
   // Category bars average every guest rating, not just the ten listed.
   const { data: categoryRatings } = reviews.length
@@ -198,7 +202,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
       "@context": "https://schema.org",
       "@type": ["Product", "Car"],
       name: `${car.year} ${name}${car.trim ? ` ${car.trim}` : ""}`,
-      description: car.description || summary(car),
+      description: car.description || summary(car, todayCents),
       url: absoluteUrl(path),
       image: [...car.vehicle_images].sort((a, b) => a.position - b.position).map((img) => img.url),
       brand: { "@type": "Brand", name: car.make },
@@ -213,11 +217,11 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
       offers: {
         "@type": "Offer",
         url: absoluteUrl(path),
-        price: (car.daily_rate_cents / 100).toFixed(2),
+        price: (todayCents / 100).toFixed(2),
         priceCurrency: "USD",
         priceSpecification: {
           "@type": "UnitPriceSpecification",
-          price: (car.daily_rate_cents / 100).toFixed(2),
+          price: (todayCents / 100).toFixed(2),
           priceCurrency: "USD",
           unitCode: "DAY",
           referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitCode: "DAY" },
@@ -474,6 +478,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
           hostName={host}
           unavailable={unavailable}
           dailyPrices={dailyPrices}
+          todayCents={todayCents}
           initialFrom={dates?.from}
           initialUntil={dates?.until}
           initialFromTime={fromTime}

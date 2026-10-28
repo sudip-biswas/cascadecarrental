@@ -12,6 +12,7 @@ import { Faq } from "@/components/seo/Faq";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SearchForm } from "@/components/search/SearchForm";
 import { VehicleCard } from "@/components/search/VehicleCard";
+import { withTodayPrices } from "@/components/search/prices";
 import { TRIP_CATEGORIES } from "@/components/search/categories";
 import { LISTED_VEHICLE_SELECT, coverImage, firstName, type ListedVehicle } from "@/components/search/vehicle";
 
@@ -65,7 +66,7 @@ async function loadFeatured() {
     .order("rating_avg", { ascending: false, nullsFirst: false })
     .order("daily_rate_cents", { ascending: false })
     .limit(3);
-  return (data ?? []) as unknown as ListedVehicle[];
+  return withTodayPrices((data ?? []) as unknown as ListedVehicle[]);
 }
 
 function HeroCar({ car }: { car: ListedVehicle }) {
@@ -85,7 +86,7 @@ function HeroCar({ car }: { car: ListedVehicle }) {
         />
       </span>
       <span className="figures absolute top-4 left-4 rounded-[14px] bg-white px-3.5 py-2.5 font-display text-2xl font-extrabold">
-        {formatPrice(car.daily_rate_cents)}
+        {formatPrice(car.price_today_cents ?? car.daily_rate_cents)}
         <span className="font-sans text-sm font-medium text-slate"> a day</span>
       </span>
       <span className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-[18px] bg-white px-3.5 py-3">

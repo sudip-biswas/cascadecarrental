@@ -11,8 +11,10 @@ export type ListedVehicle = PublicVehicle & {
   host: { full_name: string } | null;
   persona: { name: string } | null;
   vehicle_extras: { unlimited_miles: boolean; active: boolean }[];
-  /** The host's own and automatic day prices over the searched dates, when search has dates. */
+  /** The host's own and dynamic day prices over the searched dates, when search has dates. */
   day_prices?: DailyPrices;
+  /** What a day costs today, from withTodayPrices. */
+  price_today_cents?: number;
 };
 
 /** Columns those pages select. */
@@ -48,7 +50,21 @@ export function tripPrice(vehicle: PublicVehicle & { day_prices?: DailyPrices },
   };
   const priced = computePricing({ ...input, discounts: vehicle });
   const full = priced.lengthDiscountCents > 0 ? computePricing({ ...input, discounts: {} }).totalCents : null;
-  return { totalCents: priced.totalCents, beforeDiscountCents: full, discountLabel: priced.lengthDiscountLabel };
+  return {
+    totalCents: priced.totalCents,
+    beforeDiscountCents: full,
+    discountLabel: priced.lengthDiscountLabel,
+    /** The average a day over the dates, before discounts. */
+    dailyCents: priced.dailyRateCents,
+  };
+}
+
+/** What a card shows a day: the average over the dates, else today's dynamic price, never the bare daily rate. */
+export function dayPriceCents(
+  vehicle: PublicVehicle & { day_prices?: DailyPrices; price_today_cents?: number },
+  dates?: { from: DateKey; until: DateKey } | null
+) {
+  return dates ? tripPrice(vehicle, dates.from, dates.until).dailyCents : (vehicle.price_today_cents ?? vehicle.daily_rate_cents);
 }
 
 /** A car's listing offers an unlimited miles add-on. */

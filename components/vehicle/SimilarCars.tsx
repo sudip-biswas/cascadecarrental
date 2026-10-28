@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { TileTitle } from "@/components/kit";
 import { VehicleCard } from "@/components/search/VehicleCard";
+import { withTodayPrices } from "@/components/search/prices";
 import { availableFor } from "@/components/search/availability";
 import { loadFavorites } from "@/components/search/favorites";
 import { LISTED_VEHICLE_SELECT, type ListedVehicle } from "@/components/search/vehicle";
@@ -28,7 +29,7 @@ export async function SimilarCars({
     supabase.from("vehicles").select(LISTED_VEHICLE_SELECT).eq("status", "listed").neq("id", vehicleId).limit(60),
     loadFavorites(supabase),
   ]);
-  let cars = (data ?? []) as unknown as ListedVehicle[];
+  let cars = await withTodayPrices((data ?? []) as unknown as ListedVehicle[]);
   if (dates) cars = await availableFor(cars, dates.from, dates.until);
 
   const score = (car: ListedVehicle) =>

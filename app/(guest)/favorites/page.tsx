@@ -8,6 +8,7 @@ import { pluralize } from "@/lib/utils";
 import { Container, EmptyState } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { VehicleCard } from "@/components/search/VehicleCard";
+import { withTodayPrices } from "@/components/search/prices";
 import { LISTED_VEHICLE_SELECT, type ListedVehicle } from "@/components/search/vehicle";
 
 export const instant = false;
@@ -26,7 +27,7 @@ export default async function FavoritesPage() {
     .order("created_at", { ascending: false });
   const rows = (data ?? []) as unknown as { vehicle: ListedVehicle | null }[];
   // A car the host has unlisted since can't be booked, so it drops off until it's back.
-  const cars = rows.flatMap((r) => (r.vehicle?.status === "listed" ? [r.vehicle] : []));
+  const cars = await withTodayPrices(rows.flatMap((r) => (r.vehicle?.status === "listed" ? [r.vehicle] : [])));
   const hidden = rows.length - cars.length;
 
   return (

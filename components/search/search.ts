@@ -24,6 +24,12 @@ export async function searchCars(supabase: SupabaseClient<Database>, filters: Se
       cars.sort((a, b) => sign * (tripTotalCents(a, from, until) - tripTotalCents(b, from, until)));
     }
   }
+  // Without dates, cards show today's dynamic price, so the order follows it.
+  if (!filters.dates && (filters.sort === "price" || filters.sort === "price_high")) {
+    const sign = filters.sort === "price" ? 1 : -1;
+    const today = (car: ListedVehicle) => car.price_today_cents ?? car.daily_rate_cents;
+    cars.sort((a, b) => sign * (today(a) - today(b)));
+  }
   if (filters.sort === "distance") {
     cars.sort((a, b) => (distanceFrom(filters, a) ?? 0) - (distanceFrom(filters, b) ?? 0));
   }
@@ -36,7 +42,7 @@ export async function searchCars(supabase: SupabaseClient<Database>, filters: Se
  */
 export async function searchStats(supabase: SupabaseClient<Database>, filters: SearchFilters) {
   const cars = await searchCars(supabase, { ...filters, minPrice: null, maxPrice: null, sort: "price" });
-  const cents = cars.map((car) => car.daily_rate_cents);
+  const cents = cars.map((car) => car.price_today_cents ?? car.daily_rate_cents);
   const count = cents.filter(
     (c) => (!filters.minPrice || c >= filters.minPrice * 100) && (!filters.maxPrice || c <= filters.maxPrice * 100)
   ).length;

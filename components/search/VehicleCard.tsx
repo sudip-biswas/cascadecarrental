@@ -101,6 +101,7 @@ function Card({ vehicle, dates, layout = "tile", priority, heart, distanceMi }: 
   const href = carHref(vehicle, dates);
   const name = `${vehicle.make} ${vehicle.model}`;
   const price = dates ? tripPrice(vehicle, dates.from, dates.until) : null;
+  const perDay = price?.dailyCents ?? vehicle.price_today_cents ?? vehicle.daily_rate_cents;
   const total = price?.totalCents ?? null;
   const isNew = vehicle.trip_count === 0;
   const unlimited = offersUnlimitedMiles(vehicle);
@@ -117,7 +118,7 @@ function Card({ vehicle, dates, layout = "tile", priority, heart, distanceMi }: 
             {vehicle.year} · {isNew ? "New listing" : `${vehicle.seats} seats`} · {place}
           </span>
           <span className="figures text-[17px] font-extrabold">
-            {formatPrice(vehicle.daily_rate_cents)}{" "}
+            {formatPrice(perDay)}{" "}
             <span className="text-[13px] font-semibold text-slate">
               /day
               {total !== null && (
@@ -164,7 +165,7 @@ function Card({ vehicle, dates, layout = "tile", priority, heart, distanceMi }: 
             {vehicle.instant_book && <Tag tone="sky">Instant book</Tag>}
           </span>
           <span className="figures mt-auto flex items-baseline justify-between gap-3 pt-1">
-            <span className="text-[15px] text-slate">{formatPrice(vehicle.daily_rate_cents)} a day</span>
+            <span className="text-[15px] text-slate">{formatPrice(perDay)} a day</span>
             {total !== null ? (
               <span className="flex flex-col items-end gap-1">
                 <span className="font-display text-[28px] font-extrabold">
@@ -211,7 +212,7 @@ function Card({ vehicle, dates, layout = "tile", priority, heart, distanceMi }: 
         </span>
         <span className="figures flex items-baseline justify-between gap-2 pt-2">
           <span className="text-[22px] font-extrabold">
-            {formatPrice(vehicle.daily_rate_cents)}
+            {formatPrice(perDay)}
             <span className="text-sm font-medium text-slate"> /day</span>
           </span>
           {total !== null && (
