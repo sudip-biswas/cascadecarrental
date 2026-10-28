@@ -37,6 +37,7 @@ alter table public.pricing_events enable row level security;
 create or replace function public.upsert_auto_prices(rows jsonb)
 returns integer
 language sql
+set search_path = ''
 as $$
   with written as (
     insert into public.vehicle_daily_prices (vehicle_id, date, price_cents, source)
