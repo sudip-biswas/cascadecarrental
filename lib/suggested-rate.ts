@@ -1,4 +1,6 @@
-/** Base daily rates in cents by vehicle type. */
+import { AGE_SLOPE, MARKET_RATES, TYPE_RATES } from "@/lib/market-rates";
+
+/** How types compare to a sedan, for types the market data has no cars of. */
 const BASE: Record<string, number> = {
   sedan:   5500,
   suv:     7500,
@@ -9,22 +11,35 @@ const BASE: Record<string, number> = {
   electric: 9500,
 };
 
-/** Year-based adjustment in cents (+/- per bracket). */
-function yearAdj(year: number): number {
-  if (year >= 2023) return 1500;
-  if (year >= 2020) return 1000;
-  if (year >= 2018) return  500;
-  if (year >= 2015) return    0;
-  if (year >= 2012) return -500;
-  return -1000;
-}
+/** Turo lists cars older than 2014 as 2014, so the market data does too. */
+const OLDEST_MARKET_YEAR = 2014;
+
+const key = (make: string, model: string) =>
+  `${make.trim().toLowerCase()}|${model.trim().toLowerCase().replace(/\s+1500$/, "")}`;
+
+/** A price from `fromYear` moved to `toYear` along the age curve. */
+const ageMove = (cents: number, fromYear: number, toYear: number) => cents * Math.exp(AGE_SLOPE * (fromYear - toYear));
 
 /**
- * Returns a suggested daily rate in cents, rounded to the nearest $5,
- * based on vehicle type and model year.
+ * Returns a suggested daily rate in cents, rounded to the dollar: what the same
+ * model and year earns in Seattle, else the same model at the nearest year, else
+ * a typical car of its type and age.
  */
-export function suggestDailyRate(vehicleType: string, year: number): number {
-  const base = BASE[vehicleType] ?? 5500;
-  const raw  = base + yearAdj(year);
-  return Math.round(raw / 500) * 500; // snap to nearest $5
+export function suggestDailyRate(vehicleType: string, year: number, make?: string, model?: string): number {
+  const years = make && model ? MARKET_RATES[key(make, model)] : undefined;
+  const asListed = Math.max(OLDEST_MARKET_YEAR, year);
+  let cents: number;
+  if (years?.[asListed]) {
+    cents = years[asListed];
+  } else if (years) {
+    const nearest = Object.keys(years)
+      .map(Number)
+      .sort((a, b) => Math.abs(a - asListed) - Math.abs(b - asListed))[0];
+    cents = ageMove(years[nearest], nearest, asListed);
+  } else if (TYPE_RATES[vehicleType]) {
+    cents = ageMove(TYPE_RATES[vehicleType], 2016, year);
+  } else {
+    cents = ageMove(TYPE_RATES.sedan * ((BASE[vehicleType] ?? BASE.sedan) / BASE.sedan), 2016, year);
+  }
+  return Math.max(100, Math.round(cents / 100) * 100);
 }

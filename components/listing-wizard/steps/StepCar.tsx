@@ -88,7 +88,7 @@ export function StepCar({ data, errors, onChange, onConflict }: Props) {
         ...(json.transmission ? { transmission: json.transmission } : {}),
         ...(json.seats && json.seats <= LIMITS.seatsMax ? { seats: json.seats } : {}),
         ...(json.vehicleType ? { vehicleType: json.vehicleType } : {}),
-        dailyRateCents: suggestDailyRate(resolvedType, resolvedYear),
+        dailyRateCents: suggestDailyRate(resolvedType, resolvedYear, json.make, json.model ?? data.model),
       });
       setLookup("done");
       setEditing(false);

@@ -18,7 +18,7 @@ const digits = (raw: string) => Number(raw.replace(/\D/g, "").slice(0, 6)) || 0;
 
 export function StepPrice({ data, errors, onChange }: Props) {
   const rate = data.dailyRateCents;
-  const suggested = suggestDailyRate(data.vehicleType, data.year);
+  const suggested = suggestDailyRate(data.vehicleType, data.year, data.make, data.model);
   const isSuggested = rate === suggested;
 
   const step = (delta: number) =>
@@ -58,11 +58,11 @@ export function StepPrice({ data, errors, onChange }: Props) {
         )}
         {isSuggested ? (
           <p className="text-center text-[13px] text-slate">
-            Suggested for your {data.vehicleType} — adjust anytime
+            What similar cars earn in Seattle. Prices move daily from here.
           </p>
         ) : (
           <p className="text-center text-[13px] text-slate">
-            Suggested for your {data.vehicleType}:{" "}
+            What similar cars earn in Seattle:{" "}
             <button
               type="button"
               onClick={() => onChange({ dailyRateCents: suggested })}
