@@ -1,13 +1,11 @@
 import { cache } from "react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { pendingRequestCount, unreadCount } from "@/lib/inbox";
 
 /** Who's signed in, for the nav. Cached so the header and tab bar share one lookup. */
 export const getGuestNav = cache(async () => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return null;
 
   const [{ data: profile }, unread, { count: notices }] = await Promise.all([

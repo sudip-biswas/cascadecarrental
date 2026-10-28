@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { NO_INDEX } from "@/lib/site";
 import { Container } from "@/components/kit";
 import { ConversationList } from "@/components/messaging/ConversationList";
@@ -15,9 +15,7 @@ export const metadata = { title: "Inbox", ...NO_INDEX };
 export default async function ConversationPage({ params }: PageProps<"/messages/[conversationId]">) {
   const { conversationId } = await params;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect(`/login?redirectTo=${encodeURIComponent(`/messages/${conversationId}`)}`);
 
   const conversation = await openConversation(supabase, conversationId, user.id);

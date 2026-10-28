@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { LayoutGrid, List, Plus, SearchX } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/server";
 import { cn, pluralize } from "@/lib/utils";
 import { EmptyState, PageTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
@@ -40,10 +40,7 @@ function ViewToggle({ query }: { query: ListingsQuery }) {
 }
 
 export default async function HostCarsPage({ searchParams }: PageProps<"/host/vehicles">) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/vehicles");
 
   const [cars, query] = await Promise.all([loadListings(user.id), searchParams.then(readQuery)]);

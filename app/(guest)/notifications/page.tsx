@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Bell } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { NO_INDEX } from "@/lib/site";
 import { Container, EmptyState, PageTitle, Tile } from "@/components/kit";
 import { MarkRead } from "./_components/mark-read";
@@ -14,9 +14,7 @@ export const metadata: Metadata = { title: "Notifications", ...NO_INDEX };
 
 export default async function NotificationsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/notifications");
 
   const { data } = await supabase

@@ -1,4 +1,4 @@
-import { computePricing, lastMinuteBoostPct } from "@/lib/pricing";
+import { computePricing, dayRates, lastMinuteBoostPct, type DailyPrices } from "@/lib/pricing";
 import { carPath } from "@/lib/site";
 import { formatPrice, zonedInstant } from "@/lib/utils";
 import { VEHICLE_PUBLIC, type PublicVehicle } from "@/lib/supabase/columns";
@@ -11,10 +11,12 @@ export type ListedVehicle = PublicVehicle & {
   host: { full_name: string } | null;
   persona: { name: string } | null;
   vehicle_extras: { unlimited_miles: boolean; active: boolean }[];
+  /** The host's own and automatic day prices over the searched dates, when search has dates. */
+  day_prices?: DailyPrices;
 };
 
 /** Columns those pages select. */
-export const LISTED_VEHICLE_SELECT = `${VEHICLE_PUBLIC}, delivery_enabled, three_day_discount_pct, two_week_discount_pct, three_week_discount_pct, last_minute_boost_pct, vehicle_images(*), vehicle_extras(unlimited_miles, active), host:profiles!host_id(full_name), persona:host_personas!persona_id(name)`;
+export const LISTED_VEHICLE_SELECT = `${VEHICLE_PUBLIC}, delivery_enabled, trip_buffer_hours, weekend_min_two_days, three_day_discount_pct, two_week_discount_pct, three_week_discount_pct, last_minute_boost_pct, vehicle_images(*), vehicle_extras(unlimited_miles, active), host:profiles!host_id(full_name), persona:host_personas!persona_id(name)`;
 
 export function coverImage(images: VehicleImage[] | null | undefined) {
   if (!images?.length) return null;
@@ -26,7 +28,7 @@ export function firstName(fullName: string | null | undefined) {
 }
 
 /** Pay-now total for the dates, tax included: the number checkout starts on. */
-export function tripTotalCents(vehicle: PublicVehicle, from: DateKey, until: DateKey) {
+export function tripTotalCents(vehicle: PublicVehicle & { day_prices?: DailyPrices }, from: DateKey, until: DateKey) {
   return tripPrice(vehicle, from, until).totalCents;
 }
 
@@ -34,10 +36,13 @@ export function tripTotalCents(vehicle: PublicVehicle, from: DateKey, until: Dat
  * The trip total, and what it would be without the car's trip-length discount
  * (null when none applies), so cards can strike through the higher price.
  */
-export function tripPrice(vehicle: PublicVehicle, from: DateKey, until: DateKey) {
+export function tripPrice(vehicle: PublicVehicle & { day_prices?: DailyPrices }, from: DateKey, until: DateKey) {
+  const days = daysBetween(from, until);
   const input = {
     dailyRateCents: vehicle.daily_rate_cents,
-    days: daysBetween(from, until),
+    days,
+    // Day prices make the card match checkout; without them every day is the daily rate.
+    dayRatesCents: vehicle.day_prices ? dayRates(vehicle.daily_rate_cents, from, days, vehicle.day_prices) : undefined,
     rateType: "non_refundable" as const,
     boostPct: lastMinuteBoostPct(vehicle, zonedInstant(from)),
   };

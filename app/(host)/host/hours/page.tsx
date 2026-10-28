@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Vehicle, VehicleImage } from "@/lib/supabase/types";
 import { cn } from "@/lib/utils";
@@ -32,9 +32,7 @@ type CarRow = Pick<
 
 export default async function PickupAndHoursPage({ searchParams }: PageProps<"/host/hours">) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/hours");
 
   const [{ car: carParam }, hours, { data }] = await Promise.all([

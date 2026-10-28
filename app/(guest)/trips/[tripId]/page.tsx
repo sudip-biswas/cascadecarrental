@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { applyPaymentIntent, settleTripStatuses } from "@/lib/trips";
@@ -18,9 +18,7 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
   const { booked } = await searchParams;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect(`/login?redirectTo=${encodeURIComponent(`/trips/${tripId}`)}`);
 
   await settleTripStatuses(user.id);

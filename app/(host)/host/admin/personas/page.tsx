@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NO_INDEX } from "@/lib/site";
 import { PageTitle } from "@/components/kit";
@@ -9,8 +9,7 @@ export const instant = false;
 export const metadata = { title: "Personas", ...NO_INDEX };
 
 export default async function PersonasPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/admin/personas");
   if (user.id !== process.env.ADMIN_USER_ID) redirect("/host");
 

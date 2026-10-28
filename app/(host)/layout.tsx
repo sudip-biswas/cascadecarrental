@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/server";
 import { getHostNav } from "@/lib/account";
 import { NO_INDEX } from "@/lib/site";
 import { HostSidebar } from "@/components/layout/HostSidebar";
@@ -12,10 +12,7 @@ export const metadata = NO_INDEX;
 export const instant = false;
 
 export default async function HostLayout({ children }: LayoutProps<"/">) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host");
 
   const { requests, unread } = await getHostNav(user.id);

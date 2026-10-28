@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { toDateKey, zonedInstant } from "@/lib/utils";
@@ -15,10 +15,7 @@ export function isAdmin(user: Pick<User, "id"> | null) {
 
 /** For admin pages: sends anyone else away before any data loads. */
 export async function requireAdminPage(path: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect(`/login?redirectTo=${path}`);
   if (!isAdmin(user)) redirect("/host");
   return user;
@@ -30,10 +27,7 @@ export function fail(error: string, status: number) {
 
 /** For admin API routes: the admin, or the response to send back instead. */
 export async function requireAdminApi(): Promise<{ user: User; denied?: never } | { user?: never; denied: NextResponse }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return { denied: fail("Log in first.", 401) };
   if (!isAdmin(user)) return { denied: fail("Only Cascade staff can do that.", 403) };
   return { user };

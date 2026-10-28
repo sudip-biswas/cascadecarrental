@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Heart } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { NO_INDEX } from "@/lib/site";
 import { pluralize } from "@/lib/utils";
 import { Container, EmptyState } from "@/components/kit";
@@ -16,9 +16,7 @@ export const metadata: Metadata = { title: "Favorites", ...NO_INDEX };
 
 export default async function FavoritesPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/favorites");
 
   const { data } = await supabase

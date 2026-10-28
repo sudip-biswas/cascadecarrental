@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { settleTripStatuses } from "@/lib/trips";
 import { cn, formatCurrency, formatPrice, formatRange } from "@/lib/utils";
 import { EmptyState, PageTitle, Tag } from "@/components/kit";
@@ -18,9 +18,7 @@ const COLUMNS = "grid-cols-[1.4fr_1fr_1.2fr_1.2fr_0.8fr_0.6fr]";
 
 export default async function HostHistoryPage({ searchParams }: PageProps<"/host/trips/history">) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/trips/history");
 
   await settleTripStatuses(user.id);

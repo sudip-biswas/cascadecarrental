@@ -15,7 +15,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { settleTripStatuses } from "@/lib/trips";
 import { hostEarningsCents, tripDays } from "@/lib/pricing";
@@ -71,9 +71,7 @@ const TRIP_SELECT =
 export default async function HostTripPage({ params }: PageProps<"/host/trips/[tripId]">) {
   const { tripId } = await params;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect(`/login?redirectTo=/host/trips/${tripId}`);
 
   await settleTripStatuses(user.id);

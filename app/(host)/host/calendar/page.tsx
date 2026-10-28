@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { settleTripStatuses } from "@/lib/trips";
 import { toDateKey } from "@/lib/utils";
@@ -64,9 +64,7 @@ async function loadPrices(
 
 export default async function HostCalendarPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/calendar");
 
   const today = toDateKey(new Date());

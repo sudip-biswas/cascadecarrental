@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { NO_INDEX } from "@/lib/site";
 import { Container } from "@/components/kit";
 import { MessageThread } from "@/components/messaging/MessageThread";
@@ -38,9 +38,7 @@ export default async function NewMessagePage({
   const hostId = typeof hostParam === "string" ? hostParam : undefined;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) {
     const here = tripId ? `/messages/new?trip=${tripId}` : `/messages/new?host=${hostId ?? ""}`;
     redirect(`/login?redirectTo=${encodeURIComponent(here)}`);

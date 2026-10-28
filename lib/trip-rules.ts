@@ -169,7 +169,8 @@ export function hoursHint(hours: HostHours, from?: string, until?: string): stri
 }
 
 /** A trip's start is on a weekend when it falls on a Friday, Saturday or Sunday. */
-function startsOnWeekend(key: string) {
+/** Friday, Saturday or Sunday: the days the weekend 2-day minimum covers. */
+export function startsOnWeekend(key: string) {
   const day = weekdayOf(key);
   return day === 0 || day === 5 || day === 6;
 }

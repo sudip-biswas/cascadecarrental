@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Star } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { cn, formatDate, pluralize } from "@/lib/utils";
 import type { Review } from "@/lib/supabase/types";
 import { EmptyState, PageTitle, Tag, Tile, TileTitle } from "@/components/kit";
@@ -69,9 +69,7 @@ function carName(car: CarRow | undefined) {
 
 export default async function RatingsPage({ searchParams }: PageProps<"/host/business/ratings">) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/business/ratings");
 
   const [params, { data: carsData }, { data: tripsData }, { data: reviewsData }] = await Promise.all([

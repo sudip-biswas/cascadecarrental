@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { CalendarX } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadDailyPrices } from "@/lib/trips";
 import { loadPickupSpots, publicOption } from "@/lib/locations";
@@ -36,9 +36,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
   const initialSpot = typeof query.spot === "string" ? query.spot : undefined;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) {
     const here = `/cars/${vehicleId}/checkout${from && until ? `?from=${from}&until=${until}` : ""}`;
     redirect(`/login?redirectTo=${encodeURIComponent(here)}`);

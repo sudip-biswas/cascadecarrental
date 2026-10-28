@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { PageTitle } from "@/components/kit";
 import { BackLink } from "@/components/messaging/scheduled/ScheduledTabs";
 import { TemplateForm } from "@/components/messaging/scheduled/TemplateForm";
@@ -11,9 +11,7 @@ export const metadata = { title: "Edit message template" };
 export default async function EditTemplatePage({ params }: PageProps<"/host/inbox/scheduled/[templateId]">) {
   const { templateId } = await params;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect(`/login?redirectTo=/host/inbox/scheduled/${templateId}`);
 
   const [{ data: template }, cars] = await Promise.all([

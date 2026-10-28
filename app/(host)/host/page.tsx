@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, Check, Clock, Plus } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { settleTripStatuses } from "@/lib/trips";
 import { hostEarningsCents, tripDays } from "@/lib/pricing";
@@ -39,9 +39,7 @@ const isBooked = (t: HostTrip) =>
 
 export default async function HostTodayPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host");
 
   await settleTripStatuses(user.id);

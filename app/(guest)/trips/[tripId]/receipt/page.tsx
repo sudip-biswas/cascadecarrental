@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import type Stripe from "stripe";
 import { Container, Divider, PriceRow, Tile } from "@/components/kit";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { NO_INDEX } from "@/lib/site";
@@ -44,9 +44,7 @@ export default async function ReceiptPage({ params }: PageProps<"/trips/[tripId]
   const { tripId } = await params;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect(`/login?redirectTo=${encodeURIComponent(`/trips/${tripId}/receipt`)}`);
 
   const { data } = await supabase

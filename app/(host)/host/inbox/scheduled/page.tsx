@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CalendarClock, Plus } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { describeSchedule, TRIP_TYPES } from "@/lib/scheduled-messages";
 import { pluralize } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,7 @@ export const metadata = { title: "Scheduled messages" };
 
 export default async function MessageTemplatesPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/inbox/scheduled");
 
   const [{ data: templates }, { count: cars }, { count: upcoming }] = await Promise.all([

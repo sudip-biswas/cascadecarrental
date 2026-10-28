@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
@@ -29,3 +30,15 @@ export async function createClient() {
     }
   );
 }
+
+/**
+ * Who's signed in, checked with Supabase Auth. Cached for the request, so a layout,
+ * its page and the nav share one Auth call instead of making one each.
+ */
+export const getUser = cache(async () => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+});

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { settleTripStatuses } from "@/lib/trips";
 import { cn, formatDateShort, pluralize, zonedInstant } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -50,9 +50,7 @@ const cellTone = { booked: "bg-ink", blocked: "bg-[#c9ccd3]", open: "bg-board" }
 
 export default async function PerformancePage({ searchParams }: PageProps<"/host/business/performance">) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/business/performance");
 
   await settleTripStatuses(user.id);

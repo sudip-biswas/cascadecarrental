@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Download } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { settleTripStatuses } from "@/lib/trips";
 import { earningYears, loadEarnings, nextPayout, owedCents, reservationNumber, transactions, yearOf } from "@/lib/earnings";
@@ -20,9 +20,7 @@ const COLUMNS = "grid-cols-[2fr_1fr_1fr_1fr_1.1fr]";
 
 export default async function TransactionsPage({ searchParams }: PageProps<"/host/business/transactions">) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/business/transactions");
 
   await settleTripStatuses(user.id);

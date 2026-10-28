@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, Download } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { settleTripStatuses } from "@/lib/trips";
 import { carName, earningYears, earningsYear, loadEarnings, yearOf } from "@/lib/earnings";
@@ -20,9 +20,7 @@ export const metadata = { title: "Earnings" };
 
 export default async function EarningsPage({ searchParams }: PageProps<"/host/business/earnings">) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/business/earnings");
 
   const raw = await searchParams;

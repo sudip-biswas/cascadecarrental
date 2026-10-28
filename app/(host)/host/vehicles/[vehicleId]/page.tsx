@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ChevronRight } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hostEarningsCents } from "@/lib/pricing";
 import { carPath } from "@/lib/site";
@@ -38,9 +38,7 @@ function Row({ label, value }: { label: string; value: string }) {
 export default async function HostCarPage({ params }: PageProps<"/host/vehicles/[vehicleId]">) {
   const { vehicleId } = await params;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect(`/login?redirectTo=/host/vehicles/${vehicleId}`);
 
   // Plate and VIN are private columns: read them server-side, scoped to this host.

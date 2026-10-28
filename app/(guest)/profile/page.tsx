@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Check, IdCard } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Container, Tile, TileTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,7 @@ export const metadata = { title: "Your profile", ...NO_INDEX };
 export default async function ProfilePage({ searchParams }: PageProps<"/profile">) {
   const { verify } = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/profile");
 
   const [{ data: profile }, { count: carCount }] = await Promise.all([

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Mountain, Route } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { settleTripStatuses } from "@/lib/trips";
 import { isAbandoned, tripStatus } from "@/lib/trip-status";
 import { cn, formatCurrency, formatDateTime, formatRange, relativeDays } from "@/lib/utils";
@@ -28,9 +28,7 @@ export default async function TripsPage({ searchParams }: PageProps<"/trips">) {
   const tab: TabId = TABS.some((t) => t.id === tabParam) ? (tabParam as TabId) : "upcoming";
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/trips");
 
   await settleTripStatuses(user.id);

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { PageTitle } from "@/components/kit";
 import { BackLink } from "@/components/messaging/scheduled/ScheduledTabs";
 import { TemplateForm } from "@/components/messaging/scheduled/TemplateForm";
@@ -10,9 +10,7 @@ export const metadata = { title: "New message template" };
 
 export default async function NewTemplatePage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/inbox/scheduled/new");
 
   const cars = await loadCarOptions(supabase, user.id);

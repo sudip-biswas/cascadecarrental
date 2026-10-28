@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { CarFront } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { settleTripStatuses } from "@/lib/trips";
 import { hostEarningsCents, tripDays } from "@/lib/pricing";
 import { tripStatus } from "@/lib/trip-status";
@@ -25,9 +25,7 @@ const VIEWS: TripView[] = ["requests", "upcoming", "active"];
 
 export default async function HostTripsPage({ searchParams }: PageProps<"/host/trips">) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/trips");
 
   await settleTripStatuses(user.id);

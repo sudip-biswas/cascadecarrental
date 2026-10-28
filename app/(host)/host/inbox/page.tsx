@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { ConversationList } from "@/components/messaging/ConversationList";
 import { ScheduledLink } from "@/components/messaging/scheduled/ScheduledTabs";
 import { InboxShell, NoThread } from "@/components/messaging/InboxShell";
@@ -10,9 +10,7 @@ export const metadata = { title: "Inbox" };
 
 export default async function HostInboxPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/inbox");
 
   const conversations = await listConversations(supabase, user.id, "host");

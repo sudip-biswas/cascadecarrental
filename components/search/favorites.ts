@@ -1,11 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getUser } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
 
 /** Who is looking and which cars they've saved, for the hearts on cards. */
 export async function loadFavorites(supabase: SupabaseClient<Database>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return { userId: null, saved: new Set<string>() };
 
   const { data } = await supabase.from("favorites").select("vehicle_id").eq("user_id", user.id);

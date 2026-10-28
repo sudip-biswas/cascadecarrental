@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadLocations } from "@/lib/locations";
 import type { Vehicle, VehicleImage } from "@/lib/supabase/types";
@@ -17,10 +17,7 @@ type CarRow = Pick<Vehicle, "id" | "make" | "model" | "location_name" | "locatio
 };
 
 export default async function LocationsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/locations");
 
   // Addresses are private: read them server-side, scoped to this host.

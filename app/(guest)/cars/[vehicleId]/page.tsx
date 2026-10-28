@@ -12,7 +12,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { loadDailyPrices, unavailableRanges } from "@/lib/trips";
 import { loadTripRules } from "@/lib/trip-rules";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -134,7 +134,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
   const untilTime = one(query.untilTime);
 
   const supabase = await createClient();
-  const [car, { data: auth }] = await Promise.all([getCar(vehicleId), supabase.auth.getUser()]);
+  const [car, user] = await Promise.all([getCar(vehicleId), getUser()]);
   if (!car) notFound();
 
   // Old links used the bare id, and a car's name or place can change.
@@ -143,7 +143,6 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
     const qs = new URLSearchParams(Object.entries(query).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : []))).toString();
     permanentRedirect(qs ? `${path}?${qs}` : path);
   }
-  const user = auth.user;
   const isOwner = user?.id === car.host_id;
   const { data: favorite } = user
     ? await supabase.from("favorites").select("vehicle_id").eq("user_id", user.id).eq("vehicle_id", vehicleId).maybeSingle()

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Bell, CalendarDays, CarFront, MessageSquare, RotateCcw, Star, type LucideIcon } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { PageTitle, Tile, TileTitle, toneClass, type Tone } from "@/components/kit";
 import { listConversations } from "@/components/messaging/inbox";
 import { settleTripStatuses } from "@/lib/trips";
@@ -43,9 +43,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 export default async function HostNotificationsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/login?redirectTo=/host/notifications");
 
   await settleTripStatuses(user.id);
