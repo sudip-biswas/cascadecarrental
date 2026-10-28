@@ -7,7 +7,7 @@ alter table public.vehicles
   add column if not exists auto_pricing boolean not null default false,
   -- Null means the default: 60% of the daily rate.
   add column if not exists auto_price_min_cents integer check (auto_price_min_cents >= 100),
-  -- Null means the default: 145% of the daily rate.
+  -- Null means the default: 190% of the daily rate.
   add column if not exists auto_price_max_cents integer check (auto_price_max_cents >= 100);
 
 -- Vehicles use column grants (see booking_integrity), so new columns need their own.

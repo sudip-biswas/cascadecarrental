@@ -1,39 +1,39 @@
-import { addDays, daysBetween, weekdayIndex } from "@/components/host/days";
+import { addDays, weekdayIndex } from "@/components/host/days";
 
 /**
  * Automatic pricing: each rule moves the car's daily rate by a percent, the
- * moves add up, and the result stays inside the host's floor and ceiling.
+ * moves multiply, and the result stays inside the host's floor and ceiling.
  *
- * The weekday, season and summer holiday numbers, and the default floor and
- * ceiling, are fitted to 2,299 Seattle airport trips on Turo from March to
- * October 2026 (a ridge regression on each trip's price against its car's usual
- * price). There was no winter data, so November to February sit at the level of
- * March and October. Winter holidays, booking lead time and how busy nearby cars
- * are still use first guesses: the trips didn't cover them, or couldn't tell
- * them apart from the season.
+ * The weekday, season and summer holiday numbers are fitted to 2,299 Seattle
+ * airport trips on Turo from March to October 2026: each car's level and the day
+ * effects fitted together on log price, checked on cars left out of the fit.
+ * There was no winter data, so November to February sit at the level of March
+ * and October. Winter holidays and how busy nearby cars are still use first
+ * guesses: the trips didn't cover them, or couldn't tell them apart from the
+ * season.
  */
 
 /** How far ahead automatic prices are written. */
 export const AUTO_HORIZON_DAYS = 120;
 
-/** With no floor or ceiling set, prices stay between these shares of the daily rate: where 90% of the fitted trips fell. */
+/** With no floor or ceiling set, prices stay between these shares of the daily rate: wide enough for every fitted day. */
 export const DEFAULT_FLOOR = 0.6;
-export const DEFAULT_CEILING = 1.45;
+export const DEFAULT_CEILING = 1.9;
 
 /** All the rules together never move a day further than this, before the floor and ceiling. */
 const MIN_PCT = -40;
-const MAX_PCT = 50;
+const MAX_PCT = 100;
 
-/** Monday first. Fitted: Friday and Saturday nights cost most, Wednesday least. */
-const WEEKDAY_PCT = [-5, -8, -11, -3, 13, 16, 0];
+/** Monday first. Fitted, leaning toward no change where few short trips tell the days apart: Friday and Saturday cost most, Monday and Wednesday least. */
+const WEEKDAY_PCT = [-11, -6, -12, -2, 15, 20, 1];
 const WEEKDAY_NAME = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 /**
- * January first. Fitted: prices climb from mid-May, peak in June and July and are
- * back down by September. June 2026 had World Cup matches in Seattle, so its
- * number may run a little high for other years.
+ * January first. Fitted: prices jump in June, stay up through July, ease in August
+ * and are back down by October. June and July 2026 had World Cup matches in
+ * Seattle, so they may run high for other years.
  */
-const MONTH_PCT = [-8, -8, -12, -13, -13, 34, 32, 19, 0, -3, -8, -8];
+const MONTH_PCT = [-12, -12, -17, -15, -13, 46, 45, 29, 6, -7, -12, -12];
 const SEASON_NAME = ["Winter", "Winter", "Early spring", "Spring", "Late spring", "Summer", "Summer", "Summer", "Early fall", "Fall", "Late fall", "Winter"];
 
 /** Demand only counts once there are this many cars nearby; below that one booking swings it. */
@@ -101,22 +101,20 @@ export function autoPriceFor(car: AutoPricedCar, dateKey: string, ctx: DayContex
   const biggest = occasions.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))[0];
   if (biggest) add(biggest.name, biggest.pct);
 
-  const daysOut = daysBetween(ctx.today, dateKey);
+  // Only demand above the season moves the price: Turo's prices don't drop for
+  // quiet days or late bookings, so neither do these.
   const share = ctx.bookedShare;
   if (share !== null && share >= 0.8) add("Nearby cars almost all booked", 15);
   else if (share !== null && share >= 0.6) add("Nearby cars filling up", 8);
-  else if (share !== null && share <= 0.25 && daysOut <= 21) add("Most nearby cars free", -5);
 
-  if (daysOut >= 60) add("Booked far ahead", 5);
-  else if (daysOut <= 3 && (share === null || share < 0.6)) add("Starts soon, still open", -5);
-
-  const pct = clamp(
-    factors.reduce((sum, f) => sum + f.pct, 0),
-    MIN_PCT,
-    MAX_PCT
+  const move = clamp(
+    factors.reduce((m, f) => m * (1 + f.pct / 100), 1),
+    1 + MIN_PCT / 100,
+    1 + MAX_PCT / 100
   );
+  const pct = Math.round((move - 1) * 100);
   const { min, max } = priceLimits(car);
-  const raw = roundDollars(car.daily_rate_cents * (1 + pct / 100));
+  const raw = roundDollars(car.daily_rate_cents * move);
   const cents = clamp(raw, min, max);
   return { cents, pct, factors, limit: cents > raw ? "floor" : cents < raw ? "ceiling" : null };
 }
@@ -144,9 +142,9 @@ function holidays(year: number): PricingEvent[] {
     around("New Year", key(1, 1), 2, 0, 15),
     around("MLK Day weekend", nthWeekday(year, 1, 0, 3), 2, 0, 5),
     around("Presidents' Day weekend", nthWeekday(year, 2, 0, 3), 2, 0, 8),
-    around("Memorial Day weekend", lastWeekday(year, 5, 0), 3, 0, 21),
-    around("Fourth of July", key(7, 4), 2, 1, 13),
-    around("Labor Day weekend", nthWeekday(year, 9, 0, 1), 3, 0, 19),
+    around("Memorial Day weekend", lastWeekday(year, 5, 0), 3, 0, 33),
+    around("Fourth of July", key(7, 4), 2, 1, 4),
+    around("Labor Day weekend", nthWeekday(year, 9, 0, 1), 3, 0, 25),
     around("Thanksgiving", nthWeekday(year, 11, 3, 4), 1, 3, 15),
     { name: "Christmas", starts_on: key(12, 20), ends_on: key(12, 29), pct: 12 },
   ];

@@ -14,8 +14,11 @@ const BASE: Record<string, number> = {
 /** Turo lists cars older than 2014 as 2014, so the market data does too. */
 const OLDEST_MARKET_YEAR = 2014;
 
-const key = (make: string, model: string) =>
-  `${make.trim().toLowerCase()}|${model.trim().toLowerCase().replace(/\s+1500$/, "")}`;
+/** Turo files a Toyota "Scion iQ" under Scion, and a Silverado 1500 as a Silverado. */
+function key(make: string, model: string): string {
+  const m = model.trim().toLowerCase().replace(/\s+1500$/, "");
+  return m.startsWith("scion ") ? `scion|${m.slice(6)}` : `${make.trim().toLowerCase()}|${m}`;
+}
 
 /** A price from `fromYear` moved to `toYear` along the age curve. */
 const ageMove = (cents: number, fromYear: number, toYear: number) => cents * Math.exp(AGE_SLOPE * (fromYear - toYear));
