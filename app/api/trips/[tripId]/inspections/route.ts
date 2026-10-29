@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notify } from "@/lib/notify";
 import { INSPECTION_BUCKET, INSPECTION_LIMITS, inspectionOpen, loadInspections } from "@/lib/inspections";
+import { loadGuestChecks } from "@/lib/guest-checks";
 
 const EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -81,6 +82,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ tripId:
         : "Check-out is open during the trip and for 24 hours after it ends.",
       409
     );
+  }
+
+  if (kind === "pickup" && role === "guest" && (await loadGuestChecks(tripId))?.missing.length) {
+    return fail("Check your licence and add your insurance on the trip page first. Then you can check in.", 409);
   }
 
   const files = form.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);

@@ -125,6 +125,9 @@ export function BookedView({ trip }: { trip: TripRow }) {
 
         <Tile tone="butter" className="flex flex-col gap-3 sm:p-6">
           <TileTitle className="text-[24px]">Before you go</TileTitle>
+          <Todo href={`/trips/${trip.id}#checks`}>
+            {trip.protection_plan ? "Check your licence with a quick selfie" : "Check your licence and add your insurance"}
+          </Todo>
           <Todo href={calendarUrl(trip)} external>
             Add the trip to your calendar
           </Todo>

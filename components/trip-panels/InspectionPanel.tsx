@@ -2,6 +2,7 @@ import { Camera, Gauge } from "lucide-react";
 import { Fact, Tile, TileTitle } from "@/components/kit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isCancelled } from "@/lib/trips";
+import { loadGuestChecks } from "@/lib/guest-checks";
 import {
   type InspectionKind,
   type InspectionRole,
@@ -111,6 +112,8 @@ export async function InspectionPanel({ tripId, viewer, userId }: { tripId: stri
   const otherName = firstName((other === "guest" ? trip.guest : trip.host)?.full_name, other === "guest" ? "Guest" : "Host");
   const miles = tripMiles(trip, rows);
   const started = now >= new Date(trip.starts_at);
+  // The guest's check-in waits for their licence check and cover.
+  const locked = viewer === "guest" && open.pickup && !!(await loadGuestChecks(tripId))?.missing.length;
   const kinds = (["pickup", "return"] as const).filter((k) => k === "pickup" || started || rows.some((r) => r.kind === k));
 
   return (
@@ -137,7 +140,16 @@ export async function InspectionPanel({ tripId, viewer, userId }: { tripId: stri
 
             <div className="flex flex-col gap-2.5 rounded-[20px] bg-board p-3.5">
               <span className="text-[15px] font-semibold">You</span>
-              {open[kind] ? (
+              {kind === "pickup" && locked && mine ? (
+                <Recorded row={mine} levelLabel={levelLabel} who="Your check-in" />
+              ) : kind === "pickup" && locked ? (
+                <p className="text-[15px] text-slate">
+                  Locked until your checks are done.{" "}
+                  <a href="#checks" className="font-bold text-cobalt hover:underline">
+                    Finish them
+                  </a>
+                </p>
+              ) : open[kind] ? (
                 <MyInspection
                   tripId={tripId}
                   kind={kind}

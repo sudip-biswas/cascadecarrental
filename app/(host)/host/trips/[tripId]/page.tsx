@@ -17,12 +17,13 @@ import {
 } from "lucide-react";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { settleTripStatuses } from "@/lib/trips";
+import { isCancelled, settleTripStatuses } from "@/lib/trips";
 import { hostEarningsCents, tripDays } from "@/lib/pricing";
 import { freeCancellationUntil } from "@/lib/cancellation";
 import { tripMiles } from "@/lib/inspections";
+import { type Cover, tripCover } from "@/lib/guest-checks";
 import { tripStatus } from "@/lib/trip-status";
-import { cn, formatCurrency, formatDate, formatDateTime, formatPrice, pluralize, relativeDays } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatDateTime, formatPrice, pluralize, relativeDays, zonedInstant } from "@/lib/utils";
 import { Divider, PageTitle, PriceRow, Tag, Tile, TileTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { TripActionButtons } from "@/components/trips/TripActionButtons";
@@ -81,7 +82,7 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
   if (!trip) notFound();
 
   const admin = createAdminClient();
-  const [{ data: readings }, { data: conversations }, { data: guestAuth }] = await Promise.all([
+  const [{ data: readings }, { data: conversations }, { data: guestAuth }, { data: insurance }] = await Promise.all([
     supabase.from("trip_inspections").select("kind, role, odometer_mi, photos").eq("trip_id", trip.id),
     supabase
       .from("conversations")
@@ -90,7 +91,12 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
       .eq("guest_id", trip.guest_id),
     // Whether the guest confirmed their email lives with their login, not their profile.
     admin.auth.admin.getUserById(trip.guest_id),
+    // Hosts see the insurer and the end date, never the policy number or the card.
+    admin.from("guest_insurance").select("has_none, insurer, expires_on").eq("user_id", trip.guest_id).maybeSingle(),
   ]);
+  const cover = tripCover(trip, insurance);
+  const covered = cover.kind === "plan" || cover.kind === "insurance";
+  const checksLeft = !trip.guest?.driving_license_verified || !covered;
 
   // The trip's own conversation, or any earlier one with the same guest.
   const threads = (conversations ?? []) as unknown as { id: string; trip_id: string | null; messages: Message[] }[];
@@ -318,9 +324,15 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
               </span>
             </div>
             <p className="text-sm text-slate">The primary driver. They have to be there for pick-up and return.</p>
+            {checksLeft && !isCancelled(trip.status) && trip.status !== "completed" && (
+              <p className="rounded-[14px] bg-butter px-3 py-2 text-sm font-semibold text-butter-ink">
+                {guest} can&apos;t check in until their licence is checked and the car is covered. We remind them 2 days before pick-up.
+              </p>
+            )}
             <ul className="flex flex-col gap-2 text-[15px]">
               <Verified ok={!!trip.guest?.driving_license_verified}>Driver&apos;s licence checked</Verified>
               <Verified ok={!!trip.guest?.identity_verified}>ID checked</Verified>
+              <Verified ok={covered}>{coverLabel(cover)}</Verified>
               <Verified ok={!!guestAuth.user?.email_confirmed_at}>Email confirmed</Verified>
               <Verified ok={!!trip.guest?.phone}>Phone number</Verified>
             </ul>
@@ -372,6 +384,19 @@ function Detail({ icon: Icon, label, children }: { icon: LucideIcon; label: stri
       </div>
     </div>
   );
+}
+
+function coverLabel(cover: Cover): string {
+  switch (cover.kind) {
+    case "plan":
+      return `${cover.plan} protection plan`;
+    case "insurance":
+      return `Own insurance: ${cover.insurer}, through ${formatDate(zonedInstant(cover.expiresOn), { month: "short" })}`;
+    case "expired":
+      return `${cover.insurer} policy ended ${formatDate(zonedInstant(cover.expiresOn), { month: "short" })}`;
+    default:
+      return "Insurance or protection";
+  }
 }
 
 function Verified({ ok, children }: { ok: boolean; children: ReactNode }) {

@@ -20,9 +20,14 @@ function identityOff(err: unknown): boolean {
 
 /**
  * Starts a driving licence check: a photo of the licence and a live selfie
- * that has to match it. Returns Stripe's page to send the guest to.
+ * that has to match it. Returns Stripe's page to send the guest to. A trip
+ * page can ask to be sent back to instead of the profile.
  */
 export async function POST(req: Request) {
+  const body = (await req.json().catch(() => null)) as { returnTo?: unknown } | null;
+  const returnTo =
+    typeof body?.returnTo === "string" && /^\/trips\/[0-9a-f-]{36}$/.test(body.returnTo) ? body.returnTo : "/profile";
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -60,7 +65,7 @@ export async function POST(req: Request) {
       },
       metadata: { user_id: user.id },
       provided_details: user.email ? { email: user.email } : undefined,
-      return_url: `${origin}/profile?verify=done`,
+      return_url: `${origin}${returnTo}?verify=done`,
     });
   } catch (err) {
     console.error("[identity] create failed", err);
