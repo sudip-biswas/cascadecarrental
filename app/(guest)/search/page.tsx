@@ -48,6 +48,7 @@ function heading(count: number, filters: SearchFilters) {
   const when = filters.dates
     ? `, ${formatRange(zonedInstant(filters.dates.from), zonedInstant(filters.dates.until))}`
     : "";
+  if (filters.months) return `${pluralize(count, "car")} for ${pluralize(filters.months, "month")}${place}${when}`;
   return `${pluralize(count, "car")} for rent${place}${when}`;
 }
 
@@ -157,6 +158,7 @@ async function Results({ filters, raw, view }: { filters: SearchFilters; raw: Re
       <VehicleCard
         vehicle={car}
         dates={filters.dates}
+        months={filters.months}
         layout="compact"
         favorite={{ userId, saved: saved.has(car.id) }}
         distanceMi={distanceFrom(filters, car)}
@@ -190,6 +192,7 @@ async function Results({ filters, raw, view }: { filters: SearchFilters; raw: Re
             key={car.id}
             vehicle={car}
             dates={filters.dates}
+            months={filters.months}
             layout="row"
             priority={i < 2}
             favorite={{ userId, saved: saved.has(car.id) }}
@@ -224,10 +227,11 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   return (
     <Container className="flex flex-col gap-4 pt-5 pb-16">
       <SearchForm
-        key={`${filters.where}|${filters.dates?.from}|${filters.dates?.until}`}
+        key={`${filters.where}|${filters.dates?.from}|${filters.dates?.until}|${filters.months}`}
         where={filters.where ?? ""}
         from={filters.dates?.from}
         until={filters.dates?.until}
+        months={filters.months}
         keep={keep}
         size="md"
       />

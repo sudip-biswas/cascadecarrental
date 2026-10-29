@@ -1,4 +1,5 @@
-import { LIMITS, VIN_PATTERN } from "@/lib/listing-limits";
+import { DEFAULT_MAX_TRIP_DAYS, LIMITS, VIN_PATTERN } from "@/lib/listing-limits";
+import { DEFAULT_DISCOUNTS } from "@/lib/pricing";
 
 export const VEHICLE_TYPES = ["sedan", "suv", "truck", "van", "sports", "luxury", "electric"] as const;
 export const FUEL_TYPES = ["gasoline", "hybrid", "electric", "diesel"] as const;
@@ -78,8 +79,8 @@ export const DEFAULT_DATA: WizardData = {
   description: "",
   photos: [],
   dailyRateCents: 5000,
-  weeklyDiscountPct: 10,
-  monthlyDiscountPct: 20,
+  weeklyDiscountPct: DEFAULT_DISCOUNTS.weekly_discount_pct,
+  monthlyDiscountPct: DEFAULT_DISCOUNTS.monthly_discount_pct,
   distanceIncludedMi: 200,
   extraMileFeeCents: 20,
   locationName: "",
@@ -87,7 +88,7 @@ export const DEFAULT_DATA: WizardData = {
   locationLat: null,
   locationLng: null,
   minTripDays: 1,
-  maxTripDays: 30,
+  maxTripDays: DEFAULT_MAX_TRIP_DAYS,
   advanceNoticeHours: 1,
   instantBook: false,
 };

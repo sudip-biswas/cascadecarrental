@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { MapPin, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TripDatesPicker } from "./TripDatesPicker";
+import { MonthlyDatesPicker } from "./MonthlyDatesPicker";
 import { DEFAULT_TIME, type DateKey } from "./dates";
 import type { GeocodeSuggestion } from "@/app/api/geocode/route";
 
@@ -14,18 +15,24 @@ interface Props {
   until?: DateKey;
   fromTime?: string;
   untilTime?: string;
+  /** Set for a monthly search: how many months from `from`. */
+  months?: number | null;
   /** Filters to keep when searching again from the results page. */
   keep?: Record<string, string>;
   size?: "lg" | "md";
   className?: string;
 }
 
+type Mode = "daily" | "monthly";
+
 /** Where and when. Sends people to /search with both in the URL. */
-export function SearchForm({ where = "", from, until, fromTime, untilTime, keep, size = "lg", className }: Props) {
+export function SearchForm({ where = "", from, until, fromTime, untilTime, months, keep, size = "lg", className }: Props) {
   const router = useRouter();
   const [place, setPlace] = useState(where);
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
-  const [dates, setDates] = useState<{ from?: DateKey; until?: DateKey }>({ from, until });
+  const [mode, setMode] = useState<Mode>(months ? "monthly" : "daily");
+  const [monthCount, setMonthCount] = useState(months ?? 1);
+  const [dates, setDates] = useState<{ from?: DateKey; until?: DateKey }>({ from, until: months ? undefined : until });
   const [times, setTimes] = useState({ from: fromTime ?? DEFAULT_TIME, until: untilTime ?? DEFAULT_TIME });
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -67,6 +74,20 @@ export function SearchForm({ where = "", from, until, fromTime, untilTime, keep,
       params.delete("lat");
       params.delete("lng");
     }
+    if (mode === "monthly") {
+      params.delete("until");
+      params.delete("fromTime");
+      params.delete("untilTime");
+      if (dates.from) {
+        params.set("from", dates.from);
+        params.set("months", String(monthCount));
+      } else {
+        params.delete("from");
+        params.delete("months");
+      }
+      return params;
+    }
+    params.delete("months");
     if (dates.from && dates.until) {
       params.set("from", dates.from);
       params.set("until", dates.until);
@@ -136,6 +157,31 @@ export function SearchForm({ where = "", from, until, fromTime, untilTime, keep,
         className
       )}
     >
+      <div role="radiogroup" aria-label="Trip length" className="flex gap-1 sm:basis-full">
+        {(
+          [
+            { value: "daily", label: "Daily" },
+            { value: "monthly", label: "Monthly" },
+          ] as const
+        ).map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={mode === option.value}
+            onClick={() => {
+              setMode(option.value);
+              setDates((d) => ({ from: d.from }));
+            }}
+            className={cn(
+              "h-9 rounded-[12px] px-4 text-[15px] font-semibold transition-colors",
+              mode === option.value ? "bg-ink text-white" : "text-ink hover:bg-board"
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
       <div ref={containerRef} className="relative flex min-w-0 flex-col sm:flex-[2_1_220px]">
         <label className="flex flex-col gap-0.5 rounded-[16px] bg-board px-4 py-2.5 focus-within:ring-2 focus-within:ring-ink">
           <span className="text-[13px] font-semibold text-slate">Where</span>
@@ -183,15 +229,27 @@ export function SearchForm({ where = "", from, until, fromTime, untilTime, keep,
         )}
       </div>
 
-      <TripDatesPicker
-        from={dates.from}
-        until={dates.until}
-        fromTime={times.from}
-        untilTime={times.until}
-        onChange={(f, u) => setDates({ from: f, until: u })}
-        onTimeChange={(ft, ut) => setTimes({ from: ft, until: ut })}
-        className="sm:flex-[2_1_280px]"
-      />
+      {mode === "monthly" ? (
+        <MonthlyDatesPicker
+          from={dates.from}
+          months={monthCount}
+          onChange={(f, n) => {
+            setDates({ from: f });
+            setMonthCount(n);
+          }}
+          className="sm:flex-[2_1_280px]"
+        />
+      ) : (
+        <TripDatesPicker
+          from={dates.from}
+          until={dates.until}
+          fromTime={times.from}
+          untilTime={times.until}
+          onChange={(f, u) => setDates({ from: f, until: u })}
+          onTimeChange={(ft, ut) => setTimes({ from: ft, until: ut })}
+          className="sm:flex-[2_1_280px]"
+        />
+      )}
       <button
         type="submit"
         className={cn(

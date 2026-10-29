@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { LIMITS, VIN_PATTERN } from "@/lib/listing-limits";
+import { DEFAULT_MAX_TRIP_DAYS, LIMITS, VIN_PATTERN } from "@/lib/listing-limits";
+import { DEFAULT_DISCOUNTS } from "@/lib/pricing";
 import { refreshAutoPrices } from "@/lib/auto-pricing-refresh";
 
 const STORAGE_PREFIX = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/vehicle-images/`;
@@ -45,12 +46,12 @@ const schema = z
     locationLat: z.number().min(-90).max(90),
     locationLng: z.number().min(-180).max(180),
     dailyRateCents: z.number().int().min(LIMITS.rateMinCents).max(LIMITS.rateMaxCents),
-    weeklyDiscountPct: z.number().int().min(0).max(LIMITS.discountMaxPct).default(0),
-    monthlyDiscountPct: z.number().int().min(0).max(LIMITS.discountMaxPct).default(0),
+    weeklyDiscountPct: z.number().int().min(0).max(LIMITS.discountMaxPct).default(DEFAULT_DISCOUNTS.weekly_discount_pct),
+    monthlyDiscountPct: z.number().int().min(0).max(LIMITS.discountMaxPct).default(DEFAULT_DISCOUNTS.monthly_discount_pct),
     distanceIncludedMi: z.number().int().min(0).max(LIMITS.milesMax).default(200),
     extraMileFeeCents: z.number().int().min(0).max(LIMITS.extraMileMaxCents).default(20),
     minTripDays: z.number().int().min(1).max(LIMITS.minTripMax).default(1),
-    maxTripDays: z.number().int().min(1).max(LIMITS.maxTripMax).default(30),
+    maxTripDays: z.number().int().min(1).max(LIMITS.maxTripMax).default(DEFAULT_MAX_TRIP_DAYS),
     advanceNoticeHours: z.number().int().min(0).max(LIMITS.noticeMaxHours).default(1),
     instantBook: z.boolean().default(true),
     /** In display order. The first one is the cover. */

@@ -26,6 +26,18 @@ export const DISCOUNT_TIERS = [
 
 export type DiscountColumn = (typeof DISCOUNT_TIERS)[number]["column"];
 
+/** What a new car starts with, like Turo's suggested discounts. The column defaults match. */
+export const DEFAULT_DISCOUNTS: Record<DiscountColumn, number> = {
+  three_day_discount_pct: 5,
+  weekly_discount_pct: 15,
+  two_week_discount_pct: 20,
+  three_week_discount_pct: 25,
+  monthly_discount_pct: 30,
+};
+
+/** A month of renting is 30 days, the length the monthly discount starts at. */
+export const DAYS_PER_MONTH = 30;
+
 /** A car's discount for each trip length, in percent. A vehicle row fits as is. */
 export type DiscountTiers = Partial<Record<DiscountColumn, number>>;
 
@@ -74,6 +86,27 @@ export function dayRates(
     const key = new Date(start + i * 86_400_000).toISOString().slice(0, 10);
     return prices[key] ?? dailyRateCents;
   });
+}
+
+/**
+ * The rental for a stretch of days from a date, after its trip-length discount
+ * and before tax: "$412/week, save 15%". Day prices make it match checkout.
+ */
+export function stretchPrice(
+  dailyRateCents: number,
+  fromKey: string,
+  days: number,
+  prices: DailyPrices,
+  discounts: DiscountTiers
+): { cents: number; pct: number } {
+  const priced = computePricing({
+    dailyRateCents,
+    days,
+    dayRatesCents: dayRates(dailyRateCents, fromKey, days, prices),
+    rateType: "refundable",
+    discounts,
+  });
+  return { cents: priced.rentalCents, pct: priced.lengthDiscountPct };
 }
 
 /** An extra on the bill, priced per day or once per trip. */

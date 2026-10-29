@@ -1,5 +1,5 @@
 import { toDateKey, zonedInstant } from "@/lib/utils";
-import { tripDays } from "@/lib/pricing";
+import { DAYS_PER_MONTH, tripDays } from "@/lib/pricing";
 
 /** A Pacific calendar date, "2026-10-18". */
 export type DateKey = string;
@@ -53,6 +53,19 @@ export function readDates(
 ): { from: DateKey; until: DateKey } | null {
   if (!isDateKey(from) || !isDateKey(until) || until <= from) return null;
   return { from, until };
+}
+
+/** The month counts a monthly search offers. Three fits the longest trip a car takes by default. */
+export const MONTH_OPTIONS = [1, 2, 3] as const;
+
+/** A start date and a count of 30-day months from the URL, as the dates they cover. */
+export function readMonths(
+  from: string | null | undefined,
+  months: string | null | undefined
+): { months: number; dates: { from: DateKey; until: DateKey } } | null {
+  const n = Number(months);
+  if (!isDateKey(from) || !MONTH_OPTIONS.includes(n as (typeof MONTH_OPTIONS)[number])) return null;
+  return { months: n, dates: { from, until: addDays(from, n * DAYS_PER_MONTH) } };
 }
 
 export interface Range {
