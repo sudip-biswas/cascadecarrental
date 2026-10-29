@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, Eye, MoreHorizontal, SlidersHorizontal, Tag } from "lucide-react";
+import { CalendarDays, Eye, MoreHorizontal, ShieldCheck, SlidersHorizontal, Tag } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +26,7 @@ export function ListingActions({
   const items = [
     { href: `${manage}#trip-preferences`, label: "Trip preferences", icon: SlidersHorizontal },
     { href: `${manage}#pricing`, label: "Pricing & discounts", icon: Tag },
+    { href: `${manage}#safety`, label: "Safety & inspections", icon: ShieldCheck },
     { href: `/host/calendar?car=${vehicleId}`, label: "Calendar", icon: CalendarDays },
     { href: previewHref, label: "Preview listing", icon: Eye },
   ];

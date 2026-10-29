@@ -13,10 +13,13 @@ export function VehicleStatusToggle({
   vehicleId,
   status: initial,
   photoCount,
+  inspectionOverdue = false,
 }: {
   vehicleId: string;
   status: Vehicle["status"];
   photoCount: number;
+  /** An unlisted car with an overdue inspection can't be listed until a passing one is in. */
+  inspectionOverdue?: boolean;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState(initial);
@@ -41,6 +44,14 @@ export function VehicleStatusToggle({
     );
   }
 
+  if (!listed && inspectionOverdue) {
+    return (
+      <a href="#safety" className="rounded-[14px] bg-error-soft px-3.5 py-2.5 text-[15px] font-bold text-error">
+        Inspection overdue: submit one to list it
+      </a>
+    );
+  }
+
   async function toggle() {
     const next = listed ? "unlisted" : "listed";
     setStatus(next);
@@ -55,7 +66,11 @@ export function VehicleStatusToggle({
     // No row back means row security refused it, e.g. the car was suspended meanwhile.
     if (error || !data?.length) {
       setStatus(status);
-      toast.error("Couldn't change that. Try again.");
+      toast.error(
+        error?.message.includes("inspection_overdue")
+          ? "The yearly inspection is overdue. Submit a passing one to list it."
+          : "Couldn't change that. Try again."
+      );
       return;
     }
     toast.success(next === "listed" ? "Listed. It shows in search again." : "Unlisted. Guests can't find or book it.");

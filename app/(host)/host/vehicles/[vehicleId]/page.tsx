@@ -5,7 +5,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hostEarningsCents } from "@/lib/pricing";
 import { carPath } from "@/lib/site";
-import { formatCurrency, formatPrice, formatRange, pluralize } from "@/lib/utils";
+import { formatCurrency, formatPrice, formatRange, pluralize, toDateKey } from "@/lib/utils";
 import type { Vehicle, VehicleExtra, VehicleImage } from "@/lib/supabase/types";
 import { Fact, Tag } from "@/components/kit";
 import { CarPhoto, coverUrl, firstName, Initial } from "@/components/host/bits";
@@ -19,6 +19,8 @@ import { formatBuffer } from "@/lib/trip-rules";
 import { PricingDiscounts } from "@/components/host/settings/PricingDiscounts";
 import { ExtrasManager } from "@/components/host/settings/ExtrasManager";
 import { GuestInstructions } from "@/components/host/settings/GuestInstructions";
+import { Safety } from "@/components/host/settings/Safety";
+import { dueState, inspectionDueOn } from "@/lib/safety";
 import { tripStatus } from "@/lib/trip-status";
 
 export const instant = false;
@@ -50,11 +52,14 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
   if (!data) notFound();
   const car = data as unknown as CarRow;
 
-  const [trips, { count: tripRows }, { data: extras }] = await Promise.all([
+  const [trips, { count: tripRows }, { data: extras }, { data: passed }] = await Promise.all([
     loadHostTrips(supabase, user.id, ["pending", "approved", "active", "completed"]),
     supabase.from("trips").select("id", { count: "exact", head: true }).eq("vehicle_id", vehicleId),
     supabase.from("vehicle_extras").select("*").eq("vehicle_id", vehicleId).order("position"),
+    supabase.from("vehicle_inspections").select("inspected_on, passed").eq("vehicle_id", vehicleId).eq("passed", true),
   ]);
+  const inspectionOverdue =
+    dueState(inspectionDueOn(toDateKey(car.created_at), passed ?? []), toDateKey(new Date())) === "overdue";
   const carTrips = trips.filter((t) => t.vehicle_id === vehicleId);
   const upcoming = carTrips.filter((t) => isRequest(t) || t.status === "approved" || t.status === "active");
   const paid = carTrips.filter((t) => t.payment_status === "captured" && t.status !== "pending");
@@ -90,7 +95,12 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
           <h1 className="headline text-[clamp(40px,5vw,64px)]">{name}</h1>
           <p className="text-base text-slate">{details.join(" · ")}</p>
           <div className="flex flex-wrap items-center gap-2">
-            <VehicleStatusToggle vehicleId={car.id} status={car.status} photoCount={photos.length} />
+            <VehicleStatusToggle
+              vehicleId={car.id}
+              status={car.status}
+              photoCount={photos.length}
+              inspectionOverdue={inspectionOverdue}
+            />
             {car.status === "listed" && (
               <Link href={carPath(car)} className="rounded-[14px] bg-board px-4 py-[13px] text-[15px] font-bold hover:bg-line">
                 See it as a guest
@@ -185,6 +195,8 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
       </section>
 
       <GuestInstructions vehicleId={car.id} />
+
+      <Safety car={car} />
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-4">
         <section className="rounded-[30px] bg-white p-5 sm:p-6">

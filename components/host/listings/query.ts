@@ -1,3 +1,4 @@
+import type { DueState } from "@/lib/safety";
 import type { Vehicle, VehicleImage } from "@/lib/supabase/types";
 import { formatDateShort, formatRange } from "@/lib/utils";
 import type { Tone } from "@/components/kit";
@@ -60,6 +61,8 @@ export type Listing = Pick<
   current: TripSpan | null;
   next: TripSpan | null;
   last: TripSpan | null;
+  /** Where the yearly inspection stands. */
+  inspection: DueState;
 };
 
 export function matches(car: Listing, query: ListingsQuery) {

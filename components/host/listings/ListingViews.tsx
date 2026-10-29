@@ -28,6 +28,18 @@ function Rating({ car, className }: { car: Listing; className?: string }) {
   );
 }
 
+/** Shown only when the yearly inspection needs doing. */
+function InspectionTag({ car }: { car: Listing }) {
+  if (car.inspection === "ok") return null;
+  return (
+    <Link href={`/host/vehicles/${car.id}#safety`} className="w-fit">
+      <Tag tone={car.inspection === "soon" ? "butter" : "white"} className={car.inspection === "overdue" ? "bg-error-soft text-error" : undefined}>
+        {car.inspection === "overdue" ? "Inspection overdue" : "Inspection due soon"}
+      </Tag>
+    </Link>
+  );
+}
+
 function StatusBadge({ status, className }: { status: Listing["status"]; className?: string }) {
   const s = STATUS_DOT[status];
   return (
@@ -66,6 +78,7 @@ export function ListingGrid({ cars }: { cars: Listing[] }) {
                   {name} {car.year}
                 </Link>
                 <span className="truncate text-[15px] text-slate">{trimAndPlate(car)}</span>
+                <InspectionTag car={car} />
                 <span className="flex items-center justify-between gap-3 text-[14px] text-slate">
                   <span className="truncate">{lastTrip(car)}</span>
                   <Rating car={car} className="shrink-0 text-[14px]" />
@@ -118,7 +131,10 @@ export function ListingList({ cars }: { cars: Listing[] }) {
                   <span className="truncate text-[15px] text-slate">{trimAndPlate(car)}</span>
                 </span>
               </Link>
-              <StatusBadge status={car.status} className="bg-board" />
+              <span className="flex flex-col gap-1.5">
+                <StatusBadge status={car.status} className="bg-board" />
+                <InspectionTag car={car} />
+              </span>
               <span className="order-last flex basis-full flex-col text-[15px] md:order-none md:basis-auto">
                 <span>
                   <span className="font-semibold">{trip.label}:</span> {trip.value}

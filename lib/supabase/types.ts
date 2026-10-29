@@ -977,6 +977,103 @@ export type Database = {
           }
         ];
       };
+      vehicle_inspections: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          inspected_on: string;
+          odometer_mi: number | null;
+          checklist: Record<string, "pass" | "fail" | "na">;
+          passed: boolean;
+          inspector: string | null;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          inspected_on: string;
+          odometer_mi?: number | null;
+          checklist?: Record<string, "pass" | "fail" | "na">;
+          passed: boolean;
+          inspector?: string | null;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string;
+          inspected_on?: string;
+          odometer_mi?: number | null;
+          checklist?: Record<string, "pass" | "fail" | "na">;
+          passed?: boolean;
+          inspector?: string | null;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_inspections_vehicle_id_fkey";
+            columns: ["vehicle_id"];
+            isOneToOne: false;
+            referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      vehicle_maintenance: {
+        Row: {
+          id: string;
+          vehicle_id: string;
+          done_on: string;
+          kind: "oil_change" | "tires" | "brakes" | "battery" | "fluids" | "wipers" | "alignment" | "recall" | "repair" | "cleaning" | "other";
+          odometer_mi: number | null;
+          cost_cents: number | null;
+          notes: string | null;
+          next_due_on: string | null;
+          next_due_mi: number | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id: string;
+          done_on: string;
+          kind: "oil_change" | "tires" | "brakes" | "battery" | "fluids" | "wipers" | "alignment" | "recall" | "repair" | "cleaning" | "other";
+          odometer_mi?: number | null;
+          cost_cents?: number | null;
+          notes?: string | null;
+          next_due_on?: string | null;
+          next_due_mi?: number | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string;
+          done_on?: string;
+          kind?: "oil_change" | "tires" | "brakes" | "battery" | "fluids" | "wipers" | "alignment" | "recall" | "repair" | "cleaning" | "other";
+          odometer_mi?: number | null;
+          cost_cents?: number | null;
+          notes?: string | null;
+          next_due_on?: string | null;
+          next_due_mi?: number | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_maintenance_vehicle_id_fkey";
+            columns: ["vehicle_id"];
+            isOneToOne: false;
+            referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       vehicle_guest_instructions: {
         Row: {
           vehicle_id: string;
@@ -1579,6 +1676,8 @@ export type Message = Tables["messages"]["Row"];
 export type VehicleExtra = Tables["vehicle_extras"]["Row"];
 export type GuestInstructions = Tables["vehicle_guest_instructions"]["Row"];
 export type TripInspection = Tables["trip_inspections"]["Row"];
+export type VehicleInspection = Tables["vehicle_inspections"]["Row"];
+export type VehicleMaintenance = Tables["vehicle_maintenance"]["Row"];
 export type TripCharge = Tables["trip_charges"]["Row"];
 export type TripChange = Tables["trip_changes"]["Row"];
 export type TripDriver = Tables["trip_drivers"]["Row"];
