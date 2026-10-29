@@ -20,6 +20,7 @@ import { cn, formatCurrency, formatPrice, formatRange, pluralize, zonedInstant }
 import type { Vehicle } from "@/lib/supabase/types";
 import { TripDatesPicker } from "@/components/search/TripDatesPicker";
 import { PickupPicker } from "@/components/checkout/DeliverySection";
+import { PayOverTimeNote } from "@/components/checkout/PayOverTime";
 import { CAR_SPOT, spotFeeCents, type PickupOption } from "@/lib/locations";
 import {
   DEFAULT_TIME,
@@ -360,6 +361,7 @@ export function CarBooking({
             <PriceRow label="Tax" value={formatCurrency(pricing.taxCents)} />
             <Divider />
             <PriceRow label="Total" value={formatCurrency(pricing.totalCents)} strong />
+            <PayOverTimeNote amountCents={pricing.totalCents} />
             <span className="text-[13px] text-slate">Protection is optional and picked at checkout.</span>
           </div>
         )}

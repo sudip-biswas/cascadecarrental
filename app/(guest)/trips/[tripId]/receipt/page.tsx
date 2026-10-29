@@ -9,6 +9,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { NO_INDEX } from "@/lib/site";
+import { PAID_WITH_LABEL, isPayOverTime } from "@/lib/pay-over-time";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { type TripRow, TRIP_SELECT, carName } from "../../_lib/trip-row";
 import { CHARGE_LABEL, receiptLines, receiptNumber } from "./lines";
@@ -55,6 +56,8 @@ export default async function ReceiptPage({ params }: PageProps<"/trips/[tripId]
     .maybeSingle();
   const trip = data as unknown as TripRow | null;
   if (!trip) notFound();
+  const lender = isPayOverTime(trip.paid_with) ? PAID_WITH_LABEL[trip.paid_with] : null;
+  const paidTo = lender ?? "your card";
 
   const confirmed = trip.status === "approved" || trip.status === "active" || trip.status === "completed";
   const [{ data: charges }, { data: changes }, { data: place }, payment] = await Promise.all([
@@ -191,9 +194,9 @@ export default async function ReceiptPage({ params }: PageProps<"/trips/[tripId]
               />
             ))}
             {refundCents == null ? (
-              <PriceRow label="Refunded to your card" value="See your card statement" />
+              <PriceRow label={`Refunded to ${paidTo}`} value={lender ? `See your ${lender} account` : "See your card statement"} />
             ) : (
-              refundCents > 0 && <PriceRow label="Refunded to your card" value={`−${formatCurrency(refundCents)}`} />
+              refundCents > 0 && <PriceRow label={`Refunded to ${paidTo}`} value={`−${formatCurrency(refundCents)}`} />
             )}
             {paidCharges.map((c) => (
               <PriceRow
@@ -215,7 +218,13 @@ export default async function ReceiptPage({ params }: PageProps<"/trips/[tripId]
         <div className="flex flex-col gap-2.5 rounded-[18px] bg-board p-4 print:bg-transparent print:p-0">
           <PriceRow
             label="Payment"
-            value={`${STATUS[trip.payment_status]}${payment?.last4 ? `, card ending ${payment.last4}` : ""}`}
+            value={
+              lender
+                ? trip.payment_status === "authorized"
+                  ? `Held by ${lender}, not charged yet`
+                  : `${STATUS[trip.payment_status]}, with ${lender}`
+                : `${STATUS[trip.payment_status]}${payment?.last4 ? `, card ending ${payment.last4}` : ""}`
+            }
           />
           {paidCents != null && <PriceRow strong label="Paid in all" value={formatCurrency(paidCents)} />}
         </div>

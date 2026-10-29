@@ -6,10 +6,11 @@ import { stripe } from "@/lib/stripe/server";
 import { computePricing, dayRates, lastMinuteBoostPct, tripDays, type ExtraLine } from "@/lib/pricing";
 import { hasConflict, loadDailyPrices, releaseStaleCheckouts } from "@/lib/trips";
 import { formatBuffer, loadHostHours, tripRuleProblem } from "@/lib/trip-rules";
-import { zonedInstant } from "@/lib/utils";
+import { formatCurrency, zonedInstant } from "@/lib/utils";
 import { driverCheck } from "@/components/checkout/rules";
 import { CAR_SPOT, loadPickupSpots, quotePickup } from "@/lib/locations";
 import { checkPromo } from "@/app/api/promo/check";
+import { PAID_WITH_LABEL, isPayOverTime, payOverTimeFor, type PaidWith } from "@/lib/pay-over-time";
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -33,6 +34,10 @@ const schema = z.object({
   expectedInstantBook: z.boolean(),
   /** Stripe ConfirmationToken id — when present, we create+confirm the PI in one step. */
   confirmationTokenId: z.string().startsWith("ctoken_").optional(),
+  /** Paying over time: the card kept on file for the deposit and costs after the trip. */
+  cardConfirmationTokenId: z.string().startsWith("ctoken_").optional(),
+  /** The same card once its bank check (3-D Secure) is done, on the second try. */
+  cardSetupIntentId: z.string().startsWith("seti_").optional(),
   fromTime: z.string().regex(/^\d{2}:\d{2}$/).default("10:00"),
   untilTime: z.string().regex(/^\d{2}:\d{2}$/).default("10:00"),
   /** Extras by id. Names and prices come from the car's own list. */
@@ -43,6 +48,50 @@ const schema = z.object({
 
 function fail(error: string, status: number) {
   return NextResponse.json({ error }, { status });
+}
+
+type CardOnFile = { ok: true; paymentMethodId: string } | { ok: false; error: string } | { ok: "action"; clientSecret: string; setupIntentId: string };
+
+/**
+ * Saves the card a pay-over-time trip keeps on file, since the lender can't be
+ * charged for the deposit or anything after the trip. A card that needs its
+ * bank's check comes back to the browser first, then here again by its SetupIntent.
+ */
+async function keepCardOnFile(
+  customerId: string,
+  userId: string,
+  tokenId: string | undefined,
+  setupIntentId: string | undefined,
+  returnUrl: string
+): Promise<CardOnFile> {
+  const missing = { ok: false, error: "Add a card for the deposit and any costs after the trip." } as const;
+  try {
+    if (setupIntentId) {
+      const si = await stripe.setupIntents.retrieve(setupIntentId);
+      const pm = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id;
+      if (si.customer !== customerId || si.metadata?.user_id !== userId || si.status !== "succeeded" || !pm) return missing;
+      return { ok: true, paymentMethodId: pm };
+    }
+    if (!tokenId) return missing;
+    const si = await stripe.setupIntents.create({
+      customer: customerId,
+      confirm: true,
+      confirmation_token: tokenId,
+      usage: "off_session",
+      payment_method_types: ["card"],
+      return_url: returnUrl,
+      metadata: { user_id: userId, kind: "card_on_file" },
+    });
+    const pm = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id;
+    if (si.status === "succeeded" && pm) return { ok: true, paymentMethodId: pm };
+    if (si.status === "requires_action" && si.client_secret) {
+      return { ok: "action", clientSecret: si.client_secret, setupIntentId: si.id };
+    }
+    return { ok: false, error: "That card didn't go through. Try another." };
+  } catch (err) {
+    const declined = err instanceof Error && "type" in err && err.type === "StripeCardError";
+    return { ok: false, error: declined ? "That card was declined. Try another." : "Couldn't save the card. Try again." };
+  }
 }
 
 export async function POST(req: Request) {
@@ -65,6 +114,8 @@ export async function POST(req: Request) {
     expectedTotalCents,
     expectedInstantBook,
     confirmationTokenId,
+    cardConfirmationTokenId,
+    cardSetupIntentId,
     extras: pickedExtras,
     delivery: deliveryChoice,
     promoCode,
@@ -197,18 +248,43 @@ export async function POST(req: Request) {
     await admin.from("profiles").update({ stripe_customer_id: customerId }).eq("id", user.id);
   }
 
-  // Instant-book cars are charged straight away. Otherwise the card is only
-  // held until the host accepts.
+  const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+  // The trip's id is set here so the lenders' pages can send the guest straight back to it.
+  const tripId = crypto.randomUUID();
+  const returnUrl = `${origin}/trips/${tripId}?booked=1`;
+
+  // Card, or one of the lenders the guest picked in the Payment Element.
+  const token = confirmationTokenId ? await stripe.confirmationTokens.retrieve(confirmationTokenId).catch(() => null) : null;
+  if (confirmationTokenId && !token) return fail("Your payment details expired. Enter them again.", 409);
+  const previewType = token?.payment_method_preview?.type;
+  if (previewType && previewType !== "card" && !isPayOverTime(previewType)) {
+    return fail("Pay by card, Klarna, Affirm or Afterpay.", 400);
+  }
+  const paidWith: PaidWith = isPayOverTime(previewType) ? previewType : "card";
+  if (paidWith !== "card" && !payOverTimeFor(pricing.totalCents).includes(paidWith)) {
+    return fail(`${PAID_WITH_LABEL[paidWith]} doesn't take a trip of ${formatCurrency(pricing.totalCents)}. Pay by card instead.`, 400);
+  }
+
+  let cardOnFile: string | null = null;
+  if (paidWith !== "card") {
+    const card = await keepCardOnFile(customerId, user.id, cardConfirmationTokenId, cardSetupIntentId, returnUrl);
+    if (card.ok === "action") {
+      return NextResponse.json({ cardAction: { clientSecret: card.clientSecret, setupIntentId: card.setupIntentId } });
+    }
+    if (!card.ok) return fail(card.error, 402);
+    cardOnFile = card.paymentMethodId;
+  }
+
+  // Instant-book cars are charged straight away. Otherwise the payment is only
+  // held until the host accepts. Card and all three lenders can hold.
   const piBase = {
     amount: pricing.totalCents,
     currency: "usd",
     customer: customerId,
     capture_method: vehicle.instant_book ? "automatic" : "manual",
-    // Keeps the card on the customer for the deposit hold and any charges after
-    // the trip. Elements is set up with the same setupFutureUsage, as Stripe requires.
-    setup_future_usage: "off_session",
     description: `${vehicle.year} ${vehicle.make} ${vehicle.model}, ${from} to ${until}`,
     metadata: {
+      trip_id: tripId,
       vehicle_id: vehicleId,
       guest_id: user.id,
       host_id: vehicle.host_id,
@@ -218,23 +294,47 @@ export async function POST(req: Request) {
     },
   } as const;
 
+  // Keeps a paying card on the customer for the deposit hold and any charges
+  // after the trip. Elements sets this on cards only, so the token is matched:
+  // a token that carries it gets it back, otherwise it goes on the card options.
+  const keepCard = token?.setup_future_usage
+    ? { setup_future_usage: token.setup_future_usage }
+    : { payment_method_options: { card: { setup_future_usage: "off_session" as const } } };
+
+  // The lenders want an address; a car rental has nothing to ship, so it's the billing one.
+  const billing = token?.payment_method_preview?.billing_details;
+  const shipping =
+    paidWith !== "card" && !token?.shipping && billing?.name && billing.address?.line1
+      ? {
+          name: billing.name,
+          address: {
+            line1: billing.address.line1,
+            line2: billing.address.line2 ?? undefined,
+            city: billing.address.city ?? undefined,
+            state: billing.address.state ?? undefined,
+            postal_code: billing.address.postal_code ?? undefined,
+            country: billing.address.country ?? "US",
+          },
+        }
+      : undefined;
+
   // When a ConfirmationToken is supplied we create and confirm in one step,
   // avoiding the dual-PI conflict that arises with Elements' deferred PI.
-  // Elements is initialized with allowedPaymentMethodTypes: ["card"], so the
-  // ConfirmationToken is card-scoped — use payment_method_types to match.
-  const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
   let paymentIntent: Awaited<ReturnType<typeof stripe.paymentIntents.create>>;
   try {
     paymentIntent = confirmationTokenId
       ? await stripe.paymentIntents.create({
           ...piBase,
+          ...(paidWith === "card" ? keepCard : {}),
           confirm: true,
           confirmation_token: confirmationTokenId,
-          payment_method_types: ["card"],
-          return_url: `${origin}/trips`,
+          payment_method_types: [paidWith],
+          return_url: returnUrl,
+          ...(shipping ? { shipping } : {}),
         })
       : await stripe.paymentIntents.create({
           ...piBase,
+          setup_future_usage: "off_session",
           // Legacy fallback (no ConfirmationToken): cards only, client confirms.
           payment_method_types: ["card"],
         });
@@ -246,6 +346,7 @@ export async function POST(req: Request) {
   const { data: trip, error } = await admin
     .from("trips")
     .insert({
+      id: tripId,
       vehicle_id: vehicleId,
       guest_id: user.id,
       host_id: vehicle.host_id,
@@ -289,10 +390,13 @@ export async function POST(req: Request) {
       protection_plan: protectionPlan,
       protection_cost_cents: pricing.protectionCostCents,
       stripe_payment_intent_id: paymentIntent.id,
+      // On a pay-over-time trip, the card on file rather than the lender.
       stripe_payment_method_id:
-        typeof paymentIntent.payment_method === "string"
+        cardOnFile ??
+        (typeof paymentIntent.payment_method === "string"
           ? paymentIntent.payment_method
-          : (paymentIntent.payment_method?.id ?? null),
+          : (paymentIntent.payment_method?.id ?? null)),
+      paid_with: paidWith,
       payment_status: "pending",
       pay_later: false,
       status: "pending",
@@ -307,6 +411,11 @@ export async function POST(req: Request) {
       ? fail("Someone just booked these dates. Try others.", 409)
       : fail("Couldn't start the booking. Try again.", 500);
   }
+
+  // Klarna, Affirm and Afterpay send the guest to their page, which comes back to the trip.
+  const redirectUrl =
+    paymentIntent.status === "requires_action" ? paymentIntent.next_action?.redirect_to_url?.url : undefined;
+  if (redirectUrl) return NextResponse.json({ tripId: trip.id, redirectUrl });
 
   // For the ConfirmationToken flow: only send clientSecret if 3DS is needed.
   // For the legacy flow: always send it so the client can call confirmPayment.

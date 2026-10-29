@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import type { Appearance } from "@stripe/stripe-js";
+import { AddressElement, Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import type { Appearance, StripeElements } from "@stripe/stripe-js";
 import { ArrowLeft, Clock, CreditCard, Lock, Shield } from "lucide-react";
 import { getStripe } from "@/lib/stripe/client";
 import {
@@ -32,6 +32,8 @@ import { DriverSection } from "./DriverSection";
 import { PromoField, type AppliedPromo } from "./PromoField";
 import { driverCheck, type DriverRules } from "./rules";
 import { CAR_SPOT, quotePickup, type PickupChoice, type PickupOption } from "@/lib/locations";
+import { PAID_WITH_LABEL, PAY_OVER_TIME, isPayOverTime, payOverTimeEnabled } from "@/lib/pay-over-time";
+import { CardOnFile, PayOverTimeNote, pendingNoteKey } from "./PayOverTime";
 
 export interface CheckoutVehicle extends DeliverySettings, DriverRules {
   id: string;
@@ -75,6 +77,8 @@ interface Props {
     /** REQUIRE_DRIVER_CHECK is on and their license isn't verified yet. */
     licenseRequired: boolean;
   };
+  /** Shown first, like a lender that said no on the way back here. */
+  paymentNotice?: string;
 }
 
 /** What the server needs on top of dates, rate and protection. */
@@ -109,6 +113,9 @@ const appearance: Appearance = {
 
 const fonts = [{ cssSrc: "https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&display=swap" }];
 
+/** Card, plus Klarna, Affirm and Afterpay. Stripe only shows the ones that take the trip's total. */
+const PAYMENT_TYPES = ["card", ...(payOverTimeEnabled() ? PAY_OVER_TIME : [])];
+
 const PLANS: { id: ProtectionPlan | null; name: string }[] = [
   { id: null, name: "No protection" },
   { id: "basic", name: "Basic" },
@@ -136,7 +143,7 @@ function coverOf(vehicle: CheckoutVehicle) {
   return images[0]?.url ?? null;
 }
 
-export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initialRate, dailyPrices, extras, pickup, initialSpot, driver }: Props) {
+export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initialRate, dailyPrices, extras, pickup, initialSpot, driver, paymentNotice }: Props) {
   const [rateType, setRateType] = useState<RateType>(initialRate);
   const [plan, setPlan] = useState<ProtectionPlan | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -232,15 +239,16 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
         amount: pricing.totalCents,
         currency: "usd",
         captureMethod: vehicle.instant_book ? "automatic" : "manual",
-        // Must match the PaymentIntent's setup_future_usage: the card is kept
-        // for the deposit hold and charges after the trip.
-        setupFutureUsage: "off_session",
-        allowedPaymentMethodTypes: ["card"],
+        // Cards are kept for the deposit hold and charges after the trip. Set
+        // per card, since the lenders can't be kept and would be hidden otherwise.
+        paymentMethodOptions: { card: { setup_future_usage: "off_session" } },
+        allowedPaymentMethodTypes: PAYMENT_TYPES,
         appearance,
         fonts,
       }}
     >
       <CheckoutLayout
+        paymentNotice={paymentNotice}
         vehicle={vehicle}
         from={from}
         until={until}
@@ -266,6 +274,7 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
 }
 
 function CheckoutLayout({
+  paymentNotice,
   vehicle,
   from,
   until,
@@ -301,15 +310,20 @@ function CheckoutLayout({
   const elements = useElements();
   const router = useRouter();
   const [note, setNote] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(paymentNotice ?? null);
   const [busy, setBusy] = useState(false);
+  // What's picked in the Payment Element, and the card form a lender needs beside it.
+  const [method, setMethod] = useState("card");
+  const [cardElements, setCardElements] = useState<StripeElements | null>(null);
+  const onCardElements = useCallback((e: StripeElements | null) => setCardElements(e), []);
+  const lender = isPayOverTime(method) ? method : null;
 
   const hostName = vehicle.host?.full_name?.split(" ")[0] || "the host";
   const total = formatCurrency(pricing.totalCents);
   const cta = vehicle.instant_book ? `Book · ${total}` : `Request to book · ${total}`;
   const holdNote = vehicle.instant_book
-    ? "Instant book: your card is charged now and the car is yours."
-    : `Your card is held now and only charged if ${hostName} accepts. If they say no or don't answer, the hold is released.`;
+    ? `Instant book: you pay with ${lender ? PAID_WITH_LABEL[lender] : "your card"} now and the car is yours.`
+    : `${lender ? `${PAID_WITH_LABEL[lender]} holds the payment` : "Your card is held"} now, charged only if ${hostName} accepts. If they say no or don't answer, the hold is released.`;
   const miles = pricing.extras.some((e) => e.unlimited_miles)
     ? "Unlimited miles."
     : `${pluralize(vehicle.distance_included_mi * pricing.days, "mile")} included.`;
@@ -326,27 +340,36 @@ function CheckoutLayout({
     setError(null);
     setBusy(true);
 
-    // Step 1: validate the card form. This surfaces "card number incomplete" etc.
-    const { error: submitError } = await elements.submit();
-    if (submitError) {
-      setError(submitError.message ?? "Check your card details.");
+    const stop = (message: string) => {
+      setError(message);
       setBusy(false);
-      return;
+    };
+
+    // Step 1: validate the forms. This surfaces "card number incomplete" etc.
+    const { error: submitError } = await elements.submit();
+    if (submitError) return stop(submitError.message ?? "Check your payment details.");
+    if (lender) {
+      if (!cardElements) return stop("Add a card for the deposit and any costs after the trip.");
+      const { error: cardError } = await cardElements.submit();
+      if (cardError) return stop(cardError.message ?? "Check the card details.");
     }
 
-    // Step 2: collect card data into a ConfirmationToken so the server can create
+    // Step 2: collect the details into ConfirmationTokens so the server can create
     // and confirm the PaymentIntent in one step — avoids the dual-PI conflict.
     const { confirmationToken, error: tokenError } = await stripe.createConfirmationToken({ elements });
-    if (tokenError) {
-      setError(tokenError.message ?? "Check your card details.");
-      setBusy(false);
-      return;
+    if (tokenError) return stop(tokenError.message ?? "Check your payment details.");
+    let cardToken: string | undefined;
+    if (lender && cardElements) {
+      const { confirmationToken: card, error: cardTokenError } = await stripe.createConfirmationToken({ elements: cardElements });
+      if (cardTokenError) return stop(cardTokenError.message ?? "Check the card details.");
+      cardToken = card.id;
     }
 
-    const res = await fetch("/api/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const book = (card: { cardConfirmationTokenId?: string; cardSetupIntentId?: string }) =>
+      fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
         vehicleId: vehicle.id,
         from,
         until,
@@ -360,27 +383,45 @@ function CheckoutLayout({
         expectedTotalCents: pricing.totalCents,
         expectedInstantBook: vehicle.instant_book,
         confirmationTokenId: confirmationToken.id,
+        ...card,
       }),
     });
-    const data = await res.json().catch(() => ({}));
+    let res = await book({ cardConfirmationTokenId: cardToken });
+    let data = await res.json().catch(() => ({}));
+    // The card on file needs its bank's check first; then book again with it saved.
+    if (res.ok && data.cardAction) {
+      const { clientSecret: cardSecret, setupIntentId } = data.cardAction as { clientSecret: string; setupIntentId: string };
+      const { error: cardActionError } = await stripe.handleNextAction({ clientSecret: cardSecret });
+      if (cardActionError) return stop(cardActionError.message ?? "The card check didn't go through. Try another card.");
+      res = await book({ cardSetupIntentId: setupIntentId });
+      data = await res.json().catch(() => ({}));
+    }
     if (!res.ok) {
-      setError(data.error ?? "Couldn't start the booking. Try again.");
       if (res.status === 409) router.refresh();
-      setBusy(false);
-      return;
+      return stop(data.error ?? "Couldn't start the booking. Try again.");
     }
 
-    const { tripId, clientSecret } = data as { tripId: string; clientSecret?: string };
+    const { tripId, clientSecret, redirectUrl } = data as { tripId: string; clientSecret?: string; redirectUrl?: string };
     const tripUrl = `/trips/${tripId}?booked=1`;
+
+    // Klarna, Affirm and Afterpay finish on their own page, which comes back to the trip.
+    // The note waits until then, so a payment that doesn't go through sends nothing.
+    if (redirectUrl) {
+      if (note.trim()) {
+        try {
+          sessionStorage.setItem(pendingNoteKey(tripId), note.trim());
+        } catch {
+          // No storage: the note is lost, the booking isn't.
+        }
+      }
+      window.location.assign(redirectUrl);
+      return;
+    }
 
     // clientSecret is only present when 3-D Secure authentication is required.
     if (clientSecret) {
       const { error: actionError } = await stripe.handleNextAction({ clientSecret });
-      if (actionError) {
-        setError(actionError.message ?? "The payment didn't go through. Nothing was charged.");
-        setBusy(false);
-        return;
-      }
+      if (actionError) return stop(actionError.message ?? "The payment didn't go through. Nothing was charged.");
     }
 
     if (note.trim()) {
@@ -465,11 +506,25 @@ function CheckoutLayout({
             </div>
           </Section>
 
-          <Section icon={<CreditCard />} iconTone="bg-sky" title="Card">
-            <PaymentElement options={{ layout: "tabs" }} />
-            <p className="text-sm text-slate">
-              Your card is saved to your account for this trip&apos;s deposit and any costs after it, like tolls or fuel.
-            </p>
+          <Section icon={<CreditCard />} iconTone="bg-sky" title="Payment">
+            <PaymentElement options={{ layout: "tabs" }} onChange={(e) => setMethod(e.value.type)} />
+            {lender ? (
+              <>
+                <AddressElement options={{ mode: "billing", allowedCountries: ["US"] }} />
+                <div className="flex flex-col gap-2 rounded-[18px] bg-board p-3.5">
+                  <span className="text-[15px] font-extrabold">Card on file</span>
+                  <span className="text-sm text-slate">
+                    {PAID_WITH_LABEL[lender]} pays for the trip. The {vehicle.deposit_cents > 0 ? "deposit hold and any " : ""}costs
+                    after it, like tolls or fuel, go on a card. Nothing is charged to it now.
+                  </span>
+                  <CardOnFile appearance={appearance} fonts={fonts} onElements={onCardElements} />
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-slate">
+                Your card is saved to your account for this trip&apos;s deposit and any costs after it, like tolls or fuel.
+              </p>
+            )}
             <label className="flex flex-col gap-1.5 rounded-[16px] bg-board px-3.5 py-3">
               <span className="text-[13px] font-semibold text-slate">Note to {hostName} (optional)</span>
               <textarea
@@ -506,6 +561,7 @@ function CheckoutLayout({
           </div>
 
           <Breakdown pricing={pricing} plan={plan} deliveryLabel={deliveryLabel} />
+          <PayOverTimeNote amountCents={pricing.totalCents} standalone={false} />
           {promoField}
 
           {(error || blocker) && <Notice>{error ?? blocker}</Notice>}
@@ -528,7 +584,12 @@ function CheckoutLayout({
       <div className="fixed inset-x-0 bottom-0 z-40 flex flex-col gap-2 rounded-t-[26px] bg-white px-4 pt-3 pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
         {payButton}
         <span className="text-center text-xs leading-snug text-slate">
-          {blocker ?? (vehicle.instant_book ? "You're charged now." : `Held now, charged only if ${hostName} accepts.`)}
+          {blocker ??
+            (vehicle.instant_book
+              ? lender
+                ? `You pay with ${PAID_WITH_LABEL[lender]} now.`
+                : "You're charged now."
+              : `Held now, charged only if ${hostName} accepts.`)}
         </span>
       </div>
     </div>

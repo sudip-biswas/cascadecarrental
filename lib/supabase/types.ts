@@ -504,6 +504,7 @@ export type Database = {
           stripe_charge_id: string | null;
           payment_status: "pending" | "authorized" | "captured" | "refunded" | "voided" | "failed";
           pay_later: boolean;
+          paid_with: "card" | "klarna" | "affirm" | "afterpay_clearpay" | null;
           status: "pending" | "approved" | "active" | "completed" | "cancelled_guest" | "cancelled_host";
           cancellation_reason: string | null;
           cancelled_at: string | null;
@@ -558,6 +559,7 @@ export type Database = {
           stripe_charge_id?: string | null;
           payment_status?: "pending" | "authorized" | "captured" | "refunded" | "voided" | "failed";
           pay_later?: boolean;
+          paid_with?: "card" | "klarna" | "affirm" | "afterpay_clearpay" | null;
           status?: "pending" | "approved" | "active" | "completed" | "cancelled_guest" | "cancelled_host";
           cancellation_reason?: string | null;
           cancelled_at?: string | null;
@@ -612,6 +614,7 @@ export type Database = {
           stripe_charge_id?: string | null;
           payment_status?: "pending" | "authorized" | "captured" | "refunded" | "voided" | "failed";
           pay_later?: boolean;
+          paid_with?: "card" | "klarna" | "affirm" | "afterpay_clearpay" | null;
           status?: "pending" | "approved" | "active" | "completed" | "cancelled_guest" | "cancelled_host";
           cancellation_reason?: string | null;
           cancelled_at?: string | null;

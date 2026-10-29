@@ -51,7 +51,7 @@ export function paidLabel(trip: Trip): string {
     case "captured":
       return "Paid";
     case "authorized":
-      return "Held on card";
+      return trip.paid_with && trip.paid_with !== "card" ? "Held, not charged" : "Held on card";
     case "refunded":
       return "Refunded";
     case "voided":

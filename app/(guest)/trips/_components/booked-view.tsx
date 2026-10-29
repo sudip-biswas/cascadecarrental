@@ -7,6 +7,8 @@ import { cn, formatCurrency, formatDateTime, formatRange, pluralize } from "@/li
 import { type TripRow, carName, hostFirstName, paidLabel } from "../_lib/trip-row";
 import { CarSummary, calendarUrl } from "./parts";
 import { AutoRefresh } from "./auto-refresh";
+import { PendingNote } from "@/components/checkout/PayOverTime";
+import { PAID_WITH_LABEL, isPayOverTime } from "@/lib/pay-over-time";
 
 interface Stage {
   when: string;
@@ -22,6 +24,7 @@ export function BookedView({ trip }: { trip: TripRow }) {
   const total = formatCurrency(trip.total_cents);
   const confirming = trip.status === "pending" && trip.payment_status === "pending";
   const requested = trip.status === "pending" && trip.payment_status === "authorized";
+  const lender = isPayOverTime(trip.paid_with) ? PAID_WITH_LABEL[trip.paid_with] : null;
   const miles = (trip.vehicle?.distance_included_mi ?? trip.distance_included_mi) * tripDays(trip.starts_at, trip.ends_at);
 
   const title = confirming
@@ -32,18 +35,18 @@ export function BookedView({ trip }: { trip: TripRow }) {
   const lead = confirming
     ? "This takes a few seconds. The page updates on its own."
     : requested
-      ? `${host} has until pick-up to say yes. Your card is held, not charged, until then.`
+      ? `${host} has until pick-up to say yes. ${lender ? `${lender} holds the payment` : "Your card is held"}, not charged, until then.`
       : `${carName(trip)} is yours from ${formatDateTime(trip.starts_at)}.`;
 
   const stages: Stage[] = [
     {
       when: "Now",
       title: requested || confirming ? "Requested" : "Booked",
-      detail: `${total} ${requested ? "held on your card" : confirming ? "being confirmed" : "paid"}`,
+      detail: `${total} ${requested ? (lender ? `held by ${lender}` : "held on your card") : confirming ? "being confirmed" : lender ? `paid with ${lender}` : "paid"}`,
       state: "done",
     },
     ...(requested
-      ? [{ when: "Before pick-up", title: `${host} answers`, detail: "Yes charges the card. No releases it.", state: "now" as const }]
+      ? [{ when: "Before pick-up", title: `${host} answers`, detail: `Yes charges ${lender ?? "the card"}. No releases it.`, state: "now" as const }]
       : []),
     {
       when: formatDateTime(trip.starts_at),
@@ -64,7 +67,7 @@ export function BookedView({ trip }: { trip: TripRow }) {
 
   return (
     <>
-      {confirming && <AutoRefresh />}
+      {confirming ? <AutoRefresh /> : <PendingNote tripId={trip.id} />}
       <section className="bg-mint py-12 text-mint-ink sm:pt-14 sm:pb-16">
         <Container className="flex flex-wrap items-end justify-between gap-8">
           <div className="flex flex-[999_1_520px] flex-col gap-[18px]">
