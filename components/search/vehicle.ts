@@ -1,4 +1,4 @@
-import { computePricing, dayRates, lastMinuteBoostPct, type DailyPrices } from "@/lib/pricing";
+import { bestDiscount, computePricing, dayRates, lastMinuteBoostPct, type DailyPrices } from "@/lib/pricing";
 import { carPath } from "@/lib/site";
 import { formatPrice, zonedInstant } from "@/lib/utils";
 import { VEHICLE_PUBLIC, type PublicVehicle } from "@/lib/supabase/columns";
@@ -54,9 +54,21 @@ export function tripPrice(vehicle: PublicVehicle & { day_prices?: DailyPrices },
     totalCents: priced.totalCents,
     beforeDiscountCents: full,
     discountLabel: priced.lengthDiscountLabel,
+    discountPct: priced.lengthDiscountPct,
     /** The average a day over the dates, before discounts. */
     dailyCents: priced.dailyRateCents,
   };
+}
+
+/**
+ * About what a week costs without dates: today's price for seven days with the
+ * car's 1-week discount, before tax. Null when the car has no weekly discount.
+ */
+export function weekPrice(vehicle: PublicVehicle & { price_today_cents?: number }) {
+  const discount = bestDiscount(7, vehicle);
+  if (!discount) return null;
+  const week = (vehicle.price_today_cents ?? vehicle.daily_rate_cents) * 7;
+  return { cents: week - Math.round((week * discount.pct) / 100), pct: discount.pct };
 }
 
 /** What a card shows a day: the average over the dates, else today's dynamic price, never the bare daily rate. */

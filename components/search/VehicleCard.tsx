@@ -13,6 +13,7 @@ import {
   offersUnlimitedMiles,
   roughPrice,
   tripPrice,
+  weekPrice,
   type ListedVehicle,
 } from "./vehicle";
 import type { DateKey } from "./dates";
@@ -20,6 +21,8 @@ import type { DateKey } from "./dates";
 interface Props {
   vehicle: ListedVehicle;
   dates?: { from: DateKey; until: DateKey } | null;
+  /** A monthly search: the dates cover this many months, and prices show a month. */
+  months?: number | null;
   /** tile: photo on top. row: photo beside the details. compact: small phone row. */
   layout?: "tile" | "row" | "compact";
   priority?: boolean;
@@ -97,12 +100,21 @@ function WasPrice({ cents, className }: { cents: number | null; className?: stri
   );
 }
 
-function Card({ vehicle, dates, layout = "tile", priority, heart, distanceMi }: Omit<Props, "favorite"> & { heart?: boolean }) {
+/** "Save 30%", beside a monthly or weekly price. */
+function SaveTag({ pct }: { pct: number }) {
+  if (pct <= 0) return null;
+  return <Tag tone="mint">Save {pct}%</Tag>;
+}
+
+function Card({ vehicle, dates, months, layout = "tile", priority, heart, distanceMi }: Omit<Props, "favorite"> & { heart?: boolean }) {
   const href = carHref(vehicle, dates);
   const name = `${vehicle.make} ${vehicle.model}`;
   const price = dates ? tripPrice(vehicle, dates.from, dates.until) : null;
   const perDay = price?.dailyCents ?? vehicle.price_today_cents ?? vehicle.daily_rate_cents;
   const total = price?.totalCents ?? null;
+  // Monthly search: what a month costs, tax in, discount applied.
+  const perMonth = months && total !== null ? Math.round(total / months) : null;
+  const week = dates ? null : weekPrice(vehicle);
   const isNew = vehicle.trip_count === 0;
   const unlimited = offersUnlimitedMiles(vehicle);
   const host = firstName(vehicle.persona?.name ?? vehicle.host?.full_name);
@@ -118,9 +130,9 @@ function Card({ vehicle, dates, layout = "tile", priority, heart, distanceMi }: 
             {vehicle.year} · {isNew ? "New listing" : `${vehicle.seats} seats`} · {place}
           </span>
           <span className="figures text-[17px] font-extrabold">
-            {formatPrice(perDay)}{" "}
+            {perMonth !== null ? roughPrice(perMonth) : formatPrice(perDay)}{" "}
             <span className="text-[13px] font-semibold text-slate">
-              /day
+              {perMonth !== null ? "/month" : "/day"}
               {total !== null && (
                 <>
                   {" · "}
@@ -166,7 +178,18 @@ function Card({ vehicle, dates, layout = "tile", priority, heart, distanceMi }: 
           </span>
           <span className="figures mt-auto flex items-baseline justify-between gap-3 pt-1">
             <span className="text-[15px] text-slate">{formatPrice(perDay)} a day</span>
-            {total !== null ? (
+            {perMonth !== null && total !== null ? (
+              <span className="flex flex-col items-end gap-1">
+                <span className="font-display text-[28px] font-extrabold">
+                  {roughPrice(perMonth)}
+                  <span className="font-sans text-sm font-medium text-slate"> /month</span>
+                </span>
+                <span className="flex items-center gap-1.5 text-sm text-slate">
+                  <SaveTag pct={price?.discountPct ?? 0} />
+                  <WasPrice cents={price?.beforeDiscountCents ?? null} /> {roughPrice(total)} total
+                </span>
+              </span>
+            ) : total !== null ? (
               <span className="flex flex-col items-end gap-1">
                 <span className="font-display text-[28px] font-extrabold">
                   <WasPrice cents={price?.beforeDiscountCents ?? null} className="mr-1.5 text-[17px]" />
@@ -176,6 +199,12 @@ function Card({ vehicle, dates, layout = "tile", priority, heart, distanceMi }: 
                 {price?.beforeDiscountCents != null && price.discountLabel && (
                   <Tag tone="mint" className="mt-0.5">{price.discountLabel}</Tag>
                 )}
+              </span>
+            ) : week ? (
+              <span className="flex items-center gap-1.5 text-[15px] font-bold">
+                {roughPrice(week.cents)}
+                <span className="font-medium text-slate">/week</span>
+                <SaveTag pct={week.pct} />
               </span>
             ) : (
               <span className="text-sm text-slate">Add dates for a total</span>

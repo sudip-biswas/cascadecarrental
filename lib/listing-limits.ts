@@ -20,4 +20,7 @@ export const LIMITS = {
   photoMaxBytes: 10 * 1024 * 1024,
 } as const;
 
+/** The longest trip a new car takes: three months, so monthly rentals fit. The column default matches. */
+export const DEFAULT_MAX_TRIP_DAYS = 90;
+
 export const VIN_PATTERN = /^[A-HJ-NPR-Z0-9]{17}$/;

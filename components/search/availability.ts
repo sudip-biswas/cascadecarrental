@@ -5,6 +5,24 @@ import { startsOnWeekend } from "@/lib/trip-rules";
 import { daysBetween, type DateKey } from "./dates";
 import type { ListedVehicle } from "./vehicle";
 
+/** Every car's day prices over the dates. A month of a whole fleet runs past one 1,000-row page. */
+async function dayPriceRows(ids: string[], from: DateKey, until: DateKey) {
+  const rows: { vehicle_id: string; date: string; price_cents: number }[] = [];
+  for (let page = 0; ; page++) {
+    const { data } = await createAdminClient()
+      .from("vehicle_daily_prices")
+      .select("vehicle_id, date, price_cents")
+      .in("vehicle_id", ids)
+      .gte("date", from)
+      .lt("date", until)
+      .order("vehicle_id")
+      .order("date")
+      .range(page * 1000, page * 1000 + 999);
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) return rows;
+  }
+}
+
 /**
  * Keeps the cars that can actually be booked for these dates: not booked or
  * blocked, with room for the host's time between trips, inside their trip length
@@ -46,12 +64,7 @@ export async function availableFor(vehicles: ListedVehicle[], from: DateKey, unt
       .in("vehicle_id", ids)
       .lt("blocked_from", end.toISOString())
       .gt("blocked_to", start.toISOString()),
-    admin
-      .from("vehicle_daily_prices")
-      .select("vehicle_id, date, price_cents")
-      .in("vehicle_id", ids)
-      .gte("date", from)
-      .lt("date", until),
+    dayPriceRows(ids, from, until),
   ]);
   const buffer = new Map(bookable.map((v) => [v.id, v.trip_buffer_hours * 3_600_000]));
   const taken = new Set([
@@ -64,7 +77,7 @@ export async function availableFor(vehicles: ListedVehicle[], from: DateKey, unt
     ...(blocks.data ?? []).map((row) => row.vehicle_id),
   ]);
   const dayPrices = new Map<string, Record<string, number>>();
-  for (const row of prices.data ?? []) {
+  for (const row of prices) {
     dayPrices.set(row.vehicle_id, { ...dayPrices.get(row.vehicle_id), [row.date]: row.price_cents });
   }
   return bookable.filter((v) => !taken.has(v.id)).map((v) => ({ ...v, day_prices: dayPrices.get(v.id) ?? {} }));

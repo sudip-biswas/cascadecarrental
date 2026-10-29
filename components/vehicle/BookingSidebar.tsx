@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Divider, PriceRow } from "@/components/kit";
 import {
   computePricing,
+  DAYS_PER_MONTH,
   dayRates,
   DISCOUNT_TIERS,
   lastMinuteBoostPct,
   NON_REFUNDABLE_DISCOUNT,
+  stretchPrice,
   YOUNG_DRIVER_AGE,
   type DailyPrices,
   type RateType,
@@ -23,6 +25,7 @@ import { PickupPicker } from "@/components/checkout/DeliverySection";
 import { CAR_SPOT, spotFeeCents, type PickupOption } from "@/lib/locations";
 import {
   DEFAULT_TIME,
+  addDays,
   bookedNights,
   daysBetween,
   todayKey,
@@ -178,6 +181,23 @@ export function CarBooking({
   const perDay = from && until && days > 0 ? pricing.dailyRateCents : todayCents;
   const firstTier = DISCOUNT_TIERS.find((tier) => vehicle[tier.column] > 0);
   const longTripDeal = firstTier && `Save ${vehicle[firstTier.column]}% on trips of ${firstTier.days}+ days.`;
+  // Days inside the notice window, or when the host can't meet guests at all.
+  const insideNotice = (key: DateKey) =>
+    (zonedInstant(key, fromTime).getTime() - Date.now()) / 3_600_000 < vehicle.advance_notice_hours ||
+    isClosedOn(hours, key);
+
+  // A week and a month from the first day the host can meet, as Turo shows them before dates are picked.
+  const [firstDay] = useState(() => {
+    const today = todayKey();
+    return [0, 1, 2, 3].map((i) => addDays(today, i)).find((key) => !insideNotice(key)) ?? addDays(today, 1);
+  });
+  const stretches = [
+    { label: "1 week", days: 7, per: "week" },
+    { label: "1 month", days: DAYS_PER_MONTH, per: "month" },
+  ]
+    .filter((s) => s.days >= vehicle.min_trip_days && (!vehicle.max_trip_days || s.days <= vehicle.max_trip_days))
+    .map((s) => ({ ...s, ...stretchPrice(vehicle.daily_rate_cents, firstDay, s.days, dailyPrices, vehicle) }))
+    .filter((s) => s.pct > 0);
   const payNow = priceFor("non_refundable");
   const flexible = priceFor("refundable");
 
@@ -225,11 +245,6 @@ export function CarBooking({
   const checkoutUrl = `/cars/${vehicle.id}/checkout?${query({ from, until, fromTime, untilTime, rate })}${spot === CAR_SPOT ? "" : `&spot=${spot}`}`;
   const reserveHref = isLoggedIn ? checkoutUrl : `/login?redirectTo=${encodeURIComponent(checkoutUrl)}`;
 
-  // Days inside the notice window, or when the host can't meet guests at all.
-  const insideNotice = (key: DateKey) =>
-    (zonedInstant(key, fromTime).getTime() - Date.now()) / 3_600_000 < vehicle.advance_notice_hours ||
-    isClosedOn(hours, key);
-
   const chargeNote = vehicle.instant_book
     ? "Instant book: you're charged when you book."
     : `Nothing is charged until ${hostName} says yes. Your card is only held.`;
@@ -250,7 +265,28 @@ export function CarBooking({
           {days > 0 && <span className="text-[15px] text-slate">{pluralize(days, "day")}</span>}
         </div>
 
-        {!ready && longTripDeal && <p className="rounded-[14px] bg-mint px-3.5 py-2.5 text-sm font-semibold text-mint-ink">{longTripDeal}</p>}
+        {!ready && stretches.length > 0 ? (
+          <div className="flex flex-col gap-1 rounded-[18px] bg-mint p-1.5 text-mint-ink">
+            {stretches.map((s) => (
+              <button
+                key={s.per}
+                type="button"
+                onClick={() => changeDates(firstDay, addDays(firstDay, s.days))}
+                className="figures flex items-baseline justify-between gap-3 rounded-[13px] px-2.5 py-2 text-left transition-colors hover:bg-white/50"
+              >
+                <span className="text-sm font-semibold">{s.label}</span>
+                <span className="text-[15px] font-extrabold">
+                  {formatPrice(Math.round(s.cents / 100) * 100)}
+                  <span className="font-semibold">/{s.per}</span>
+                  <span className="font-semibold"> · save {s.pct}%</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          !ready &&
+          longTripDeal && <p className="rounded-[14px] bg-mint px-3.5 py-2.5 text-sm font-semibold text-mint-ink">{longTripDeal}</p>
+        )}
 
         <TripDatesPicker
           from={from}

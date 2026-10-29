@@ -1,4 +1,4 @@
-import { readDates, type DateKey } from "./dates";
+import { readDates, readMonths, type DateKey } from "./dates";
 
 export type SortKey = "price" | "price_high" | "rating" | "newest" | "distance";
 
@@ -11,6 +11,8 @@ export interface SearchFilters {
   lat: number | null;
   lng: number | null;
   dates: { from: DateKey; until: DateKey } | null;
+  /** A monthly search: how many 30-day months from the start date. Dates hold the whole stretch. */
+  months: number | null;
   types: string[];
   fuels: string[];
   minSeats: number | null;
@@ -63,11 +65,13 @@ export function parseSearchParams(raw: RawParams): SearchFilters {
   const lng = parseFloat(one(raw.lng) ?? "");
   const hasPlace = Number.isFinite(lat) && Number.isFinite(lng);
   const transmission = one(raw.transmission);
+  const monthly = readMonths(one(raw.from), one(raw.months));
   return {
     where: one(raw.where)?.trim() || null,
     lat: hasPlace ? lat : null,
     lng: hasPlace ? lng : null,
-    dates: readDates(one(raw.from), one(raw.until)),
+    dates: monthly?.dates ?? readDates(one(raw.from), one(raw.until)),
+    months: monthly?.months ?? null,
     types: list(raw.type),
     fuels: list(raw.fuel),
     minSeats: seats.length ? Math.min(...seats) : null,
