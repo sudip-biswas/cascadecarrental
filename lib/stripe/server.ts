@@ -17,6 +17,8 @@ export function getStripe(): Stripe {
 export const stripe = {
   get customers() { return getStripe().customers; },
   get paymentIntents() { return getStripe().paymentIntents; },
+  get setupIntents() { return getStripe().setupIntents; },
+  get confirmationTokens() { return getStripe().confirmationTokens; },
   get webhooks() { return getStripe().webhooks; },
   get charges() { return getStripe().charges; },
   get refunds() { return getStripe().refunds; },

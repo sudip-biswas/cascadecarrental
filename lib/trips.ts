@@ -6,6 +6,7 @@ import { CANCEL_REASON } from "@/lib/trip-status";
 import { hostEarningsCents, type DailyPrices } from "@/lib/pricing";
 import { notifyTrip, notifyTripLater, type TripEvent } from "@/lib/notify";
 import { holdDeposit } from "@/lib/charges";
+import { isPayOverTime } from "@/lib/pay-over-time";
 import { withBuffer } from "@/lib/trip-rules";
 import { sendDueScheduledMessages, syncTripMessagesLater } from "@/lib/scheduled-messages";
 
@@ -154,15 +155,20 @@ export async function applyPaymentIntent(pi: Stripe.PaymentIntent) {
   const admin = createAdminClient();
   const { data: trip } = await admin
     .from("trips")
-    .select("id, status, payment_status")
+    .select("id, status, payment_status, paid_with")
     .eq("stripe_payment_intent_id", pi.id)
     .maybeSingle();
   if (!trip) return null;
 
   const now = new Date().toISOString();
   const cancelled = isCancelled(trip.status);
-  // The saved card, so charges after the trip can use it.
-  const paymentMethod = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id;
+  // The saved card, so charges after the trip can use it. A trip paid over
+  // time already has its own card on file, and the lender can't be charged again.
+  const paymentMethod = isPayOverTime(trip.paid_with)
+    ? undefined
+    : typeof pi.payment_method === "string"
+      ? pi.payment_method
+      : pi.payment_method?.id;
   let update: TripUpdate | null = null;
   let event: TripEvent | null = null;
 

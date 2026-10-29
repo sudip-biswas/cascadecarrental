@@ -9,6 +9,7 @@ import { syncTripMessagesLater } from "@/lib/scheduled-messages";
 import type { Database, Trip, TripChange } from "@/lib/supabase/types";
 import { CHANGEABLE_STATUSES, type ChangePricing, describeChange, hasOtherConflict, loadQuoteTrip, quoteChange } from "@/lib/trip-changes";
 import { formatCurrency, zonedInstant } from "@/lib/utils";
+import { isPayOverTime } from "@/lib/pay-over-time";
 
 type TripUpdate = Database["public"]["Tables"]["trips"]["Update"];
 
@@ -121,6 +122,7 @@ type ChangeTrip = Pick<
   | "ends_at"
   | "stripe_payment_intent_id"
   | "stripe_payment_method_id"
+  | "paid_with"
   | "total_cents"
   | "subtotal_cents"
   | "rental_cents"
@@ -137,7 +139,7 @@ type ChangeTrip = Pick<
 >;
 
 const TRIP_FIELDS =
-  "id, vehicle_id, guest_id, host_id, status, payment_status, starts_at, ends_at, stripe_payment_intent_id, stripe_payment_method_id, total_cents, subtotal_cents, rental_cents, tax_cents, base_cents, daily_rate_cents, extras, extras_cents, protection_cost_cents, young_driver_cents, promo_cents, pickup_reminded_at, return_reminded_at";
+  "id, vehicle_id, guest_id, host_id, status, payment_status, starts_at, ends_at, stripe_payment_intent_id, stripe_payment_method_id, paid_with, total_cents, subtotal_cents, rental_cents, tax_cents, base_cents, daily_rate_cents, extras, extras_cents, protection_cost_cents, young_driver_cents, promo_cents, pickup_reminded_at, return_reminded_at";
 
 /** The trip's dates and money as they stand, to put back if the money doesn't move. */
 function snapshot(t: ChangeTrip): TripUpdate {
@@ -201,7 +203,8 @@ async function setTrip(trip: ChangeTrip, update: TripUpdate, guard?: { starts_at
 /** The card the trip was paid with: stored on the trip, or read back from its payment. */
 async function paymentMethod(trip: ChangeTrip) {
   if (trip.stripe_payment_method_id) return trip.stripe_payment_method_id;
-  if (!trip.stripe_payment_intent_id) return null;
+  // Paid over time: the lender can't be charged again, only the card on file.
+  if (!trip.stripe_payment_intent_id || isPayOverTime(trip.paid_with)) return null;
   const pi = await stripe.paymentIntents.retrieve(trip.stripe_payment_intent_id);
   return typeof pi.payment_method === "string" ? pi.payment_method : (pi.payment_method?.id ?? null);
 }

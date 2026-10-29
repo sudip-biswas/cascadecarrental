@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PAID_WITH_LABEL, isPayOverTime } from "@/lib/pay-over-time";
 import { ArrowLeft, MapPin } from "lucide-react";
 import { Container, Divider, PriceRow, Tag, Tile, TileTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ function headline(trip: TripRow, host: string, now: Date): string {
 
 function steps(trip: TripRow, host: string): Step[] {
   const instant = trip.vehicle?.instant_book ?? false;
+  const payer = isPayOverTime(trip.paid_with) ? PAID_WITH_LABEL[trip.paid_with] : "your card";
   const list: Step[] = [{ label: instant ? "Booked" : "Requested", when: formatDateTime(trip.created_at), done: true }];
   if (trip.status === "cancelled_guest" || trip.status === "cancelled_host") {
     list.push({
@@ -53,8 +55,8 @@ function steps(trip: TripRow, host: string): Step[] {
   if (!instant) {
     list.push(
       accepted
-        ? { label: `${host} said yes, card charged`, done: true }
-        : { label: `${host} answers`, when: "Yes charges your card. No releases the hold.", done: false }
+        ? { label: `${host} said yes, ${payer} charged`, done: true }
+        : { label: `${host} answers`, when: `Yes charges ${payer}. No releases the hold.`, done: false }
     );
   }
   list.push({

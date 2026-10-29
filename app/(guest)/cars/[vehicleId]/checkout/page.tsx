@@ -12,6 +12,7 @@ import { pluralize, toDateKey, zonedInstant, HANDOVER_TIME } from "@/lib/utils";
 import { Container, EmptyState } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { CheckoutForm, type CheckoutVehicle } from "@/components/checkout/CheckoutForm";
+import { PAID_WITH_LABEL, isPayOverTime } from "@/lib/pay-over-time";
 
 export const instant = false;
 
@@ -34,6 +35,8 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
   const untilTime = typeof query.untilTime === "string" && TIME_RE.test(query.untilTime) ? query.untilTime : HANDOVER_TIME;
   const initialRate = query.rate === "refundable" ? "refundable" : "non_refundable";
   const initialSpot = typeof query.spot === "string" ? query.spot : undefined;
+  // Back from Klarna, Affirm or Afterpay without a yes.
+  const declined = typeof query.declined === "string" && isPayOverTime(query.declined) ? query.declined : null;
 
   const supabase = await createClient();
   const user = await getUser();
@@ -117,6 +120,9 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
         dateOfBirth: profile?.date_of_birth ?? null,
         licenseRequired: process.env.REQUIRE_DRIVER_CHECK === "true" && !profile?.driving_license_verified,
       }}
+      paymentNotice={
+        declined ? `${PAID_WITH_LABEL[declined]} didn't go through, so nothing was booked. Try again or pay another way.` : undefined
+      }
     />
   );
 }

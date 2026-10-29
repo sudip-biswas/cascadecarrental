@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { applyPaymentIntent, settleTripStatuses } from "@/lib/trips";
 import { NO_INDEX } from "@/lib/site";
+import { isPayOverTime } from "@/lib/pay-over-time";
+import { formatTime, toDateKey } from "@/lib/utils";
 import { type TripRow, TRIP_SELECT } from "../_lib/trip-row";
 import { BookedView } from "../_components/booked-view";
 import { TripView } from "../_components/trip-view";
@@ -15,7 +17,7 @@ export const metadata: Metadata = { title: "Your trip", ...NO_INDEX };
 
 export default async function TripPage({ params, searchParams }: PageProps<"/trips/[tripId]">) {
   const { tripId } = await params;
-  const { booked } = await searchParams;
+  const { booked, redirect_status } = await searchParams;
 
   const supabase = await createClient();
   const user = await getUser();
@@ -40,6 +42,25 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
     } catch {
       // Stripe unreachable: the webhook will catch up.
     }
+  }
+
+  // A lender said no, or the guest backed out on its page: back to checkout to pay another way.
+  if (
+    booked === "1" &&
+    redirect_status === "failed" &&
+    isPayOverTime(trip.paid_with) &&
+    trip.vehicle &&
+    (trip.payment_status === "pending" || trip.payment_status === "failed")
+  ) {
+    const again = new URLSearchParams({
+      from: toDateKey(trip.starts_at),
+      until: toDateKey(trip.ends_at),
+      fromTime: formatTime(trip.starts_at),
+      untilTime: formatTime(trip.ends_at),
+      rate: trip.rate_type,
+      declined: trip.paid_with,
+    });
+    redirect(`/cars/${trip.vehicle.id}/checkout?${again}`);
   }
 
   const { data: review } = await supabase
