@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import type { InspectionKind } from "@/lib/inspections";
+import { shrinkPhoto } from "@/lib/shrink-photo";
 import { cn, pluralize } from "@/lib/utils";
 
 /** Same as INSPECTION_LIMITS, which can't be imported here because lib/inspections is server code. */
@@ -19,9 +20,6 @@ const ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.hei
 
 /** Photos go up in requests of about this size, under hosting body limits. */
 const BATCH_BYTES = 4 * 1024 * 1024;
-
-/** Long edge photos are scaled down to before upload. Plenty to read a scratch. */
-const MAX_EDGE = 2048;
 
 interface Pick {
   id: string;
@@ -36,31 +34,6 @@ export interface ExistingInspection {
   fuel_pct: number | null;
   notes: string | null;
   photoUrls: { path: string; url: string | null }[];
-}
-
-/**
- * Phone photos are often 5-10 MB. Scale them down so a dozen go up quickly.
- * Anything the browser can't draw (HEIC outside Safari) goes up as it is.
- */
-async function shrink(file: File): Promise<File> {
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
-    if (scale === 1 && file.size < 1024 * 1024 && file.type !== "image/heic") {
-      bitmap.close();
-      return file;
-    }
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
-    if (!blob || blob.size >= file.size) return file;
-    return new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg" });
-  } catch {
-    return file;
-  }
 }
 
 /** Splits new photos into requests that each stay under the batch size. */
@@ -165,7 +138,7 @@ export function InspectionForm({
     e.preventDefault();
     if (picks.length === 0 || odometer === "") return;
     setSaving("Getting photos ready…");
-    const files = await Promise.all(picks.filter((p) => p.file).map((p) => shrink(p.file!)));
+    const files = await Promise.all(picks.filter((p) => p.file).map((p) => shrinkPhoto(p.file!)));
     let keep = picks.filter((p) => p.path).map((p) => p.path!);
     const parts = batches(files);
 

@@ -5,6 +5,7 @@ import { ScheduledLink } from "@/components/messaging/scheduled/ScheduledTabs";
 import { InboxShell } from "@/components/messaging/InboxShell";
 import { MessageThread } from "@/components/messaging/MessageThread";
 import { ThreadHeader } from "@/components/messaging/ThreadHeader";
+import { TripPanel, loadPanel } from "@/components/messaging/TripPanel";
 import { listConversations, openConversation } from "@/components/messaging/inbox";
 import { HOST_REPLIES } from "@/components/messaging/replies";
 
@@ -21,13 +22,18 @@ export default async function HostConversationPage({ params }: PageProps<"/host/
   if (!conversation) notFound();
   if (conversation.role === "guest") redirect(`/messages/${conversationId}`);
 
-  const conversations = await listConversations(supabase, user.id, "host");
+  const [conversations, panel] = await Promise.all([
+    listConversations(supabase, user.id, "host"),
+    loadPanel(conversation),
+  ]);
 
   return (
     // Edge to edge on phones, where the thread is the whole screen.
     <div className="-mx-4 -mt-6 -mb-12 sm:-mx-7 sm:-mt-7 md:m-0">
       <InboxShell
         threadOpen
+        aside={<TripPanel data={panel} />}
+        asideFrom="wide"
         className="md:h-[calc(100dvh-140px)] md:min-h-[560px] lg:h-[calc(100dvh-76px)]"
         list={
           <ConversationList
@@ -45,6 +51,7 @@ export default async function HostConversationPage({ params }: PageProps<"/host/
             key={conversationId}
             conversationId={conversationId}
             initialMessages={conversation.messages}
+            initialPhotoUrls={conversation.photoUrls}
             currentUserId={user.id}
             otherName={conversation.other.full_name}
             basePath="/host/inbox"
@@ -56,6 +63,8 @@ export default async function HostConversationPage({ params }: PageProps<"/host/
                 trip={conversation.trip}
                 viewer="host"
                 backHref="/host/inbox"
+                panel={<TripPanel data={panel} />}
+                panelBeside="wide"
               />
             }
           />

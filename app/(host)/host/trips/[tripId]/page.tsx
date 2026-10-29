@@ -31,6 +31,7 @@ import { PROTECTION_LABEL, answerBy, isRequest, timeLeft } from "@/components/ho
 import { GuestRecord } from "@/components/host/GuestRecord";
 import { DriversCard } from "@/components/host/DriversCard";
 import { MessageThread } from "@/components/messaging/MessageThread";
+import { signMessagePhotos } from "@/components/messaging/inbox";
 import { HOST_REPLIES } from "@/components/messaging/replies";
 import { InspectionPanel } from "@/components/trip-panels/InspectionPanel";
 import { ChargesPanel } from "@/components/trip-panels/ChargesPanel";
@@ -96,6 +97,7 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
   const threads = (conversations ?? []) as unknown as { id: string; trip_id: string | null; messages: Message[] }[];
   const thread = threads.find((c) => c.trip_id === trip.id) ?? threads[0] ?? null;
   const messages = [...(thread?.messages ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const photoUrls = await signMessagePhotos(supabase, messages);
 
   const guest = firstName(trip.guest?.full_name);
   const status = tripStatus(trip, "host");
@@ -267,6 +269,7 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
             <MessageThread
               conversationId={thread?.id ?? null}
               initialMessages={messages}
+              initialPhotoUrls={photoUrls}
               currentUserId={user.id}
               otherName={trip.guest?.full_name ?? guest}
               start={thread ? undefined : { tripId: trip.id }}

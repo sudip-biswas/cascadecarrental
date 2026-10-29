@@ -26,7 +26,17 @@ function Photo({ url, alt, className }: { url: string | null; alt: string; class
 }
 
 /** Thumbnails that open big in a dialog. */
-export function PhotoGrid({ photos, label }: { photos: GridPhoto[]; label: string }) {
+export function PhotoGrid({
+  photos,
+  label,
+  className = "grid grid-cols-4 gap-1.5",
+  thumbClassName = "aspect-square w-full",
+}: {
+  photos: GridPhoto[];
+  label: string;
+  className?: string;
+  thumbClassName?: string;
+}) {
   const [open, setOpen] = useState<number | null>(null);
   if (photos.length === 0) return null;
   const current = open == null ? null : photos[open];
@@ -34,7 +44,7 @@ export function PhotoGrid({ photos, label }: { photos: GridPhoto[]; label: strin
 
   return (
     <>
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className={className}>
         {photos.map((photo, i) => (
           <button
             key={photo.path}
@@ -43,7 +53,7 @@ export function PhotoGrid({ photos, label }: { photos: GridPhoto[]; label: strin
             className="overflow-hidden rounded-[12px] focus-visible:ring-2 focus-visible:ring-ink focus-visible:outline-none"
             aria-label={`Open ${label} photo ${i + 1}`}
           >
-            <Photo url={photo.url} alt="" className="aspect-square w-full" />
+            <Photo url={photo.url} alt="" className={thumbClassName} />
           </button>
         ))}
       </div>

@@ -1,11 +1,14 @@
+import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { Tag } from "@/components/kit";
 import { hostEarningsCents } from "@/lib/pricing";
 import { tripStatus } from "@/lib/trip-status";
-import { formatCurrency, formatDay, formatRange, formatTime } from "@/lib/utils";
+import { cn, formatCurrency, formatDay, formatRange, formatTime } from "@/lib/utils";
 import type { ThreadTrip } from "./inbox";
+import type { PanelFrom } from "./InboxShell";
+import { PanelToggle } from "./PanelToggle";
 import { RequestActions } from "./RequestActions";
 
 interface Props {
@@ -13,9 +16,17 @@ interface Props {
   trip: ThreadTrip | null;
   viewer: "guest" | "host";
   backHref: string;
+  /** The trip panel, folded under the top bar on phones. */
+  panel?: ReactNode;
+  /** From this width the panel sits beside the thread, so the trip strip here hides. */
+  panelBeside?: PanelFrom;
 }
 
-export function ThreadHeader({ otherName, trip, viewer, backHref }: Props) {
+// Ranges rather than an override, so the two display classes never compete.
+const SHOW_UNTIL: Record<PanelFrom, string> = { xl: "md:max-xl:flex", wide: "md:max-[1439px]:flex" };
+
+export function ThreadHeader({ otherName, trip, viewer, backHref, panel, panelBeside }: Props) {
+  const showWide = panelBeside ? SHOW_UNTIL[panelBeside] : "md:flex";
   const status = trip ? tripStatus(trip, viewer) : null;
   const tripHref = trip ? (viewer === "guest" ? `/trips/${trip.id}` : "/host/trips") : null;
   const car = trip?.vehicle ? `${trip.vehicle.make} ${trip.vehicle.model}` : "the car";
@@ -52,12 +63,13 @@ export function ThreadHeader({ otherName, trip, viewer, backHref }: Props) {
           </Link>
         )}
       </div>
+      {panel && <PanelToggle label={trip ? "Trip details" : "About"}>{panel}</PanelToggle>}
 
       {/* Wider screens: the trip this conversation is about. */}
       {trip && tripHref ? (
         <Link
           href={tripHref}
-          className="m-3 hidden items-center gap-3 rounded-[18px] bg-board p-2.5 transition-colors hover:bg-line md:flex"
+          className={cn("m-3 hidden items-center gap-3 rounded-[18px] bg-board p-2.5 transition-colors hover:bg-line", showWide)}
         >
           {trip.vehicle?.photo ? (
             <Image
