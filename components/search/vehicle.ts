@@ -57,6 +57,7 @@ export function tripPrice(vehicle: PublicVehicle & { day_prices?: DailyPrices },
     discountPct: priced.lengthDiscountPct,
     /** The average a day over the dates, before discounts. */
     dailyCents: priced.dailyRateCents,
+    days,
   };
 }
 

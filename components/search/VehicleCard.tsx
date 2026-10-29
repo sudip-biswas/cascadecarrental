@@ -110,10 +110,14 @@ function Card({ vehicle, dates, months, layout = "tile", priority, heart, distan
   const href = carHref(vehicle, dates);
   const name = `${vehicle.make} ${vehicle.model}`;
   const price = dates ? tripPrice(vehicle, dates.from, dates.until) : null;
-  const perDay = price?.dailyCents ?? vehicle.price_today_cents ?? vehicle.daily_rate_cents;
   const total = price?.totalCents ?? null;
   // Monthly search: what a month costs, tax in, discount applied.
   const perMonth = months && total !== null ? Math.round(total / months) : null;
+  // Beside a month, the day price is what the month works out to, so the two agree.
+  const perDay =
+    perMonth !== null && price
+      ? Math.round(price.totalCents / price.days)
+      : (price?.dailyCents ?? vehicle.price_today_cents ?? vehicle.daily_rate_cents);
   const week = dates ? null : weekPrice(vehicle);
   const isNew = vehicle.trip_count === 0;
   const unlimited = offersUnlimitedMiles(vehicle);
