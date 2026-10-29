@@ -6,6 +6,7 @@ import { ConversationList } from "@/components/messaging/ConversationList";
 import { InboxShell } from "@/components/messaging/InboxShell";
 import { MessageThread } from "@/components/messaging/MessageThread";
 import { ThreadHeader } from "@/components/messaging/ThreadHeader";
+import { TripPanel, loadPanel } from "@/components/messaging/TripPanel";
 import { listConversations, openConversation } from "@/components/messaging/inbox";
 import { GUEST_REPLIES } from "@/components/messaging/replies";
 
@@ -23,12 +24,17 @@ export default async function ConversationPage({ params }: PageProps<"/messages/
   // Host-side conversations live in the hosting inbox.
   if (conversation.role === "host") redirect(`/host/inbox/${conversationId}`);
 
-  const conversations = await listConversations(supabase, user.id, "guest");
+  const [conversations, panel] = await Promise.all([
+    listConversations(supabase, user.id, "guest"),
+    loadPanel(conversation),
+  ]);
 
   return (
     <Container className="px-0 sm:px-0 md:px-6 md:py-6">
       <InboxShell
         threadOpen
+        aside={<TripPanel data={panel} />}
+        asideFrom="xl"
         className="md:h-[calc(100dvh-118px)] md:min-h-[560px]"
         list={
           <ConversationList
@@ -45,6 +51,7 @@ export default async function ConversationPage({ params }: PageProps<"/messages/
             key={conversationId}
             conversationId={conversationId}
             initialMessages={conversation.messages}
+            initialPhotoUrls={conversation.photoUrls}
             currentUserId={user.id}
             otherName={conversation.other.full_name}
             basePath="/messages"
@@ -56,6 +63,8 @@ export default async function ConversationPage({ params }: PageProps<"/messages/
                 trip={conversation.trip}
                 viewer="guest"
                 backHref="/messages"
+                panel={<TripPanel data={panel} />}
+                panelBeside="xl"
               />
             }
           />

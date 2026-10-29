@@ -3,9 +3,12 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyMessageLater } from "@/lib/notify";
+import { MESSAGE_PHOTO_LIMITS, MESSAGE_PHOTO_PATH } from "@/lib/message-photos";
 
 const schema = z.object({
-  body: z.string().trim().min(1).max(2000),
+  body: z.string().trim().max(2000),
+  /** Paths from /api/messages/photos. */
+  photos: z.array(z.string().regex(MESSAGE_PHOTO_PATH)).max(MESSAGE_PHOTO_LIMITS.perMessage).default([]),
   conversationId: z.string().uuid().optional(),
   /** Starting a new conversation: who it's with. */
   recipientId: z.string().uuid().optional(),
@@ -48,7 +51,10 @@ export async function POST(req: Request) {
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("Write a message first.", 400);
-  const { body, conversationId, recipientId, tripId } = parsed.data;
+  const { body, photos, conversationId, recipientId, tripId } = parsed.data;
+  if (!body && !photos.length) return fail("Write a message first.", 400);
+  // Only your own uploads can go in a message.
+  if (photos.some((p) => !p.startsWith(`${user.id}/`))) return fail("Those photos aren't yours.", 400);
 
   let convId = conversationId;
 
@@ -83,13 +89,13 @@ export async function POST(req: Request) {
   // RLS only lets participants post.
   const { data: message, error } = await supabase
     .from("messages")
-    .insert({ conversation_id: convId, sender_id: user.id, body })
+    .insert({ conversation_id: convId, sender_id: user.id, body, photos })
     .select()
     .single();
 
   if (error) return fail("Message not sent. Try again.", 500);
 
-  notifyMessageLater(convId, user.id, body);
+  notifyMessageLater(convId, user.id, body, photos.length);
 
   return NextResponse.json({ message, conversationId: convId });
 }

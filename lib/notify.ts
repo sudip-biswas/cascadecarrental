@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
+import { messagePreview } from "@/lib/message-photos";
 import { formatCurrency, formatDateTime, formatRange } from "@/lib/utils";
 
 export interface Notice {
@@ -244,7 +245,7 @@ const MESSAGE_EMAIL_WINDOW_MS = 15 * 60 * 1000;
  * feed and by email, at most once per window so a quick back-and-forth
  * doesn't flood their inbox.
  */
-export async function notifyMessage(conversationId: string, senderId: string, body: string): Promise<void> {
+export async function notifyMessage(conversationId: string, senderId: string, body: string, photoCount = 0): Promise<void> {
   const admin = createAdminClient();
   const { data: conv } = await admin
     .from("conversations")
@@ -257,12 +258,12 @@ export async function notifyMessage(conversationId: string, senderId: string, bo
   const sender = (fromHost ? conv.host : conv.guest) as { full_name: string } | null;
   const name = first(sender?.full_name, fromHost ? "Your host" : "Your guest");
   const userId = fromHost ? conv.guest_id : conv.host_id;
-  const text = body.trim();
+  const text = messagePreview({ body, photos: Array(photoCount).fill("") });
   await notify({
     userId,
     kind: "message",
     title: `New message from ${name}`,
-    body: text ? (text.length > 280 ? `${text.slice(0, 277)}…` : text) : `${name} sent photos.`,
+    body: text.length > 280 ? `${text.slice(0, 277)}…` : text,
     href: fromHost ? `/messages/${conv.id}` : `/host/inbox/${conv.id}`,
     tripId: conv.trip_id,
     dedupeKey: `message:${conv.id}:${userId}:${Math.floor(Date.now() / MESSAGE_EMAIL_WINDOW_MS)}`,
@@ -271,8 +272,8 @@ export async function notifyMessage(conversationId: string, senderId: string, bo
 }
 
 /** notifyMessage once the response is out. */
-export function notifyMessageLater(conversationId: string, senderId: string, body: string): void {
-  const send = () => notifyMessage(conversationId, senderId, body).catch((err) => console.error("[notify] failed", err));
+export function notifyMessageLater(conversationId: string, senderId: string, body: string, photoCount = 0): void {
+  const send = () => notifyMessage(conversationId, senderId, body, photoCount).catch((err) => console.error("[notify] failed", err));
   try {
     after(send);
   } catch {

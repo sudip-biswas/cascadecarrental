@@ -715,6 +715,8 @@ export type Database = {
           conversation_id: string;
           sender_id: string;
           body: string;
+          /** Paths in the message-photos bucket. */
+          photos: string[];
           read_at: string | null;
           created_at: string;
         };
@@ -723,6 +725,7 @@ export type Database = {
           conversation_id: string;
           sender_id: string;
           body: string;
+          photos?: string[];
           read_at?: string | null;
           created_at?: string;
         };

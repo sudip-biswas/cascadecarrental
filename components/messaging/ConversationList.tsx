@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
+import { messagePreview } from "@/lib/message-photos";
 import { cn, formatDateShort, formatRange, formatTime, toDateKey } from "@/lib/utils";
 import type { ConversationSummary } from "./inbox";
 
@@ -94,7 +95,7 @@ export function ConversationList({
                         )}
                       >
                         {c.last
-                          ? `${c.last.sender_id === c.other.id ? "" : "You: "}${c.last.body}`
+                          ? `${c.last.sender_id === c.other.id ? "" : "You: "}${messagePreview(c.last)}`
                           : "No messages yet"}
                       </span>
                       {c.unread > 0 && (

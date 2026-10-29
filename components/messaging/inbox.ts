@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Message, Trip } from "@/lib/supabase/types";
+import { MESSAGE_PHOTO_BUCKET, MESSAGE_PHOTO_URL_SECONDS } from "@/lib/message-photos";
 
 type Client = SupabaseClient<Database>;
 
@@ -24,7 +25,7 @@ export interface ConversationSummary {
   id: string;
   other: Person;
   trip: ThreadTrip | null;
-  last: Pick<Message, "body" | "created_at" | "sender_id"> | null;
+  last: Pick<Message, "body" | "photos" | "created_at" | "sender_id"> | null;
   unread: number;
 }
 
@@ -96,7 +97,7 @@ export async function listConversations(
   const [{ data: recent }, { data: unread }] = await Promise.all([
     supabase
       .from("messages")
-      .select("conversation_id, body, created_at, sender_id")
+      .select("conversation_id, body, photos, created_at, sender_id")
       .in("conversation_id", ids)
       .order("created_at", { ascending: false }),
     supabase
@@ -134,6 +135,18 @@ export interface ConversationDetail {
   role: "guest" | "host";
   trip: ThreadTrip | null;
   messages: Message[];
+  /** Signed links for the photos in those messages, by path. */
+  photoUrls: Record<string, string>;
+}
+
+/** Short-lived links for message photos. Storage only signs ones this person can read. */
+export async function signMessagePhotos(supabase: Client, messages: Pick<Message, "photos">[]): Promise<Record<string, string>> {
+  const paths = messages.flatMap((m) => m.photos ?? []);
+  if (!paths.length) return {};
+  const { data } = await supabase.storage.from(MESSAGE_PHOTO_BUCKET).createSignedUrls(paths, MESSAGE_PHOTO_URL_SECONDS);
+  const urls: Record<string, string> = {};
+  for (const s of data ?? []) if (s.path && s.signedUrl) urls[s.path] = s.signedUrl;
+  return urls;
 }
 
 /**
@@ -172,5 +185,6 @@ export async function openConversation(
     role: row.guest_id === userId ? "guest" : "host",
     trip: toThreadTrip(row.trip),
     messages: messages ?? [],
+    photoUrls: await signMessagePhotos(supabase, messages ?? []),
   };
 }
