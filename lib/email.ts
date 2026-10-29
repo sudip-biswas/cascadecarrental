@@ -68,7 +68,9 @@ export async function sendEmail(email: Email): Promise<boolean> {
       });
       return res.ok;
     }
-    console.info(`[email] ${email.to}: ${email.subject}`);
+    // In production a missing key means nobody gets email, so say so where errors are watched.
+    if (process.env.VERCEL_ENV === "production") console.error(`[email] RESEND_API_KEY isn't set, so "${email.subject}" wasn't emailed`);
+    else console.info(`[email] ${email.to}: ${email.subject}`);
     return false;
   } catch (err) {
     console.error("[email] failed", err);

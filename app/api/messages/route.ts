@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyMessageLater } from "@/lib/notify";
 
 const schema = z.object({
   body: z.string().trim().min(1).max(2000),
@@ -87,6 +88,8 @@ export async function POST(req: Request) {
     .single();
 
   if (error) return fail("Message not sent. Try again.", 500);
+
+  notifyMessageLater(convId, user.id, body);
 
   return NextResponse.json({ message, conversationId: convId });
 }
