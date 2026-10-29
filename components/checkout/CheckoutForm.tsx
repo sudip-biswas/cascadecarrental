@@ -578,6 +578,10 @@ function CheckoutLayout({
               A {formatPrice(vehicle.deposit_cents)} hold is placed when the trip starts and released after return.
             </Notice>
           )}
+          <p className="px-1 text-[13px] leading-snug text-slate">
+            Booking means you and any added drivers agree to the trip rules: only approved drivers, no smoking, the same
+            fuel back, and tolls, tickets or damage charged within 7 days. The full trip agreement is on your trip page.
+          </p>
         </aside>
       </Container>
 
