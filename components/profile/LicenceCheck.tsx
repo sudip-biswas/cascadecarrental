@@ -12,6 +12,9 @@ interface Props {
   error: string | null;
   /** Just back from Stripe's check page. */
   returned?: boolean;
+  /** A trip page to come back to after Stripe, instead of the profile. */
+  returnTo?: string;
+  leadClassName?: string;
 }
 
 const LEAD: Record<Status, string> = {
@@ -22,7 +25,7 @@ const LEAD: Record<Status, string> = {
 };
 
 /** The licence check: status, and a button that sends you to Stripe to do it. */
-export function LicenceCheck({ status, error, returned = false }: Props) {
+export function LicenceCheck({ status, error, returned = false, returnTo, leadClassName = "text-sky-ink" }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -36,18 +39,22 @@ export function LicenceCheck({ status, error, returned = false }: Props) {
       .catch(() => null)
       .then(() => {
         if (gone) return;
-        router.replace("/profile", { scroll: false });
+        router.replace(returnTo ?? "/profile", { scroll: false });
         router.refresh();
       });
     return () => {
       gone = true;
     };
-  }, [returned, router]);
+  }, [returned, returnTo, router]);
 
   async function start() {
     setBusy(true);
     setNotice(null);
-    const res = await fetch("/api/identity", { method: "POST" }).catch(() => null);
+    const res = await fetch("/api/identity", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ returnTo }),
+    }).catch(() => null);
     const body = (await res?.json().catch(() => null)) as { url?: string; error?: string; code?: string } | null;
     if (res?.ok && body?.url) {
       window.location.assign(body.url);
@@ -63,7 +70,7 @@ export function LicenceCheck({ status, error, returned = false }: Props) {
 
   return (
     <span className="flex flex-col items-start gap-3">
-      <span className="text-[15px] text-sky-ink">
+      <span className={`text-[15px] ${leadClassName}`}>
         {LEAD[status]}
         {status === "failed" && error && <> {error}</>}
       </span>

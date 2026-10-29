@@ -526,6 +526,7 @@ export type Database = {
           deposit_payment_intent_id: string | null;
           deposit_status: "none" | "held" | "released" | "captured" | "failed";
           pickup_reminded_at: string | null;
+          checks_reminded_at: string | null;
           return_reminded_at: string | null;
           completed_at: string | null;
           paid_out_at: string | null;
@@ -579,6 +580,7 @@ export type Database = {
           deposit_payment_intent_id?: string | null;
           deposit_status?: "none" | "held" | "released" | "captured" | "failed";
           pickup_reminded_at?: string | null;
+          checks_reminded_at?: string | null;
           return_reminded_at?: string | null;
           completed_at?: string | null;
           paid_out_at?: string | null;
@@ -631,6 +633,7 @@ export type Database = {
           deposit_payment_intent_id?: string | null;
           deposit_status?: "none" | "held" | "released" | "captured" | "failed";
           pickup_reminded_at?: string | null;
+          checks_reminded_at?: string | null;
           return_reminded_at?: string | null;
           completed_at?: string | null;
           paid_out_at?: string | null;
@@ -1513,6 +1516,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      guest_insurance: {
+        Row: {
+          user_id: string;
+          has_none: boolean;
+          insurer: string | null;
+          policy_number: string | null;
+          expires_on: string | null;
+          card_path: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          has_none?: boolean;
+          insurer?: string | null;
+          policy_number?: string | null;
+          expires_on?: string | null;
+          card_path?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          has_none?: boolean;
+          insurer?: string | null;
+          policy_number?: string | null;
+          expires_on?: string | null;
+          card_path?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       notifications: {
         Row: {
           id: string;
@@ -1582,6 +1618,7 @@ export type TripInspection = Tables["trip_inspections"]["Row"];
 export type TripCharge = Tables["trip_charges"]["Row"];
 export type TripChange = Tables["trip_changes"]["Row"];
 export type TripDriver = Tables["trip_drivers"]["Row"];
+export type GuestInsurance = Tables["guest_insurance"]["Row"];
 export type PromoCode = Tables["promo_codes"]["Row"];
 export type ListingReport = Tables["listing_reports"]["Row"];
 export type HostLocationKind = "home" | "airport" | "hotel" | "transit" | "other" | "custom";

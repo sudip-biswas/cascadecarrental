@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Check, IdCard } from "lucide-react";
+import { Check, IdCard, ShieldCheck } from "lucide-react";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Container, Tile, TileTitle } from "@/components/kit";
@@ -9,7 +9,9 @@ import { ProfileForm } from "@/components/profile/ProfileForm";
 import { LicenceCheck } from "@/components/profile/LicenceCheck";
 import { GuestRecord } from "@/components/host/GuestRecord";
 import { SignOutButton } from "@/components/profile/SignOutButton";
-import { cn, formatDate, pluralize } from "@/lib/utils";
+import { InsuranceForm } from "@/components/profile/InsuranceForm";
+import { loadOwnInsurance } from "@/lib/guest-checks";
+import { cn, formatDate, pluralize, zonedInstant } from "@/lib/utils";
 import { NO_INDEX } from "@/lib/site";
 
 export const instant = false;
@@ -21,7 +23,7 @@ export default async function ProfilePage({ searchParams }: PageProps<"/profile"
   const user = await getUser();
   if (!user) redirect("/login?redirectTo=/profile");
 
-  const [{ data: profile }, { count: carCount }] = await Promise.all([
+  const [{ data: profile }, { count: carCount }, insurance] = await Promise.all([
     // Phone is a private column, so read your own profile with the admin client.
     createAdminClient()
       .from("profiles")
@@ -29,6 +31,7 @@ export default async function ProfilePage({ searchParams }: PageProps<"/profile"
       .eq("id", user.id)
       .single(),
     supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("host_id", user.id),
+    loadOwnInsurance(user.id),
   ]);
 
   const name = profile?.full_name || user.email || "You";
@@ -121,6 +124,23 @@ export default async function ProfilePage({ searchParams }: PageProps<"/profile"
               error={profile?.identity_error ?? null}
               returned={verify === "done"}
             />
+          </span>
+        </Tile>
+
+        <Tile id="insurance" className="flex flex-wrap items-start gap-[18px] p-6">
+          <span className="flex size-16 items-center justify-center rounded-[18px] bg-board">
+            <ShieldCheck className="size-[30px]" strokeWidth={1.75} />
+          </span>
+          <span className="flex flex-[1_1_200px] flex-col items-start gap-3">
+            <span className="block font-display text-[24px] font-extrabold">Car insurance</span>
+            <span className="text-[15px] text-slate">
+              {insurance?.has_none
+                ? "You said you don't have any, so every trip needs a protection plan."
+                : insurance?.insurer && insurance.expires_on
+                  ? `${insurance.insurer}, through ${formatDate(zonedInstant(insurance.expires_on))}. Hosts see the insurer and the end date, never the policy number.`
+                  : "Book without a protection plan and your own insurance covers the car. Add it once and it's used on every trip."}
+            </span>
+            <InsuranceForm insurance={insurance} />
           </span>
         </Tile>
 

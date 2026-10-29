@@ -8,6 +8,7 @@ import { InspectionPanel } from "@/components/trip-panels/InspectionPanel";
 import { ChargesPanel } from "@/components/trip-panels/ChargesPanel";
 import { ChangePanel } from "@/components/trip-panels/ChangePanel";
 import { DriversPanel } from "@/components/trip-panels/DriversPanel";
+import { ChecksPanel } from "@/components/trip-panels/ChecksPanel";
 import { InstructionsPanel, InstructionsWelcome } from "@/components/trip-panels/InstructionsPanel";
 import { freeCancellationUntil, guestCancellation } from "@/lib/cancellation";
 import { tripStatus } from "@/lib/trip-status";
@@ -101,7 +102,18 @@ function Countdown({ trip, now }: { trip: TripRow; now: Date }) {
   );
 }
 
-export function TripView({ trip, reviewed, userId }: { trip: TripRow; reviewed: boolean; userId: string }) {
+export function TripView({
+  trip,
+  reviewed,
+  userId,
+  verifyReturned = false,
+}: {
+  trip: TripRow;
+  reviewed: boolean;
+  userId: string;
+  /** Just back from Stripe's licence check. */
+  verifyReturned?: boolean;
+}) {
   const now = new Date();
   const host = hostFirstName(trip);
   const status = tripStatus(trip, "guest");
@@ -135,6 +147,7 @@ export function TripView({ trip, reviewed, userId }: { trip: TripRow; reviewed: 
       <Container className="flex flex-wrap items-start gap-4 py-6">
         <main className="flex min-w-0 flex-[999_1_600px] flex-col gap-3.5">
           <InstructionsWelcome tripId={trip.id} viewer="guest" userId={userId} />
+          <ChecksPanel tripId={trip.id} userId={userId} returned={verifyReturned} />
           {!cancelled && (
             <Tile className="flex flex-col gap-3 sm:p-6">
               <span className="flex items-center gap-2 text-sm font-semibold text-slate">

@@ -446,7 +446,7 @@ function CheckoutLayout({
                     <span className="text-sm opacity-75">
                       {p.id
                         ? `${formatCurrency(perDay * pricing.days)} for this trip`
-                        : "Your own insurance covers the car, or you do."}
+                        : "Your own insurance covers the car. You add it before pick-up."}
                     </span>
                   </Choice>
                 );

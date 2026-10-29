@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "Your trip", ...NO_INDEX };
 
 export default async function TripPage({ params, searchParams }: PageProps<"/trips/[tripId]">) {
   const { tripId } = await params;
-  const { booked } = await searchParams;
+  const { booked, verify } = await searchParams;
 
   const supabase = await createClient();
   const user = await getUser();
@@ -62,5 +62,5 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
 
   const cancelled = trip.status === "cancelled_guest" || trip.status === "cancelled_host";
   if (booked === "1" && !cancelled) return <BookedView trip={trip} />;
-  return <TripView trip={trip} reviewed={!!review} userId={user.id} />;
+  return <TripView trip={trip} reviewed={!!review} userId={user.id} verifyReturned={verify === "done"} />;
 }
