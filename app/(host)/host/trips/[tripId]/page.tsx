@@ -293,6 +293,11 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
             <Button asChild variant="outline" className="h-[48px] text-base">
               <a href="#messages">Message {guest}</a>
             </Button>
+            {(trip.status === "approved" || afterPickup) && (
+              <Button asChild variant="outline" className="h-[48px] text-base">
+                <Link href={`/trips/${trip.id}/agreement`}>Trip agreement</Link>
+              </Button>
+            )}
           </Tile>
 
           <Tile className="flex flex-col gap-4">

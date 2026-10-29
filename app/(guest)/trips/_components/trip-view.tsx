@@ -204,9 +204,16 @@ export function TripView({ trip, reviewed, userId }: { trip: TripRow; reviewed: 
             <Divider className="mt-1" />
             <PriceRow strong label={paidLabel(trip)} value={formatCurrency(trip.total_cents)} />
             {!cancelled && trip.payment_status !== "pending" && (
-              <Button asChild variant="secondary" size="sm" className="mt-1 self-start">
-                <Link href={`/trips/${trip.id}/receipt`}>Full receipt</Link>
-              </Button>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <Button asChild variant="secondary" size="sm">
+                  <Link href={`/trips/${trip.id}/receipt`}>Full receipt</Link>
+                </Button>
+                {trip.status !== "pending" && (
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href={`/trips/${trip.id}/agreement`}>Trip agreement</Link>
+                  </Button>
+                )}
+              </div>
             )}
           </Tile>
 
