@@ -41,6 +41,16 @@ export async function notify(notice: Notice): Promise<void> {
     }
     if (notice.email === false) return;
 
+    // Message emails can be turned off; the notice stays in the feed either way.
+    if (notice.kind === "message") {
+      const { data: prefs } = await admin
+        .from("notification_preferences")
+        .select("messages_email")
+        .eq("user_id", notice.userId)
+        .maybeSingle();
+      if (prefs?.messages_email === false) return;
+    }
+
     const { data } = await admin.auth.admin.getUserById(notice.userId);
     const to = data.user?.email;
     if (!to) return;

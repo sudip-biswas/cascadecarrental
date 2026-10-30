@@ -10,6 +10,7 @@ import { LicenceCheck } from "@/components/profile/LicenceCheck";
 import { GuestRecord } from "@/components/host/GuestRecord";
 import { SignOutButton } from "@/components/profile/SignOutButton";
 import { InsuranceForm } from "@/components/profile/InsuranceForm";
+import { NotificationSettings } from "@/components/profile/NotificationSettings";
 import { loadOwnInsurance } from "@/lib/guest-checks";
 import { cn, formatDate, pluralize, zonedInstant } from "@/lib/utils";
 import { NO_INDEX } from "@/lib/site";
@@ -23,7 +24,7 @@ export default async function ProfilePage({ searchParams }: PageProps<"/profile"
   const user = await getUser();
   if (!user) redirect("/login?redirectTo=/profile");
 
-  const [{ data: profile }, { count: carCount }, insurance] = await Promise.all([
+  const [{ data: profile }, { count: carCount }, insurance, { data: prefs }] = await Promise.all([
     // Phone is a private column, so read your own profile with the admin client.
     createAdminClient()
       .from("profiles")
@@ -32,6 +33,11 @@ export default async function ProfilePage({ searchParams }: PageProps<"/profile"
       .single(),
     supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("host_id", user.id),
     loadOwnInsurance(user.id),
+    supabase
+      .from("notification_preferences")
+      .select("messages_email, recommendations_email, offers_email, news_email")
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
 
   const name = profile?.full_name || user.email || "You";
@@ -160,6 +166,14 @@ export default async function ProfilePage({ searchParams }: PageProps<"/profile"
 
         <SignOutButton />
       </div>
+
+      <Tile id="notifications" className="flex flex-col gap-2.5 p-6 md:col-span-2">
+        <TileTitle className="mb-1.5">Notification settings</TileTitle>
+        <NotificationSettings
+          userId={user.id}
+          initial={prefs ?? { messages_email: true, recommendations_email: false, offers_email: false, news_email: false }}
+        />
+      </Tile>
     </Container>
   );
 }

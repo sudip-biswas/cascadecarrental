@@ -1652,6 +1652,33 @@ export type Database = {
         };
         Relationships: [];
       };
+      notification_preferences: {
+        Row: {
+          user_id: string;
+          messages_email: boolean;
+          recommendations_email: boolean;
+          offers_email: boolean;
+          news_email: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          messages_email?: boolean;
+          recommendations_email?: boolean;
+          offers_email?: boolean;
+          news_email?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          messages_email?: boolean;
+          recommendations_email?: boolean;
+          offers_email?: boolean;
+          news_email?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       notifications: {
         Row: {
           id: string;
@@ -1724,6 +1751,7 @@ export type TripCharge = Tables["trip_charges"]["Row"];
 export type TripChange = Tables["trip_changes"]["Row"];
 export type TripDriver = Tables["trip_drivers"]["Row"];
 export type GuestInsurance = Tables["guest_insurance"]["Row"];
+export type NotificationPreferences = Tables["notification_preferences"]["Row"];
 export type PromoCode = Tables["promo_codes"]["Row"];
 export type ListingReport = Tables["listing_reports"]["Row"];
 export type HostLocationKind = "home" | "airport" | "hotel" | "transit" | "other" | "custom";
