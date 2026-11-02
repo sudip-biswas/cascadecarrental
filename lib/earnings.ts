@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Trip, TripCharge, Vehicle } from "@/lib/supabase/types";
+import { allRows } from "@/lib/supabase/all-rows";
 import { hostEarningsCents } from "@/lib/pricing";
 import { CANCEL_REASON, isAbandoned } from "@/lib/trip-status";
 import { toDateKey } from "@/lib/utils";
@@ -39,24 +40,32 @@ export interface EarningsData {
 /** Everything the earnings and transactions pages need, straight from the database. */
 export async function loadEarnings(supabase: Client, hostId: string): Promise<EarningsData> {
   const [trips, charges, cars] = await Promise.all([
-    supabase
-      .from("trips")
-      .select(
-        "id, vehicle_id, guest_id, status, payment_status, subtotal_cents, starts_at, ends_at, cancellation_reason, paid_out_at, guest:profiles!guest_id(full_name), vehicle:vehicles(id, make, model, year)"
-      )
-      .eq("host_id", hostId)
-      .order("ends_at", { ascending: false })
-      .overrideTypes<EarningsTrip[], { merge: false }>(),
-    supabase
-      .from("trip_charges")
-      .select("id, trip_id, kind, amount_cents, status, description, created_at, responded_at, paid_out_at")
-      .eq("host_id", hostId)
-      .eq("status", "paid"),
+    allRows<EarningsTrip>((from, to) =>
+      supabase
+        .from("trips")
+        .select(
+          "id, vehicle_id, guest_id, status, payment_status, subtotal_cents, starts_at, ends_at, cancellation_reason, paid_out_at, guest:profiles!guest_id(full_name), vehicle:vehicles(id, make, model, year)"
+        )
+        .eq("host_id", hostId)
+        .order("ends_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+        .overrideTypes<EarningsTrip[], { merge: false }>()
+    ),
+    allRows<EarningsCharge>((from, to) =>
+      supabase
+        .from("trip_charges")
+        .select("id, trip_id, kind, amount_cents, status, description, created_at, responded_at, paid_out_at")
+        .eq("host_id", hostId)
+        .eq("status", "paid")
+        .order("id")
+        .range(from, to)
+    ),
     supabase.from("vehicles").select("id, make, model, year").eq("host_id", hostId).order("created_at"),
   ]);
   return {
-    trips: (trips.data ?? []).filter((t) => !isAbandoned(t)),
-    charges: charges.data ?? [],
+    trips: trips.filter((t) => !isAbandoned(t)),
+    charges,
     cars: cars.data ?? [],
   };
 }
@@ -110,9 +119,13 @@ export interface CarEarnings {
   trips: number;
 }
 
-/** Years with any trip, plus this one, newest first. */
+/** Years with any trip or paid charge, plus this one, newest first. */
 export function earningYears(data: EarningsData, now = new Date()): string[] {
-  const years = new Set([yearOf(now), ...data.trips.map((t) => yearOf(t.ends_at))]);
+  const years = new Set([
+    yearOf(now),
+    ...data.trips.map((t) => yearOf(t.ends_at)),
+    ...data.charges.map((c) => yearOf(chargePaidAt(c))),
+  ]);
   return [...years].sort().reverse();
 }
 
@@ -277,6 +290,75 @@ export function transactions(data: EarningsData, year: string): Transaction[] {
   }
 
   return rows.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export interface TaxTotals {
+  /** Finished trips. */
+  trips: number;
+  /** Their price, before Cascade's fee. */
+  grossCents: number;
+  feeCents: number;
+  /** Paid charges, all of it the host's. */
+  chargesCents: number;
+  /** Gross, less the fee, plus charges: the Earnings page's total for the year. */
+  netCents: number;
+  /** The part of net sent to the host, and the part still owed. */
+  paidOutCents: number;
+  owedCents: number;
+  /** Refunded trips and their price. None of it is in the figures above. */
+  refundedTrips: number;
+  refundedCents: number;
+}
+
+export interface TaxCar extends TaxTotals {
+  id: string;
+  name: string;
+}
+
+const noTax = (): TaxTotals => ({
+  trips: 0,
+  grossCents: 0,
+  feeCents: 0,
+  chargesCents: 0,
+  netCents: 0,
+  paidOutCents: 0,
+  owedCents: 0,
+  refundedTrips: 0,
+  refundedCents: 0,
+});
+
+/** The year's transactions added up, in total and by car, so every figure ties back to those rows. */
+export function taxYear(data: EarningsData, year: string) {
+  const tripsById = new Map(data.trips.map((t) => [t.id, t]));
+  const totals = noTax();
+  const byCar = new Map<string, TaxCar>();
+
+  for (const row of transactions(data, year)) {
+    const trip = tripsById.get(row.tripId);
+    if (!trip) continue;
+    const car = byCar.get(trip.vehicle_id) ?? { ...noTax(), id: trip.vehicle_id, name: carName(trip.vehicle) };
+    byCar.set(trip.vehicle_id, car);
+
+    for (const sum of [totals, car]) {
+      if (row.kind === "refund") {
+        sum.refundedTrips += 1;
+        sum.refundedCents += tripSplit(trip).gross;
+        continue;
+      }
+      if (row.kind === "trip") {
+        sum.trips += 1;
+        sum.grossCents += row.grossCents ?? 0;
+        sum.feeCents += row.feeCents ?? 0;
+      } else {
+        sum.chargesCents += row.amountCents;
+      }
+      sum.netCents += row.amountCents;
+      if (row.paidOutAt) sum.paidOutCents += row.amountCents;
+      else sum.owedCents += row.amountCents;
+    }
+  }
+
+  return { totals, cars: [...byCar.values()].sort((a, b) => b.netCents - a.netCents) };
 }
 
 /** Quotes a CSV cell, and defuses values a spreadsheet would run as a formula. */
