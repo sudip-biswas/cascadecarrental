@@ -3,11 +3,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Tag, Tile, TileTitle } from "@/components/kit";
 import { firstName } from "@/components/host/bits";
 import { ReplyForm } from "@/app/(host)/host/business/ratings/ReplyForm";
-import { formatDate } from "@/lib/utils";
+import { formatDate, pluralize } from "@/lib/utils";
 import { ISSUE_TAGS } from "@/components/reviews/categories";
 import type { Review } from "@/lib/supabase/types";
 import { HostReviewForm } from "./review/HostReviewForm";
-import { GUEST_RATING_LABELS, HOST_RATING_LABELS, hostReviewCloses } from "./review/window";
+import { GUEST_RATING_LABELS, HOST_RATING_LABELS, hostReviewCloses, hostReviewDaysLeft } from "./review/window";
 
 type ReviewRow = Pick<
   Review,
@@ -101,7 +101,10 @@ export async function ReviewPanel({ tripId, viewer, userId }: { tripId: string; 
   return (
     <Tile tone={!mine && open ? "butter" : "white"} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2.5">
-        <TileTitle>{mine ? `Your review of ${guest}` : `How was ${guest}?`}</TileTitle>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <TileTitle>{mine ? `Your review of ${guest}` : `How was ${guest}?`}</TileTitle>
+          {!mine && open && <Tag tone="ink">{pluralize(hostReviewDaysLeft(trip), "day")} left to rate</Tag>}
+        </div>
         {mine ? (
           <div className="flex flex-col gap-2 rounded-[18px] bg-board p-4">
             <ReviewBody review={mine} />

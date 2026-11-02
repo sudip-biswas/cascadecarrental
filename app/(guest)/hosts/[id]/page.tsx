@@ -3,6 +3,7 @@ import { Star } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { NO_INDEX } from "@/lib/site";
 import { formatDate, pluralize } from "@/lib/utils";
+import { Tag } from "@/components/kit";
 import { LISTED_VEHICLE_SELECT, type ListedVehicle } from "@/components/search/vehicle";
 import { VehicleCard } from "@/components/search/VehicleCard";
 import { withTodayPrices } from "@/components/search/prices";
@@ -19,6 +20,7 @@ type Persona = {
   trip_count: number;
   rating: number | null;
   rating_count: number;
+  owner: { top_host: boolean } | null;
 };
 
 export default async function HostProfilePage({ params }: PageProps<"/hosts/[id]">) {
@@ -27,9 +29,10 @@ export default async function HostProfilePage({ params }: PageProps<"/hosts/[id]
 
   const { data: persona } = await supabase
     .from("host_personas")
-    .select("id, name, avatar_url, host_since, bio, trip_count, rating, rating_count")
+    .select("id, name, avatar_url, host_since, bio, trip_count, rating, rating_count, owner:profiles!owner_id(top_host)")
     .eq("id", id)
-    .single();
+    .single()
+    .overrideTypes<Persona, { merge: false }>();
 
   if (!persona) notFound();
 
@@ -58,9 +61,12 @@ export default async function HostProfilePage({ params }: PageProps<"/hosts/[id]
           </span>
         )}
         <div className="flex flex-col gap-2">
-          <h1 className="font-display text-[32px] font-extrabold leading-tight tracking-[-0.025em] sm:text-[40px]">
-            {persona.name}
-          </h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="font-display text-[32px] font-extrabold leading-tight tracking-[-0.025em] sm:text-[40px]">
+              {persona.name}
+            </h1>
+            {persona.owner?.top_host && <Tag tone="butter">Top host</Tag>}
+          </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[15px] text-slate">
             {persona.rating != null && (
               <span className="flex items-center gap-1.5 font-semibold text-ink">

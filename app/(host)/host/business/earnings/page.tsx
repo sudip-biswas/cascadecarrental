@@ -119,6 +119,12 @@ export default async function EarningsPage({ searchParams }: PageProps<"/host/bu
             >
               Claims <ArrowRight className="size-[18px]" />
             </Link>
+            <Link
+              href={`/host/business/tax?year=${year}`}
+              className="flex items-center gap-2 rounded-[12px] bg-white px-3.5 py-2.5 text-[15px] font-bold transition-colors hover:bg-line"
+            >
+              Tax summary <ArrowRight className="size-[18px]" />
+            </Link>
           </div>
 
           {ranking.length > 0 && <CarRanking ranking={ranking} year={year} selected={car?.id} />}

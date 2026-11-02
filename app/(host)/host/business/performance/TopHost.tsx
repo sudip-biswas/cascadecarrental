@@ -1,13 +1,9 @@
 import Link from "next/link";
 import { Award, CalendarDays, ChevronDown, ChevronRight, Clock, MessageSquareText, Wrench } from "lucide-react";
-import { CANCEL_REASON } from "@/lib/trip-status";
-import { cn, formatDate, pluralize, toDateKey, zonedInstant } from "@/lib/utils";
+import { TOP_HOST_BARS, type RateBar, type TopHostStanding } from "@/lib/top-host";
+import { cn, pluralize } from "@/lib/utils";
 import { Tag, Tile, TileTitle } from "@/components/kit";
-import { fiveStars, percent, tagCounts, type RatingColumn, type ScoredReview } from "@/components/reviews/stats";
-import type { HostTripRow } from "../_lib/trips";
-
-/** Top host is judged on the last year of trips. */
-export const TOP_HOST_DAYS = 365;
+import { percent, tagCounts } from "@/components/reviews/stats";
 
 type Metric = {
   key: string;
@@ -22,35 +18,23 @@ type Metric = {
   link?: { href: string; label: string };
 };
 
-/** Status is checked at the start of each quarter. */
-function nextCheck(now: Date): Date {
-  const [year, month] = toDateKey(now).split("-").map(Number);
-  const quarter = Math.floor((month - 1) / 3);
-  const next = quarter === 3 ? `${year + 1}-01-01` : `${year}-${String(quarter * 3 + 4).padStart(2, "0")}-01`;
-  return zonedInstant(next, "00:00");
-}
-
-/** Share of the guest ratings for a column that were five stars. */
+/** One rate bar as a row on the page. */
 function rateMetric(
   key: string,
   label: string,
-  reviews: ScoredReview[],
-  column: RatingColumn,
+  bar: RateBar,
   target: number,
   hitLabel: string
 ): Pick<Metric, "key" | "label" | "value" | "target" | "met" | "counts"> {
-  const given = reviews.filter((r) => r[column] != null).length;
-  const hits = fiveStars(reviews, column);
-  const share = given ? hits / given : null;
   return {
     key,
     label,
-    value: share === null ? "–" : percent(share, 1),
+    value: bar.share === null ? "–" : percent(bar.share, 1),
     target: percent(target),
-    met: share !== null && share >= target,
+    met: bar.met,
     counts: [
-      { label: hitLabel, value: hits },
-      { label: "Ratings", value: given },
+      { label: hitLabel, value: bar.hits },
+      { label: "Ratings", value: bar.given },
     ],
   };
 }
@@ -62,43 +46,30 @@ const TIPS = [
   { href: "/host/inbox", icon: MessageSquareText, label: "Answer guests quickly, before and during trips" },
 ];
 
-/**
- * Turo's All-Star Host, as "Top host": five bars over the last year, all of
- * which have to be cleared. Rates are shares of the guest ratings given, so
- * trips nobody rated don't count either way.
- */
-export function TopHost({ trips, reviews, now }: { trips: HostTripRow[]; reviews: ScoredReview[]; now: Date }) {
-  const since = new Date(now.getTime() - TOP_HOST_DAYS * 86_400_000).toISOString();
-  const completed = trips.filter((t) => t.status === "completed" && t.ends_at >= since);
-  const completedIds = new Set(completed.map((t) => t.id));
-  const rated = reviews.filter((r) => completedIds.has(r.trip_id));
-  const cancelled = trips.filter(
-    (t) => t.status === "cancelled_host" && t.cancellation_reason === CANCEL_REASON.byHost && t.starts_at >= since
-  ).length;
-  const booked = completed.length + cancelled;
-  const total = completed.length;
+/** Where the host stands against the bars in lib/top-host.ts, one row each. */
+export function TopHost({ standing }: { standing: TopHostStanding }) {
+  const { rated, cancellation, trips, met, missing } = standing;
+  const { cancelled, booked } = cancellation;
+  const total = trips.completed;
 
-  const cancelShare = booked ? cancelled / booked : 0;
   const maintenanceTags = tagCounts(rated, "maintenance").slice(0, 3);
   const cleanlinessTags = tagCounts(rated, "cleanliness").slice(0, 3);
   const flagged = (tags: typeof maintenanceTags) =>
     tags.length ? [`Guests flagged most: ${tags.map((t) => `${t.label.toLowerCase()} (${t.count})`).join(", ")}.`] : [];
 
-  const fiveStar = rateMetric("five-star", "Five-star rate", rated, "rating_overall", 0.85, "Five-stars");
+  const fiveStar = rateMetric("five-star", "Five-star rate", standing.fiveStar, TOP_HOST_BARS.fiveStar, "Five-stars");
   const maintenance = rateMetric(
     "maintenance",
     "Maintenance rate",
-    rated,
-    "rating_maintenance",
-    0.8,
+    standing.maintenance,
+    TOP_HOST_BARS.maintenance,
     "Five-star maintenance"
   );
   const cleanliness = rateMetric(
     "cleanliness",
     "Cleanliness rate",
-    rated,
-    "rating_cleanliness",
-    0.8,
+    standing.cleanliness,
+    TOP_HOST_BARS.cleanliness,
     "Five-star cleanliness"
   );
 
@@ -106,9 +77,9 @@ export function TopHost({ trips, reviews, now }: { trips: HostTripRow[]; reviews
     {
       key: "cancellation",
       label: "Cancellation rate",
-      value: percent(cancelShare, 1),
-      target: "3% or less",
-      met: cancelShare <= 0.03,
+      value: percent(cancellation.share, 1),
+      target: `${percent(TOP_HOST_BARS.cancellation)} or less`,
+      met: cancellation.met,
       counts: [
         { label: "Cancelled by you", value: cancelled },
         { label: "Booked trips", value: booked },
@@ -154,18 +125,16 @@ export function TopHost({ trips, reviews, now }: { trips: HostTripRow[]; reviews
       key: "trips",
       label: "Completed trips",
       value: String(total),
-      target: "20 or more",
-      met: total >= 20,
+      target: `${TOP_HOST_BARS.trips} or more`,
+      met: trips.met,
       counts: [{ label: "Completed in the last year", value: total }],
       advice: [
-        total >= 20
+        trips.met
           ? "Enough trips to qualify."
-          : `${pluralize(20 - total, "more trip")} to go. Instant book and fair prices help cars get booked.`,
+          : `${pluralize(TOP_HOST_BARS.trips - total, "more trip")} to go. Instant book and fair prices help cars get booked.`,
       ],
     },
   ];
-  const met = metrics.every((m) => m.met);
-  const missing = metrics.filter((m) => !m.met).length;
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -183,7 +152,7 @@ export function TopHost({ trips, reviews, now }: { trips: HostTripRow[]; reviews
               {met
                 ? "You clear every bar. Keep it up."
                 : `Clear all five bars over the last year to earn it. ${missing === 1 ? "One to go." : `${missing} to go.`}`}{" "}
-              Next check is {formatDate(nextCheck(now), { year: undefined })}.
+              Guests see the tag after the daily check.
             </span>
           </span>
         </Tile>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, Download } from "lucide-react";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { settleTripStatuses } from "@/lib/trips";
-import { cn, formatCurrency, formatPrice, formatRange } from "@/lib/utils";
+import { cn, formatCurrency, formatPrice, formatRange, pluralize } from "@/lib/utils";
 import { EmptyState, PageTitle, Tag } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { firstName, Initial } from "@/components/host/bits";
@@ -91,7 +91,7 @@ export default async function HostHistoryPage({ searchParams }: PageProps<"/host
               <span className="text-right">Earned</span>
               <span className="text-right">Review</span>
             </div>
-            {rows.map(({ trip, status, earnedCents, rating }, i) => {
+            {rows.map(({ trip, status, earnedCents, rating, daysToRate }, i) => {
               const guest = firstName(trip.guest?.full_name);
               return (
                 <Link
@@ -109,10 +109,11 @@ export default async function HostHistoryPage({ searchParams }: PageProps<"/host
                   </span>
                   <span className="truncate">{trip.vehicle?.model ?? "Car"}</span>
                   <span>{formatRange(trip.starts_at, trip.ends_at)}</span>
-                  <span>
+                  <span className="flex flex-col gap-1">
                     <Tag tone={trip.status === "completed" ? "mint" : "peach"}>
                       {trip.status === "completed" ? "Completed" : status.label}
                     </Tag>
+                    {daysToRate > 0 && <Tag tone="ink">{pluralize(daysToRate, "day")} left to rate</Tag>}
                   </span>
                   <span className="text-right font-bold">{formatCurrency(earnedCents)}</span>
                   <span className={cn("text-right", !rating && "text-slate")}>{rating ? `★ ${rating}` : "–"}</span>

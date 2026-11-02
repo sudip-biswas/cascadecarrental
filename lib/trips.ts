@@ -10,6 +10,9 @@ import { isPayOverTime } from "@/lib/pay-over-time";
 import { withBuffer } from "@/lib/trip-rules";
 import { sendDueScheduledMessages, syncTripMessagesLater } from "@/lib/scheduled-messages";
 import { askForLicenceReviewLater } from "@/lib/guest-checks";
+import { allRows } from "@/lib/supabase/all-rows";
+import { pluralize } from "@/lib/utils";
+import { HOST_REVIEW_DAYS, hostReviewDaysLeft, hostReviewReminder } from "@/components/trip-panels/review/window";
 
 type TripUpdate = Database["public"]["Tables"]["trips"]["Update"];
 
@@ -450,6 +453,39 @@ export async function sendTripReminders() {
     ...(returns ?? []).map((t) => notifyTrip(t.id, "return_soon")),
   ]);
   return { pickups: pickups?.length ?? 0, returns: returns?.length ?? 0 };
+}
+
+type ReviewableTrip = Pick<Trip, "id" | "ends_at" | "completed_at"> & { reviews: { kind: string }[] };
+
+/**
+ * Cron: reminds hosts who haven't rated the guest, about 7 days and about 1 day
+ * before reviews close. Guests have no deadline, so they get no reminder. Each
+ * reminder has its own key, so notify sends it once however often this runs.
+ */
+export async function sendReviewReminders(now = new Date()) {
+  const admin = createAdminClient();
+  const opened = new Date(now.getTime() - HOST_REVIEW_DAYS * 86_400_000).toISOString();
+  const trips = await allRows<ReviewableTrip>((from, to) =>
+    admin
+      .from("trips")
+      .select("id, ends_at, completed_at, reviews(kind)")
+      .eq("status", "completed")
+      .or(`completed_at.gt.${opened},and(completed_at.is.null,ends_at.gt.${opened})`)
+      .order("id")
+      .range(from, to)
+      .overrideTypes<ReviewableTrip[], { merge: false }>()
+  );
+
+  const due = trips.flatMap((trip) => {
+    const key = hostReviewReminder(trip, now);
+    return key && !trip.reviews.some((r) => r.kind === "host_to_guest") ? [{ trip, key }] : [];
+  });
+  await Promise.all(
+    due.map(({ trip, key }) =>
+      notifyTrip(trip.id, "review_deadline", { key, note: pluralize(hostReviewDaysLeft(trip, now), "day") })
+    )
+  );
+  return { due: due.length };
 }
 
 /** Charges a held card when the host accepts a request. */

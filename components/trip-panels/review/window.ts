@@ -9,6 +9,25 @@ export function hostReviewCloses(trip: Pick<Trip, "ends_at" | "completed_at">): 
   return new Date(ended.getTime() + HOST_REVIEW_DAYS * 86_400_000);
 }
 
+const DAY_MS = 86_400_000;
+
+/** Whole days until reviews close, to the nearest day: 0 once they have, 1 on the last day. */
+export function hostReviewDaysLeft(trip: Pick<Trip, "ends_at" | "completed_at">, now = new Date()): number {
+  const left = hostReviewCloses(trip).getTime() - now.getTime();
+  return left <= 0 ? 0 : Math.max(1, Math.round(left / DAY_MS));
+}
+
+/**
+ * The reminder a trip is due, about 7 days or about 1 day before reviews close.
+ * The daily tick always lands in the half-day either side of each mark, and a
+ * missed tick is caught up by the next one, up to the deadline.
+ */
+export function hostReviewReminder(trip: Pick<Trip, "ends_at" | "completed_at">, now = new Date()): "7" | "1" | null {
+  const days = (hostReviewCloses(trip).getTime() - now.getTime()) / DAY_MS;
+  if (days <= 0 || days >= 7.5) return null;
+  return days < 1.5 ? "1" : "7";
+}
+
 /**
  * Host reviews reuse the guest review's columns, so the extra stars mean
  * something else depending on who wrote them.

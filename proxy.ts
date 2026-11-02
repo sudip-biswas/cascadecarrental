@@ -52,7 +52,8 @@ export async function proxy(request: NextRequest) {
 
   const isProtected =
     PROTECTED_GUEST_PATHS.some((p) => pathname.startsWith(p)) ||
-    PROTECTED_HOST_PATHS.some((p) => pathname.startsWith(p)) ||
+    // Whole segments, so public host pages at /hosts/[id] stay public.
+    PROTECTED_HOST_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
     CHECKOUT_PATH.test(pathname);
 
   if (!user && isProtected) {

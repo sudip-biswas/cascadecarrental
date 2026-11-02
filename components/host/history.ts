@@ -3,6 +3,7 @@ import type { Database } from "@/lib/supabase/types";
 import { hostEarningsCents } from "@/lib/pricing";
 import { tripStatus } from "@/lib/trip-status";
 import { toDateKey } from "@/lib/utils";
+import { hostReviewDaysLeft } from "@/components/trip-panels/review/window";
 import { loadHostTrips, type HostTrip } from "./data";
 
 export interface HistoryFilter {
@@ -15,6 +16,8 @@ export interface HistoryRow {
   status: ReturnType<typeof tripStatus>;
   earnedCents: number;
   rating: number | null;
+  /** Days the host has left to rate the guest, 0 once rated or closed. */
+  daysToRate: number;
 }
 
 /** Finished and cancelled trips, newest first, with what each one earned the host. */
@@ -37,11 +40,13 @@ export async function loadHistory(supabase: SupabaseClient<Database>, hostId: st
   const { data: reviews } = trips.length
     ? await supabase
         .from("reviews")
-        .select("trip_id, rating_overall")
-        .eq("kind", "guest_to_host")
+        .select("trip_id, rating_overall, kind")
         .in("trip_id", trips.map((t) => t.id))
     : { data: [] };
-  const ratingByTrip = new Map((reviews ?? []).map((r) => [r.trip_id, r.rating_overall]));
+  const ratingByTrip = new Map(
+    (reviews ?? []).filter((r) => r.kind === "guest_to_host").map((r) => [r.trip_id, r.rating_overall])
+  );
+  const ratedGuest = new Set((reviews ?? []).filter((r) => r.kind === "host_to_guest").map((r) => r.trip_id));
 
   const rows: HistoryRow[] = trips.map((trip) => ({
     trip,
@@ -49,6 +54,7 @@ export async function loadHistory(supabase: SupabaseClient<Database>, hostId: st
     earnedCents:
       trip.status === "completed" && trip.payment_status === "captured" ? hostEarningsCents(trip.subtotal_cents) : 0,
     rating: ratingByTrip.get(trip.id) ?? null,
+    daysToRate: trip.status === "completed" && !ratedGuest.has(trip.id) ? hostReviewDaysLeft(trip) : 0,
   }));
 
   return {
