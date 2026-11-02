@@ -1652,6 +1652,33 @@ export type Database = {
         };
         Relationships: [];
       };
+      guest_licences: {
+        Row: {
+          user_id: string;
+          licence_path: string;
+          selfie_path: string;
+          submitted_at: string;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+        };
+        Insert: {
+          user_id: string;
+          licence_path: string;
+          selfie_path: string;
+          submitted_at?: string;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+        };
+        Update: {
+          user_id?: string;
+          licence_path?: string;
+          selfie_path?: string;
+          submitted_at?: string;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+        };
+        Relationships: [];
+      };
       notification_preferences: {
         Row: {
           user_id: string;

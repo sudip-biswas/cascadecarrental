@@ -108,13 +108,11 @@ export function TripView({
   trip,
   reviewed,
   userId,
-  verifyReturned = false,
 }: {
   trip: TripRow;
   reviewed: boolean;
   userId: string;
   /** Just back from Stripe's licence check. */
-  verifyReturned?: boolean;
 }) {
   const now = new Date();
   const host = hostFirstName(trip);
@@ -149,7 +147,7 @@ export function TripView({
       <Container className="flex flex-wrap items-start gap-4 py-6">
         <main className="flex min-w-0 flex-[999_1_600px] flex-col gap-3.5">
           <InstructionsWelcome tripId={trip.id} viewer="guest" userId={userId} />
-          <ChecksPanel tripId={trip.id} userId={userId} returned={verifyReturned} />
+          <ChecksPanel tripId={trip.id} userId={userId} />
           {!cancelled && (
             <Tile className="flex flex-col gap-3 sm:p-6">
               <span className="flex items-center gap-2 text-sm font-semibold text-slate">

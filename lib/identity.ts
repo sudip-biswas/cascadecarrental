@@ -70,7 +70,7 @@ export async function applyVerificationSession(session: Session): Promise<Identi
         userId,
         kind: "identity_verified",
         title: "Your licence is checked",
-        body: "You're ready to drive. Hosts see a checkmark, never the photo.",
+        body: "You're ready to drive.",
         href: "/profile",
         dedupeKey: `identity:${session.id}:verified`,
         actionLabel: "See your profile",

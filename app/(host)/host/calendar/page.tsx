@@ -72,7 +72,8 @@ export default async function HostCalendarPage() {
   // Step 1 – fetch cars (needed to know IDs for downstream queries). Settling trip
   // statuses only touches trips, so it runs alongside instead of in front.
   const [{ data }] = await Promise.all([
-    supabase
+    // Plates and addresses are private columns, so this reads as admin, scoped to the host.
+    createAdminClient()
       .from("vehicles")
       .select(
         "id, make, model, trim, year, license_plate, status, location_name, location_address, daily_rate_cents, auto_pricing, vehicle_images(url, is_cover, position)"

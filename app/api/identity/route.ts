@@ -24,6 +24,9 @@ function identityOff(err: unknown): boolean {
  * page can ask to be sent back to instead of the profile.
  */
 export async function POST(req: Request) {
+  // Hosts check licences now (see /api/licence). STRIPE_IDENTITY=on brings this back.
+  if (process.env.STRIPE_IDENTITY !== "on") return fail("Your host checks your licence now.", 410);
+
   const body = (await req.json().catch(() => null)) as { returnTo?: unknown } | null;
   const returnTo =
     typeof body?.returnTo === "string" && /^\/trips\/[0-9a-f-]{36}$/.test(body.returnTo) ? body.returnTo : "/profile";

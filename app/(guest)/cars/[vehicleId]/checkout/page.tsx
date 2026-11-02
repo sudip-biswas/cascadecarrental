@@ -99,7 +99,8 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
       .eq("active", true)
       .order("position")
       .order("created_at"),
-    supabase.from("profiles").select("date_of_birth, driving_license_verified").eq("id", user.id).single(),
+    // Date of birth is a private column, so read your own profile with the admin client.
+    createAdminClient().from("profiles").select("date_of_birth, driving_license_verified").eq("id", user.id).single(),
     // Spot addresses are private until booking: read server-side, send names and prices.
     loadPickupSpots(createAdminClient(), vehicle),
   ]);

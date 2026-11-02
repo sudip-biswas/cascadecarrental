@@ -7,6 +7,8 @@ import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { UPLOAD_MAX_BYTES } from "@/lib/licence";
+import { shrinkPhoto } from "@/lib/shrink-photo";
 import { cn, toDateKey } from "@/lib/utils";
 
 export interface OwnInsurance {
@@ -75,8 +77,16 @@ export function InsuranceForm({
       body.set("insurer", insurer.trim());
       body.set("policy_number", policy.trim());
       body.set("expires_on", expires);
-      if (card) body.set("card", card);
-      else if (keepCard) body.set("keep_card", "1");
+      if (card) {
+        // Over about 4.5 MB the upload never reaches us, so phone photos go up smaller.
+        const small = card.type === "application/pdf" ? card : await shrinkPhoto(card);
+        if (small.size > UPLOAD_MAX_BYTES) {
+          setSaving(false);
+          setError("That file is too big. Use a smaller photo or PDF, under 4 MB.");
+          return;
+        }
+        body.set("card", small);
+      } else if (keepCard) body.set("keep_card", "1");
     }
     const res = await fetch("/api/insurance", { method: "POST", body }).catch(() => null);
     const data = await res?.json().catch(() => ({}));

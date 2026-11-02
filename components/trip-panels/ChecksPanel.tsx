@@ -61,7 +61,7 @@ function Item({
  * "Before you pick up": the licence check and cover for the car, due by
  * pick-up. The guest can't check in until both are done.
  */
-export async function ChecksPanel({ tripId, userId, returned = false }: { tripId: string; userId: string; returned?: boolean }) {
+export async function ChecksPanel({ tripId, userId }: { tripId: string; userId: string }) {
   const admin = createAdminClient();
   const { data: trip } = await admin
     .from("trips")
@@ -72,7 +72,7 @@ export async function ChecksPanel({ tripId, userId, returned = false }: { tripId
   if (trip.status === "completed" || isCancelled(trip.status)) return null;
 
   const [{ data: profile }, insurance] = await Promise.all([
-    admin.from("profiles").select("driving_license_verified, identity_status, identity_error").eq("id", userId).maybeSingle(),
+    admin.from("profiles").select("full_name, date_of_birth, driving_license_verified, identity_status, identity_error").eq("id", userId).maybeSingle(),
     loadOwnInsurance(userId),
   ]);
   const checks = guestChecks(trip, profile, insurance);
@@ -92,7 +92,7 @@ export async function ChecksPanel({ tripId, userId, returned = false }: { tripId
           <p className={cn("text-[15px]", left ? "text-butter-ink" : "text-slate")}>
             {left
               ? `Due by pick-up, ${formatDateTime(trip.starts_at)}. Check-in stays locked until it's done.`
-              : "Your licence is checked and the car is covered."}
+              : "Your licence is approved and the car is covered."}
           </p>
         </div>
         <Tag tone="white">{left ? `${2 - left} of 2 done` : "2 of 2 done"}</Tag>
@@ -103,8 +103,8 @@ export async function ChecksPanel({ tripId, userId, returned = false }: { tripId
           <LicenceCheck
             status={checks.licence}
             error={checks.licenceError}
-            returned={returned}
-            returnTo={`/trips/${tripId}`}
+            name={profile?.full_name ?? ""}
+            hasBirthday={!!profile?.date_of_birth}
             leadClassName="text-slate"
           />
         </Item>

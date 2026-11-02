@@ -30,6 +30,7 @@ import { TripActionButtons } from "@/components/trips/TripActionButtons";
 import { CarPhoto, Initial, coverUrl, firstName } from "@/components/host/bits";
 import { PROTECTION_LABEL, answerBy, isRequest, timeLeft } from "@/components/host/data";
 import { GuestRecord } from "@/components/host/GuestRecord";
+import { LicencePanel } from "@/components/host/LicencePanel";
 import { DriversCard } from "@/components/host/DriversCard";
 import { MessageThread } from "@/components/messaging/MessageThread";
 import { signMessagePhotos } from "@/components/messaging/inbox";
@@ -78,7 +79,8 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
 
   await settleTripStatuses(user.id);
 
-  const { data } = await supabase.from("trips").select(TRIP_SELECT).eq("id", tripId).eq("host_id", user.id).maybeSingle();
+  // The guest's phone and the car's address are private columns, so this reads as admin, scoped to the host.
+  const { data } = await createAdminClient().from("trips").select(TRIP_SELECT).eq("id", tripId).eq("host_id", user.id).maybeSingle();
   const trip = data as unknown as HostTripDetail | null;
   if (!trip) notFound();
 
@@ -329,7 +331,7 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
             <p className="text-sm text-slate">The primary driver. They have to be there for pick-up and return.</p>
             {checksLeft && !isCancelled(trip.status) && trip.status !== "completed" && (
               <p className="rounded-[14px] bg-butter px-3 py-2 text-sm font-semibold text-butter-ink">
-                {guest} can&apos;t check in until their licence is checked and the car is covered. We remind them 2 days before pick-up.
+                {guest} can&apos;t check in until you&apos;ve approved their licence and the car is covered. We remind them 2 days before pick-up.
               </p>
             )}
             <ul className="flex flex-col gap-2 text-[15px]">
@@ -340,6 +342,8 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
               <Verified ok={!!trip.guest?.phone}>Phone number</Verified>
             </ul>
           </Tile>
+
+          <LicencePanel tripId={trip.id} guestId={trip.guest_id} status={trip.status} />
 
           <GuestRecord guestId={trip.guest_id} name={guest} variant="tile" />
 

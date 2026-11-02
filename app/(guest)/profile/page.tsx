@@ -18,8 +18,7 @@ import { NO_INDEX } from "@/lib/site";
 export const instant = false;
 export const metadata = { title: "Your profile", ...NO_INDEX };
 
-export default async function ProfilePage({ searchParams }: PageProps<"/profile">) {
-  const { verify } = await searchParams;
+export default async function ProfilePage() {
   const supabase = await createClient();
   const user = await getUser();
   if (!user) redirect("/login?redirectTo=/profile");
@@ -128,7 +127,8 @@ export default async function ProfilePage({ searchParams }: PageProps<"/profile"
             <LicenceCheck
               status={profile?.driving_license_verified ? "verified" : (profile?.identity_status ?? "unverified")}
               error={profile?.identity_error ?? null}
-              returned={verify === "done"}
+              name={profile?.full_name ?? ""}
+              hasBirthday={!!profile?.date_of_birth}
             />
           </span>
         </Tile>

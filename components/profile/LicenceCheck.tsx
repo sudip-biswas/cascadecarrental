@@ -1,71 +1,98 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { IdCard } from "lucide-react";
+import { UPLOAD_MAX_BYTES } from "@/lib/licence";
+import { shrinkPhoto } from "@/lib/shrink-photo";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { toDateKey } from "@/lib/utils";
 
 type Status = "unverified" | "pending" | "verified" | "failed";
 
 interface Props {
   status: Status;
+  /** Why it was rejected, as the host chose it. */
   error: string | null;
-  /** Just back from Stripe's check page. */
-  returned?: boolean;
-  /** A trip page to come back to after Stripe, instead of the profile. */
-  returnTo?: string;
+  /** The name on the booking, which the licence has to match. */
+  name: string;
+  /** Needed once: hosts compare it with the licence. */
+  hasBirthday: boolean;
   leadClassName?: string;
 }
 
 const LEAD: Record<Status, string> = {
-  unverified: "Snap your licence and a quick selfie. Takes about two minutes. Hosts see a checkmark, never the photo.",
-  pending: "We're checking it. That usually takes a few minutes, and we'll let you know.",
-  failed: "That check didn't go through.",
-  verified: "Checked. Hosts see a checkmark, never the photo.",
+  unverified: "Upload a photo of your licence and a selfie holding it. Your host compares them with your booking.",
+  pending: "Sent. Your host checks it against your booking, and we'll email you when they have.",
+  failed: "Your host couldn't approve it.",
+  verified: "Checked. You won't need to send it again.",
 };
 
-/** The licence check: status, and a button that sends you to Stripe to do it. */
-export function LicenceCheck({ status, error, returned = false, returnTo, leadClassName = "text-sky-ink" }: Props) {
+function PhotoField({
+  label,
+  help,
+  capture,
+  onPick,
+}: {
+  label: string;
+  help: string;
+  capture?: "user";
+  onPick: (file: File | null) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[14px] font-semibold">{label}</span>
+      <span className="text-[13px] text-slate">{help}</span>
+      <Input type="file" accept="image/*" capture={capture} required className="py-3" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
+    </label>
+  );
+}
+
+/** The licence check: where it stands, and the form for sending the two photos. */
+export function LicenceCheck({ status, error, name, hasBirthday, leadClassName = "text-sky-ink" }: Props) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [licence, setLicence] = useState<File | null>(null);
+  const [selfie, setSelfie] = useState<File | null>(null);
+  const [birthday, setBirthday] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
-  // Back from Stripe: ask it how it went, in case the webhook is still on its way.
-  useEffect(() => {
-    if (!returned) return;
-    let gone = false;
-    fetch("/api/identity")
-      .then((res) => res.json())
-      .catch(() => null)
-      .then(() => {
-        if (gone) return;
-        router.replace(returnTo ?? "/profile", { scroll: false });
-        router.refresh();
-      });
-    return () => {
-      gone = true;
-    };
-  }, [returned, returnTo, router]);
+  function reset(next: boolean) {
+    setOpen(next);
+    setLicence(null);
+    setSelfie(null);
+    setProblem(null);
+  }
 
-  async function start() {
-    setBusy(true);
-    setNotice(null);
-    const res = await fetch("/api/identity", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ returnTo }),
-    }).catch(() => null);
-    const body = (await res?.json().catch(() => null)) as { url?: string; error?: string; code?: string } | null;
-    if (res?.ok && body?.url) {
-      window.location.assign(body.url);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!licence || !selfie) return;
+    setSaving(true);
+    setProblem(null);
+    const [small, smallSelfie] = await Promise.all([shrinkPhoto(licence), shrinkPhoto(selfie)]);
+    if (small.size + smallSelfie.size > UPLOAD_MAX_BYTES) {
+      setSaving(false);
+      setProblem("Those photos are too big to send. Take them again at a lower quality.");
       return;
     }
-    setBusy(false);
-    if (body?.code === "identity_disabled") {
-      setNotice("Stripe Identity has to be switched on for Cascade's Stripe account first. Bring your licence to pick-up for now.");
+    const body = new FormData();
+    body.set("licence", small);
+    body.set("selfie", smallSelfie);
+    if (!hasBirthday) body.set("date_of_birth", birthday);
+    const res = await fetch("/api/licence", { method: "POST", body }).catch(() => null);
+    const data = await res?.json().catch(() => null);
+    setSaving(false);
+    if (!res?.ok) {
+      setProblem(data?.error ?? "Upload failed. Try again.");
       return;
     }
-    toast.error(body?.error ?? "We couldn't start the check. Try again.");
+    setOpen(false);
+    toast.success("Sent. We'll email you when your host has checked it.");
+    router.refresh();
   }
 
   return (
@@ -74,17 +101,36 @@ export function LicenceCheck({ status, error, returned = false, returnTo, leadCl
         {LEAD[status]}
         {status === "failed" && error && <> {error}</>}
       </span>
-      {notice && <span className="rounded-[14px] bg-white px-3 py-2 text-sm font-semibold text-ink">{notice}</span>}
       {status !== "verified" && (
-        <Button onClick={start} disabled={busy} variant={status === "pending" ? "secondary" : "default"}>
-          {busy
-            ? "Opening…"
-            : status === "failed"
-              ? "Try again"
-              : status === "pending"
-                ? "Continue the check"
-                : "Check my licence"}
-        </Button>
+        <Dialog open={open} onOpenChange={reset}>
+          <DialogTrigger asChild>
+            <Button variant={status === "pending" ? "secondary" : "default"}>
+              <IdCard />
+              {status === "unverified" ? "Upload my licence" : "Send new photos"}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-h-[92vh] overflow-y-auto">
+            <DialogTitle>Your driver&apos;s licence</DialogTitle>
+            <DialogDescription className="text-[15px] text-slate">
+              Your host checks these against your booking. Your name has to match the licence: {name}. Only your host and
+              Cascade can see the photos.
+            </DialogDescription>
+            <form onSubmit={submit} className="flex flex-col gap-4">
+              <PhotoField label="Photo of your licence" help="The front, flat and in good light, with every word readable." onPick={setLicence} />
+              <PhotoField label="Selfie holding your licence" help="Your face and the licence both in the picture." capture="user" onPick={setSelfie} />
+              {!hasBirthday && (
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[14px] font-semibold">Date of birth, as on your licence</span>
+                  <Input type="date" required max={toDateKey(new Date())} value={birthday} onChange={(e) => setBirthday(e.target.value)} />
+                </label>
+              )}
+              {problem && <p className="rounded-[14px] bg-error-soft px-3 py-2 text-sm font-semibold text-error">{problem}</p>}
+              <Button type="submit" disabled={saving || !licence || !selfie}>
+                {saving ? "Sending…" : "Send to my host"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
       )}
     </span>
   );

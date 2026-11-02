@@ -9,6 +9,7 @@ import { holdDeposit } from "@/lib/charges";
 import { isPayOverTime } from "@/lib/pay-over-time";
 import { withBuffer } from "@/lib/trip-rules";
 import { sendDueScheduledMessages, syncTripMessagesLater } from "@/lib/scheduled-messages";
+import { askForLicenceReviewLater } from "@/lib/guest-checks";
 
 type TripUpdate = Database["public"]["Tables"]["trips"]["Update"];
 
@@ -235,7 +236,10 @@ export async function applyPaymentIntent(pi: Stripe.PaymentIntent) {
   if (update) await updateTrip(trip.id, update);
   // Both the webhook and the page can get here for one change; the notice is sent once.
   if (event) notifyTripLater(trip.id, event);
-  if (event === "booked" || event === "accepted") syncTripMessagesLater(trip.id, { sendDue: true });
+  if (event === "booked" || event === "accepted") {
+    syncTripMessagesLater(trip.id, { sendDue: true });
+    askForLicenceReviewLater(trip.id);
+  }
   return { ...trip, ...update };
 }
 

@@ -1,12 +1,14 @@
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { GuestInsurance, Profile, Trip } from "@/lib/supabase/types";
 import { notify } from "@/lib/notify";
+import { LICENCE_BUCKET } from "@/lib/licence";
 import { formatDateTime, toDateKey } from "@/lib/utils";
 
 /**
- * Pre-trip checks, the way Turo asks for them after booking: a checked
- * licence with a matching selfie, and cover for the car, either the guest's
- * own insurance or a protection plan on the trip. The guest can't check in
+ * Pre-trip checks, the way Turo asks for them after booking: a licence photo
+ * and a selfie holding it, approved by the host, and cover for the car, either
+ * the guest's own insurance or a protection plan on the trip. The guest can't check in
  * until both are done. guest_trip_checks_missing in the database holds the
  * same rules and refuses the check-in.
  */
@@ -92,12 +94,75 @@ export async function loadOwnInsurance(userId: string) {
   return { ...data, cardUrl };
 }
 
+/** Short-lived links to a guest's licence photos. Only call for the guest's host or Cascade. */
+export async function loadLicencePhotos(guestId: string) {
+  const admin = createAdminClient();
+  const { data } = await admin.from("guest_licences").select("licence_path, selfie_path").eq("user_id", guestId).maybeSingle();
+  if (!data) return null;
+  const { data: signed } = await admin.storage
+    .from(LICENCE_BUCKET)
+    .createSignedUrls([data.licence_path, data.selfie_path], SIGNED_URL_SECONDS);
+  return { licenceUrl: signed?.[0]?.signedUrl ?? null, selfieUrl: signed?.[1]?.signedUrl ?? null };
+}
+
+/** Tells the host a licence is waiting for them on this trip, once per set of photos. */
+export async function askForLicenceReview(tripId: string) {
+  const admin = createAdminClient();
+  const { data: trip } = await admin
+    .from("trips")
+    .select("guest_id, host_id, guest:profiles!guest_id(full_name, identity_status), vehicle:vehicles(make, model)")
+    .eq("id", tripId)
+    .maybeSingle();
+  const guest = trip?.guest as unknown as Pick<Profile, "full_name" | "identity_status"> | null;
+  if (!trip || guest?.identity_status !== "pending") return;
+  const { data: licence } = await admin.from("guest_licences").select("submitted_at").eq("user_id", trip.guest_id).maybeSingle();
+  if (!licence) return;
+  const name = guest.full_name.trim().split(/\s+/)[0] || "Your guest";
+  const vehicle = trip.vehicle as unknown as { make: string; model: string } | null;
+  await notify({
+    userId: trip.host_id,
+    kind: "licence_review",
+    title: `Check ${name}'s licence`,
+    body: `${vehicle ? `${vehicle.make} ${vehicle.model}. ` : ""}Compare the photos with the booking. ${name} can't check in until you approve.`,
+    href: `/host/trips/${tripId}#licence`,
+    tripId,
+    dedupeKey: `licence_review:${tripId}:${licence.submitted_at}`,
+    actionLabel: "Check the licence",
+  });
+}
+
+/** askForLicenceReview once the response is out. */
+export function askForLicenceReviewLater(tripId: string): void {
+  const send = () => askForLicenceReview(tripId).catch((err) => console.error("[licence] notify failed", err));
+  try {
+    after(send);
+  } catch {
+    void send();
+  }
+}
+
+/** The host's reminder 2 days before pick-up, separate from the note when the photos arrive. */
+async function askForLicenceReviewNudge(tripId: string) {
+  const { data: trip } = await createAdminClient().from("trips").select("host_id").eq("id", tripId).maybeSingle();
+  if (!trip) return;
+  await notify({
+    userId: trip.host_id,
+    kind: "licence_review",
+    title: "A guest's licence is still waiting for you",
+    body: "Pick-up is within 2 days, and they can't check in until you approve.",
+    href: `/host/trips/${tripId}#licence`,
+    tripId,
+    dedupeKey: `licence_review_due:${tripId}`,
+    actionLabel: "Check the licence",
+  });
+}
+
 /** The checks reminder goes out this long before pick-up. */
 const REMIND_HOURS = 48;
 const HOUR = 60 * 60 * 1000;
 
 const CHECK_LINES: Record<CheckId, string> = {
-  licence: "Check your licence: a photo of it and a quick selfie.",
+  licence: "Upload a photo of your licence and a selfie holding it.",
   cover: "Add your insurance, since this trip has no protection plan.",
 };
 
@@ -124,13 +189,17 @@ export async function sendCheckReminders() {
   for (const trip of trips ?? []) {
     const checks = await loadGuestChecks(trip.id);
     if (!checks?.missing.length) continue;
+    // Photos already sent: the wait is on the host, not the guest.
+    if (checks.licence === "pending") await askForLicenceReviewNudge(trip.id);
+    const missing = checks.licence === "pending" ? checks.missing.filter((c) => c !== "licence") : checks.missing;
+    if (!missing.length) continue;
     const vehicle = trip.vehicle as unknown as { make: string; model: string } | null;
     const car = vehicle ? `${vehicle.make} ${vehicle.model}` : "car";
     await notify({
       userId: trip.guest_id,
       kind: "checks_due",
       title: `Finish your checks before you pick up the ${car}`,
-      body: [...checks.missing.map((c) => CHECK_LINES[c]), `You can't check in until it's done. Pick-up is ${formatDateTime(trip.starts_at)}.`].join("\n"),
+      body: [...missing.map((c) => CHECK_LINES[c]), `You can't check in until it's done. Pick-up is ${formatDateTime(trip.starts_at)}.`].join("\n"),
       href: `/trips/${trip.id}#checks`,
       tripId: trip.id,
       dedupeKey: `checks_due:${trip.id}`,

@@ -10,6 +10,7 @@ import { formatCurrency, formatDateTime, pluralize } from "@/lib/utils";
 import type { Trip, TripCharge } from "@/lib/supabase/types";
 import { Divider, Fact, PageTitle, PriceRow, Tag, Tile, TileTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
+import { LicencePanel } from "@/components/host/LicencePanel";
 import { UUID, emailsFor, refundableCents, requireAdminPage } from "../../_lib/admin";
 import { CancelButton, RefundButton } from "./trip-actions";
 
@@ -118,6 +119,7 @@ export default async function AdminTripPage({ params }: PageProps<"/host/admin/t
         </main>
 
         <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
+          <LicencePanel tripId={trip.id} guestId={trip.guest_id} status={trip.status} />
           <Tile className="flex flex-col gap-2">
             <Fact label="Guest" value={`${trip.guest?.full_name ?? ""} · ${emails[trip.guest_id] ?? ""}`} />
             <Fact
