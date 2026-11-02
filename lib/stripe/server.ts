@@ -19,6 +19,7 @@ export const stripe = {
   get paymentIntents() { return getStripe().paymentIntents; },
   get setupIntents() { return getStripe().setupIntents; },
   get confirmationTokens() { return getStripe().confirmationTokens; },
+  get paymentMethods() { return getStripe().paymentMethods; },
   get webhooks() { return getStripe().webhooks; },
   get charges() { return getStripe().charges; },
   get refunds() { return getStripe().refunds; },
