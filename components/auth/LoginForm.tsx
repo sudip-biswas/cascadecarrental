@@ -22,6 +22,7 @@ type FormData = z.infer<typeof schema>;
 function friendlyError(message: string) {
   if (/invalid login credentials/i.test(message)) return "That email and password don't match.";
   if (/email not confirmed/i.test(message)) return "Confirm your email first. The link is in your inbox.";
+  if (/banned/i.test(message)) return "This account is closed.";
   return message;
 }
 

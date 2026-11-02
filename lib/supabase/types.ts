@@ -45,6 +45,7 @@ export type Database = {
           identity_session_id: string | null;
           identity_error: string | null;
           suspended_at: string | null;
+          closed_at: string | null;
         };
         Insert: {
           id: string;
@@ -65,6 +66,7 @@ export type Database = {
           identity_session_id?: string | null;
           identity_error?: string | null;
           suspended_at?: string | null;
+          closed_at?: string | null;
         };
         Update: {
           id?: string;
@@ -84,6 +86,7 @@ export type Database = {
           identity_session_id?: string | null;
           identity_error?: string | null;
           suspended_at?: string | null;
+          closed_at?: string | null;
         };
         Relationships: [];
       };
@@ -1751,6 +1754,10 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      begin_account_closure: {
+        Args: { p_user_id: string };
+        Returns: boolean;
+      };
       upsert_auto_prices: {
         Args: { rows: { vehicle_id: string; date: string; price_cents: number }[] };
         Returns: number;

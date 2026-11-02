@@ -157,10 +157,11 @@ export async function POST(req: Request) {
 
   const { data: profile } = await admin
     .from("profiles")
-    .select("stripe_customer_id, date_of_birth, driving_license_verified, suspended_at")
+    .select("stripe_customer_id, date_of_birth, driving_license_verified, suspended_at, closed_at")
     .eq("id", user.id)
     .single();
   if (!profile) return fail("Couldn't find your profile. Log in again.", 401);
+  if (profile.closed_at) return fail("This account is closed.", 403);
   if (profile.suspended_at) return fail("Your account is on hold. Contact Cascade to book again.", 403);
 
   if (process.env.REQUIRE_DRIVER_CHECK === "true" && !profile.driving_license_verified) {

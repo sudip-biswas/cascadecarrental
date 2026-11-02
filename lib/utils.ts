@@ -6,6 +6,9 @@ export const TIME_ZONE = "America/Los_Angeles";
 /** Pick-up and return time for trips booked by date. */
 export const HANDOVER_TIME = "10:00";
 
+/** What a closed account's profile is called. Trips and reviews keep showing it whole. */
+export const CLOSED_ACCOUNT_NAME = "Closed account";
+
 // Building an Intl formatter is slow, and calendars format thousands of cells, so reuse them.
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const usdWhole = new Intl.NumberFormat("en-US", {

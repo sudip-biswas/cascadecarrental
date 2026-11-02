@@ -40,9 +40,14 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Signed-in users skip the auth pages and carry on where they were headed.
+  // A token can outlive its session, as on another device when an account is
+  // closed, so ask Auth here. Otherwise /login and /profile send them in circles.
   if (user && AUTH_PATHS.some((p) => pathname.startsWith(p))) {
-    const next = safeRedirect(request.nextUrl.searchParams.get("redirectTo"));
-    return NextResponse.redirect(new URL(next, request.url));
+    const { data: live } = await supabase.auth.getUser();
+    if (live.user) {
+      const next = safeRedirect(request.nextUrl.searchParams.get("redirectTo"));
+      return NextResponse.redirect(new URL(next, request.url));
+    }
   }
 
   const isProtected =

@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 import { messagePreview } from "@/lib/message-photos";
-import { formatCurrency, formatDateTime, formatRange } from "@/lib/utils";
+import { CLOSED_ACCOUNT_NAME, formatCurrency, formatDateTime, formatRange } from "@/lib/utils";
 
 export interface Notice {
   userId: string;
@@ -51,6 +51,10 @@ export async function notify(notice: Notice): Promise<void> {
       if (prefs?.messages_email === false) return;
     }
 
+    // A closed account gets no more email.
+    const { data: person } = await admin.from("profiles").select("closed_at").eq("id", notice.userId).maybeSingle();
+    if (person?.closed_at) return;
+
     const { data } = await admin.auth.admin.getUserById(notice.userId);
     const to = data.user?.email;
     if (!to) return;
@@ -92,7 +96,8 @@ async function loadTrip(tripId: string): Promise<TripContext | null> {
   return data as unknown as TripContext | null;
 }
 
-const first = (name: string | undefined | null, fallback: string) => name?.trim().split(/\s+/)[0] || fallback;
+const first = (name: string | undefined | null, fallback: string) =>
+  name === CLOSED_ACCOUNT_NAME ? name : name?.trim().split(/\s+/)[0] || fallback;
 
 export type TripEvent =
   | "requested"

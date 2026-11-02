@@ -14,11 +14,11 @@ export const metadata = { title: "Users · Admin", ...NO_INDEX };
 
 type Row = Pick<
   Profile,
-  "id" | "full_name" | "is_host" | "driving_license_verified" | "identity_verified" | "identity_status" | "identity_error" | "suspended_at" | "created_at" | "date_of_birth"
+  "id" | "full_name" | "is_host" | "driving_license_verified" | "identity_verified" | "identity_status" | "identity_error" | "suspended_at" | "closed_at" | "created_at" | "date_of_birth"
 > & { vehicles: { status: string }[] };
 
 const FIELDS =
-  "id, full_name, is_host, driving_license_verified, identity_verified, identity_status, identity_error, suspended_at, created_at, date_of_birth, vehicles:vehicles!host_id(status)";
+  "id, full_name, is_host, driving_license_verified, identity_verified, identity_status, identity_error, suspended_at, closed_at, created_at, date_of_birth, vehicles:vehicles!host_id(status)";
 
 const ID_TONE: Record<Profile["identity_status"], Tone> = { unverified: "board", pending: "butter", verified: "mint", failed: "peach" };
 
@@ -76,6 +76,7 @@ export default async function AdminUsersPage({ searchParams }: PageProps<"/host/
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
+                {u.closed_at && <Tag tone="ink">Closed {formatDate(u.closed_at)}</Tag>}
                 {u.suspended_at && <Tag tone="ink">Suspended {formatDate(u.suspended_at)}</Tag>}
                 {isAdmin(u) && <Tag tone="lilac">Admin</Tag>}
                 {u.is_host && <Tag tone="sky">Host, {listed}/{u.vehicles.length} cars listed</Tag>}
