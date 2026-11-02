@@ -1,33 +1,17 @@
 import type Stripe from "stripe";
+import { AUTO_CHARGE_DAYS } from "@/lib/charge-windows";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { TripCharge } from "@/lib/supabase/types";
+import type { ChargeKind, TripCharge } from "@/lib/supabase/types";
 import { stripe } from "@/lib/stripe/server";
 import { notify, notifyTrip } from "@/lib/notify";
 import { formatCurrency } from "@/lib/utils";
 
 const DAY_MS = 86_400_000;
 
-/** Hosts can send charges for this long after the trip ends. */
-export const CHARGE_WINDOW_DAYS = 7;
-/** A charge the guest doesn't answer is collected after this long. */
-const AUTO_CHARGE_DAYS = 3;
 /** The deposit hold is let go this long after the trip ends, if nothing is open. */
 const DEPOSIT_RELEASE_HOURS = 48;
 
 export type ChargeResult = { ok: true; fromDeposit: boolean } | { ok: false; error: string };
-
-/**
- * Whether the host can send a charge now: completed trips for 7 days after the
- * return, and active trips for tolls only (they show up mid-trip).
- */
-export function chargeWindow(
-  trip: { status: string; ends_at: string },
-  now = new Date()
-): { open: boolean; activeOnly: boolean; closesAt: Date } {
-  const closesAt = new Date(new Date(trip.ends_at).getTime() + CHARGE_WINDOW_DAYS * DAY_MS);
-  if (trip.status === "active") return { open: true, activeOnly: true, closesAt };
-  return { open: trip.status === "completed" && now < closesAt, activeOnly: false, closesAt };
-}
 
 /** A failure reason short enough to show the guest and the host. */
 function failureReason(err: unknown): string {
@@ -75,6 +59,60 @@ async function loadPayer(tripId: string) {
         vehicle: { year: number; make: string; model: string } | null;
       }
     | null;
+}
+
+export const OPEN_CHARGE_STATUSES: TripCharge["status"][] = ["requested", "disputed", "failed"];
+
+/** Writes a charge. The caller checks the window first and tells the guest after. */
+export async function createCharge(input: {
+  tripId: string;
+  hostId: string;
+  guestId: string;
+  kind: ChargeKind;
+  amountCents: number;
+  description: string;
+  photos: string[];
+}): Promise<TripCharge | null> {
+  const { data, error } = await createAdminClient()
+    .from("trip_charges")
+    .insert({
+      trip_id: input.tripId,
+      host_id: input.hostId,
+      guest_id: input.guestId,
+      kind: input.kind,
+      amount_cents: input.amountCents,
+      description: input.description,
+      photos: input.photos,
+    })
+    .select("*")
+    .single();
+  if (error) console.error("[charges] create failed", input.tripId, error.message);
+  return data;
+}
+
+/**
+ * A claim follows the charge sent from it. Paid settles it, a dispute shows on
+ * it, and a withdrawn or declined charge puts it back with the host. A claim
+ * already with Cascade stays there unless the guest pays. Never throws.
+ */
+export async function followClaim(chargeId: string, outcome: "paid" | "disputed" | "dropped"): Promise<void> {
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const moves = {
+    paid: { from: ["with_guest", "disputed", "escalated"], status: "resolved", resolved_at: now },
+    disputed: { from: ["with_guest"], status: "disputed" },
+    dropped: { from: ["with_guest", "disputed"], status: "reported" },
+  } as const;
+  const { from, ...change } = moves[outcome];
+  const { data, error } = await admin
+    .from("trip_claims")
+    .update({ ...change, updated_at: now })
+    .eq("charge_id", chargeId)
+    .in("status", [...from])
+    .select("id, trip_id")
+    .maybeSingle();
+  if (error) console.error("[charges] claim update failed", chargeId, error.message);
+  if (data && outcome === "paid") await notifyTrip(data.trip_id, "claim_settled", { key: data.id });
 }
 
 /** Places the car's security deposit hold when a trip starts. Never throws. */
@@ -283,6 +321,7 @@ export async function chargeGuest(charge: TripCharge | string): Promise<ChargeRe
       .maybeSingle();
     if (paid) {
       await notifyTrip(row.trip_id, "charge_paid", { amountCents: row.amount_cents, key: row.id });
+      await followClaim(row.id, "paid");
       await payoutCharge(paid, latestCharge(pi));
     }
     return { ok: true, fromDeposit };
@@ -333,6 +372,7 @@ export async function resolveCharge(
       .eq("id", charge.id)
       .in("status", ["requested", "disputed", "failed"]);
     if (error) return { ok: false, error: "Couldn't save the decision. Try again." };
+    await followClaim(charge.id, "dropped");
     await Promise.all([
       tell(charge.guest_id, `The ${amount} charge was dropped`, `Cascade looked at it and you won't be charged.${resolution ? `\n${resolution}` : ""}`, `/trips/${charge.trip_id}`),
       tell(charge.host_id, `Cascade declined your ${amount} charge`, `The guest won't be charged.${resolution ? `\n${resolution}` : ""}`, `/host/trips/${charge.trip_id}`),
@@ -363,7 +403,8 @@ export async function processDueCharges(): Promise<void> {
   for (const charge of due ?? []) await chargeGuest(charge.id);
 
   // Deposits go back 48 hours after the trip, or straight away if it was
-  // cancelled, unless a charge is still open.
+  // cancelled, unless a charge is still open. Only a charge already sent holds
+  // one: the 90 days hosts have for tolls and tickets don't.
   const releaseBefore = new Date(now - DEPOSIT_RELEASE_HOURS * 3_600_000).toISOString();
   const { data: held } = await admin
     .from("trips")

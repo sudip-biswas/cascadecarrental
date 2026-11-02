@@ -16,6 +16,7 @@ import {
   ReceiptText,
   Route,
   Shield,
+  ShieldAlert,
   Sparkles,
   Star,
   TrendingUp,
@@ -36,7 +37,17 @@ interface Item {
   badge?: number;
 }
 
-export function HostSidebar({ requests, unread, isAdmin = false }: { requests: number; unread: number; isAdmin?: boolean }) {
+export function HostSidebar({
+  requests,
+  unread,
+  isAdmin = false,
+  openClaims = 0,
+}: {
+  requests: number;
+  unread: number;
+  isAdmin?: boolean;
+  openClaims?: number;
+}) {
   const pathname = usePathname();
   const hosting: Item[] = [
     { href: "/host", label: "Today", icon: LayoutGrid, match: (p) => p === "/host", badge: requests },
@@ -47,6 +58,7 @@ export function HostSidebar({ requests, unread, isAdmin = false }: { requests: n
     { href: "/host/inbox/scheduled", label: "Scheduled messages", icon: CalendarClock, match: (p) => p.startsWith("/host/inbox/scheduled") },
     { href: "/host/business/earnings", label: "Earnings", icon: BarChart3, match: (p) => p.startsWith("/host/business/earnings") },
     { href: "/host/business/transactions", label: "Transactions", icon: ReceiptText, match: (p) => p.startsWith("/host/business/transactions") },
+    { href: "/host/business/claims", label: "Claims", icon: ShieldAlert, match: (p) => p.startsWith("/host/business/claims") },
     { href: "/host/business/performance", label: "Performance", icon: TrendingUp, match: (p) => p.startsWith("/host/business/performance") },
     { href: "/host/business/ratings", label: "Ratings", icon: Star, match: (p) => p.startsWith("/host/business/ratings") },
     { href: "/host/hours", label: "Pickup and hours", icon: MapPin, match: (p) => p.startsWith("/host/hours") },
@@ -58,6 +70,7 @@ export function HostSidebar({ requests, unread, isAdmin = false }: { requests: n
     ? [
         { href: "/host/admin", label: "Overview", icon: Shield, match: (p) => p === "/host/admin" },
         { href: "/host/admin/disputes", label: "Disputes", icon: Gavel, match: (p) => p.startsWith("/host/admin/disputes") },
+        { href: "/host/admin/claims", label: "Claims", icon: ShieldAlert, match: (p) => p.startsWith("/host/admin/claims"), badge: openClaims },
         { href: "/host/admin/trips", label: "Every trip", icon: Route, match: (p) => p.startsWith("/host/admin/trips") },
         { href: "/host/admin/users", label: "Users", icon: Users, match: (p) => p.startsWith("/host/admin/users") },
         { href: "/host/admin/promos", label: "Promo codes", icon: TicketPercent, match: (p) => p.startsWith("/host/admin/promos") },

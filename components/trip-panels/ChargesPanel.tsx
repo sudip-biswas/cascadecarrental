@@ -1,8 +1,9 @@
 import { Fact, Tag, Tile, TileTitle } from "@/components/kit";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { chargeWindow } from "@/lib/charges";
+import { LONG_TRIP_DAYS, chargeWindow, isLongTrip, sendableKinds } from "@/lib/charge-windows";
+import { hasOpenClaim } from "@/lib/claims";
 import { INSPECTION_BUCKET, milesDriven } from "@/lib/inspections";
-import type { Trip, TripCharge } from "@/lib/supabase/types";
+import type { ChargeKind, Trip, TripCharge } from "@/lib/supabase/types";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { PhotoGrid } from "./inspection/PhotoGrid";
 import { CancelChargeButton, GuestChargeActions } from "./charges/ChargeActions";
@@ -14,6 +15,19 @@ const SIGNED_URL_SECONDS = 60 * 60;
 const AUTO_CHARGE_MS = 3 * 86_400_000;
 
 type PanelTrip = Pick<Trip, "id" | "guest_id" | "host_id" | "status" | "ends_at" | "deposit_cents" | "deposit_status">;
+
+/** What the host can send now, and by when. */
+function deadlineLine(trip: Pick<Trip, "status" | "starts_at" | "ends_at">, kinds: ChargeKind[]) {
+  if (trip.status === "active") {
+    return isLongTrip(trip)
+      ? `On a trip of ${LONG_TRIP_DAYS} days or more you can send tolls and tickets as they come in, one open at a time. The rest can go once it's done.`
+      : "During the trip you can send tolls. Tickets, fuel, extra miles and the rest can go once it's done.";
+  }
+  const tolls = `Tolls and tickets until ${formatDateTime(chargeWindow(trip, "tolls").closesAt)}.`;
+  return kinds.includes("fuel")
+    ? `Extra miles, fuel or cleaning until ${formatDateTime(chargeWindow(trip, "fuel").closesAt)}. ${tolls} You get all of it.`
+    : `${tolls} You get all of it.`;
+}
 
 function depositLine(trip: PanelTrip, viewer: "guest" | "host") {
   const amount = formatCurrency(trip.deposit_cents);
@@ -102,7 +116,7 @@ export async function ChargesPanel({ tripId, viewer, userId }: { tripId: string;
   const [{ data: trip }, { data: rows }] = await Promise.all([
     admin
       .from("trips")
-      .select("id, guest_id, host_id, status, ends_at, deposit_cents, deposit_status, extra_mile_fee_cents")
+      .select("id, guest_id, host_id, status, starts_at, ends_at, deposit_cents, deposit_status, extra_mile_fee_cents")
       .eq("id", tripId)
       .maybeSingle(),
     admin.from("trip_charges").select("*").eq("trip_id", tripId).order("created_at", { ascending: false }),
@@ -110,12 +124,14 @@ export async function ChargesPanel({ tripId, viewer, userId }: { tripId: string;
   if (!trip || (viewer === "guest" ? trip.guest_id : trip.host_id) !== userId) return null;
 
   const charges = rows ?? [];
-  const window = chargeWindow(trip);
-  const canRequest = viewer === "host" && window.open;
+  // A claim's damage charge goes through the claim, so it can't be sent twice.
+  const claimOpen = viewer === "host" && (await hasOpenClaim(tripId));
+  const kinds = viewer === "host" ? sendableKinds(trip).filter((k) => !(claimOpen && k === "damage")) : [];
+  const canRequest = kinds.length > 0;
   const deposit = trip.deposit_cents > 0 ? depositLine(trip, viewer) : null;
   if (!charges.length && !canRequest && !deposit) return null;
 
-  const summary = canRequest && !window.activeOnly ? await milesDriven(tripId) : null;
+  const summary = kinds.includes("extra_miles") ? await milesDriven(tripId) : null;
   const miles = summary && { ...summary, feeCents: trip.extra_mile_fee_cents };
 
   const paths = charges.flatMap((c) => c.photos);
@@ -129,14 +145,8 @@ export async function ChargesPanel({ tripId, viewer, userId }: { tripId: string;
     <Tile className="flex flex-col gap-3.5 sm:p-6">
       <TileTitle>{viewer === "guest" ? "Charges and deposit" : "Charges"}</TileTitle>
 
-      {canRequest && (
-        <p className="text-[15px] text-slate">
-          {window.activeOnly
-            ? "During the trip you can send tolls. Fuel, extra miles, cleaning and the rest can go once it's done."
-            : `Extra miles, fuel, tolls or cleaning? You can send charges until ${formatDateTime(window.closesAt)}. You get all of it.`}
-        </p>
-      )}
-      {canRequest && <RequestChargeForm tripId={tripId} tollsOnly={window.activeOnly} miles={miles} />}
+      {canRequest && <p className="text-[15px] text-slate">{deadlineLine(trip, kinds)}</p>}
+      {canRequest && <RequestChargeForm tripId={tripId} allowed={kinds} miles={miles} />}
 
       {deposit && <Fact label="Security deposit" value={deposit} />}
 

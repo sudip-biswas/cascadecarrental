@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getUser } from "@/lib/supabase/server";
 import { getHostNav } from "@/lib/account";
+import { escalatedClaimCount } from "@/lib/claims";
 import { NO_INDEX } from "@/lib/site";
 import { HostSidebar } from "@/components/layout/HostSidebar";
 import { HostTopbar } from "@/components/layout/HostTopbar";
@@ -17,10 +18,11 @@ export default async function HostLayout({ children }: LayoutProps<"/">) {
 
   const { requests, unread } = await getHostNav(user.id);
   const isAdmin = user.id === process.env.ADMIN_USER_ID;
+  const openClaims = isAdmin ? await escalatedClaimCount() : 0;
 
   return (
     <div className="flex min-h-dvh flex-1">
-      <HostSidebar requests={requests} unread={unread} isAdmin={isAdmin} />
+      <HostSidebar requests={requests} unread={unread} isAdmin={isAdmin} openClaims={openClaims} />
       <div className="flex min-w-0 flex-1 flex-col">
         <HostTopbar />
         <main className="flex-1 px-4 pt-6 pb-12 sm:px-7 sm:pt-7">{children}</main>

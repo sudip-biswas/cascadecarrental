@@ -31,6 +31,7 @@ import { DeliverySection, type Place } from "./DeliverySection";
 import { DriverSection } from "./DriverSection";
 import { PromoField, type AppliedPromo } from "./PromoField";
 import { driverCheck, type DriverRules } from "./rules";
+import { TOLL_WINDOW_DAYS } from "@/lib/charge-windows";
 import { CAR_SPOT, quotePickup, type PickupChoice, type PickupOption } from "@/lib/locations";
 import { PAID_WITH_LABEL, PAY_OVER_TIME, isPayOverTime, payOverTimeEnabled } from "@/lib/pay-over-time";
 import { CardOnFile, PayOverTimeNote, pendingNoteKey } from "./PayOverTime";
@@ -580,7 +581,7 @@ function CheckoutLayout({
           )}
           <p className="px-1 text-[13px] leading-snug text-slate">
             Booking means you and any added drivers agree to the trip rules: only approved drivers, no smoking, the same
-            fuel back, and tolls, tickets or damage charged within 7 days. The full trip agreement is on your trip page.
+            fuel back, and charges after the trip, up to {TOLL_WINDOW_DAYS} days later for tolls and tickets. The full trip agreement is on your trip page.
           </p>
         </aside>
       </Container>

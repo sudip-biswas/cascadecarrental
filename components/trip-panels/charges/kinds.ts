@@ -5,6 +5,7 @@ export const CHARGE_KINDS: { kind: ChargeKind; label: string; hint: string }[] =
   { kind: "extra_miles", label: "Extra miles", hint: "Worked out from the check-in and check-out odometers." },
   { kind: "fuel", label: "Fuel", hint: "Came back with less fuel or charge than it left with." },
   { kind: "tolls", label: "Tolls", hint: "Toll or bridge charges from the trip. Add the toll statement." },
+  { kind: "ticket", label: "Ticket", hint: "Parking, speeding or impound. Add the ticket or notice." },
   { kind: "cleaning", label: "Cleaning", hint: "Needed more than a normal clean. Add photos." },
   { kind: "smoking", label: "Smoking", hint: "Smoke smell or ash. Add photos." },
   { kind: "late_return", label: "Late return", hint: "Came back late. Say how late." },

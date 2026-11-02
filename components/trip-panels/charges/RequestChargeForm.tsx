@@ -48,24 +48,25 @@ function milesNote(m: MilesSuggestion) {
 
 export function RequestChargeForm({
   tripId,
-  tollsOnly,
+  allowed,
   miles,
 }: {
   tripId: string;
-  /** During the trip only tolls can be sent. */
-  tollsOnly: boolean;
+  /** What can be sent right now. */
+  allowed: ChargeKind[];
   miles: MilesSuggestion | null;
 }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<ChargeKind | null>(tollsOnly ? "tolls" : null);
+  const only = allowed.length === 1 ? allowed[0] : null;
+  const [kind, setKind] = useState<ChargeKind | null>(only);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const kinds = tollsOnly ? CHARGE_KINDS.filter((k) => k.kind === "tolls") : CHARGE_KINDS;
+  const kinds = CHARGE_KINDS.filter((k) => allowed.includes(k.kind));
   const milesReady = !!miles && miles.overCents >= 100;
   const isMiles = kind === "extra_miles";
   const cents = isMiles ? (miles?.overCents ?? 0) : Math.round(Number(amount) * 100);
@@ -86,7 +87,7 @@ export function RequestChargeForm({
 
   function reset() {
     setOpen(false);
-    setKind(tollsOnly ? "tolls" : null);
+    setKind(only);
     setAmount("");
     setDescription("");
     setPhotos([]);
@@ -116,7 +117,7 @@ export function RequestChargeForm({
   if (!open) {
     return (
       <Button variant="secondary" className="self-start" onClick={() => setOpen(true)}>
-        {tollsOnly ? "Send a toll charge" : "Request a charge"}
+        {only === "tolls" ? "Send a toll charge" : "Request a charge"}
       </Button>
     );
   }

@@ -1,4 +1,4 @@
-import { CHARGE_WINDOW_DAYS } from "@/lib/charges";
+import { CHARGE_WINDOW_DAYS, CLAIM_WINDOW_DAYS, TOLL_WINDOW_DAYS } from "@/lib/charge-windows";
 import { formatPrice } from "@/lib/utils";
 
 export interface Term {
@@ -91,7 +91,7 @@ export function agreementTerms(t: TermsInput): Term[] {
     {
       title: "Charges after the trip",
       body: [
-        `Any charge comes within ${CHARGE_WINDOW_DAYS} days of the trip, with photos or receipts. The guest can pay it or dispute it, and Cascade looks at both sides.`,
+        `Charges come within ${CHARGE_WINDOW_DAYS} days of the trip, damage claims within ${CLAIM_WINDOW_DAYS} and tolls and tickets within ${TOLL_WINDOW_DAYS}, with photos or receipts. The guest can pay a charge or dispute it, and Cascade looks at both sides.`,
         "Damage is the guest's to cover, through their protection plan if they took one, or their own insurance or their own pocket if not.",
       ],
     },

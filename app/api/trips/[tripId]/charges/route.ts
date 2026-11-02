@@ -3,30 +3,16 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyTrip } from "@/lib/notify";
-import { CHARGE_WINDOW_DAYS, chargeGuest, chargeWindow } from "@/lib/charges";
-import { INSPECTION_BUCKET, milesDriven } from "@/lib/inspections";
+import { OPEN_CHARGE_STATUSES, chargeGuest, createCharge, followClaim } from "@/lib/charges";
+import { CHARGE_KIND_VALUES, LONG_TRIP_DAYS, chargeWindow, chargeWindowDays, isLongTrip } from "@/lib/charge-windows";
+import { hasOpenClaim } from "@/lib/claims";
+import { milesDriven } from "@/lib/inspections";
+import { readPhotos, removePhotos, uploadPhotos } from "@/lib/trip-photos";
 import { formatCurrency } from "@/lib/utils";
-
-const EXTENSIONS: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/heic": "heic",
-  "image/heif": "heic",
-};
-
-const PHOTOS_MAX = 6;
-const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
-
-/** Some phones send HEIC with no type, so fall back to the file name. */
-function photoType(file: File) {
-  if (EXTENSIONS[file.type]) return file.type;
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-  return ext === "heic" || ext === "heif" ? "image/heic" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : null;
-}
+import { kindLabel } from "@/components/trip-panels/charges/kinds";
 
 const createSchema = z.object({
-  kind: z.enum(["extra_miles", "fuel", "tolls", "cleaning", "smoking", "late_return", "damage", "other"]),
+  kind: z.enum(CHARGE_KIND_VALUES),
   // Ignored for extra miles: that one is worked out from the odometers.
   amountCents: z.coerce.number().int().min(100).max(2_000_000).optional(),
   description: z.string().trim().min(3).max(2000),
@@ -59,7 +45,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ tripId:
   const admin = createAdminClient();
   const { data: trip } = await admin
     .from("trips")
-    .select("id, host_id, guest_id, status, ends_at")
+    .select("id, host_id, guest_id, status, starts_at, ends_at")
     .eq("id", tripId)
     .maybeSingle();
   if (!trip || trip.host_id !== user.id) return fail("Trip not found.", 404);
@@ -74,16 +60,37 @@ export async function POST(req: Request, { params }: { params: Promise<{ tripId:
   if (!parsed.success) return fail("Pick what it's for, add an amount of at least $1 and a short note.", 400);
   const { kind, description } = parsed.data;
 
-  const window = chargeWindow(trip);
+  const window = chargeWindow(trip, kind);
   if (!window.open) {
+    if (trip.status === "active") {
+      return fail(
+        kind === "ticket"
+          ? `During the trip, tickets can only go on trips of ${LONG_TRIP_DAYS} days or more. This one can wait until it's done.`
+          : "During the trip you can only send tolls. The rest can wait until it's done.",
+        409
+      );
+    }
     return fail(
       trip.status === "completed"
-        ? `Charges can be sent for ${CHARGE_WINDOW_DAYS} days after the trip. That window has closed.`
+        ? `${kindLabel(kind)} can be sent for ${chargeWindowDays(kind)} days after the trip. That window has closed.`
         : "You can send charges once the trip has started.",
       409
     );
   }
-  if (window.activeOnly && kind !== "tolls") return fail("During the trip you can only send tolls. The rest can wait until it's done.", 409);
+  if (window.midTrip && isLongTrip(trip)) {
+    // Long trips get one toll or ticket at a time, so a guest is never stacked with them.
+    const { data: open } = await admin
+      .from("trip_charges")
+      .select("id")
+      .eq("trip_id", tripId)
+      .in("kind", ["tolls", "ticket"])
+      .in("status", OPEN_CHARGE_STATUSES)
+      .limit(1);
+    if (open?.length) return fail("There's already an open toll or ticket on this trip. Wait until it's settled.", 409);
+  }
+  if (kind === "damage" && (await hasOpenClaim(tripId))) {
+    return fail("This trip has an open damage claim. Ask the guest to pay from the claim.", 409);
+  }
 
   let amountCents = parsed.data.amountCents;
   if (kind === "extra_miles") {
@@ -94,43 +101,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ tripId:
   }
   if (!amountCents) return fail("Add an amount of at least $1.", 400);
 
-  const files = form.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
-  if (files.length > PHOTOS_MAX) return fail(`Up to ${PHOTOS_MAX} photos.`, 400);
-  const types: string[] = [];
-  for (const file of files) {
-    const type = photoType(file);
-    if (!type) return fail("Photos have to be JPG, PNG, WebP or HEIC.", 400);
-    if (file.size > PHOTO_MAX_BYTES) return fail("Each photo has to be under 10 MB.", 400);
-    types.push(type);
-  }
+  const upload = readPhotos(form);
+  if (upload.error !== undefined) return fail(upload.error, 400);
+  const photos = await uploadPhotos(tripId, "charges", upload.files, upload.types);
+  if (!photos) return fail("Upload failed. Try again.", 500);
 
-  const storage = admin.storage.from(INSPECTION_BUCKET);
-  const photos: string[] = [];
-  for (const [i, file] of files.entries()) {
-    const path = `${tripId}/charges/${crypto.randomUUID()}.${EXTENSIONS[types[i]]}`;
-    const { error } = await storage.upload(path, file, { contentType: types[i], upsert: false });
-    if (error) {
-      if (photos.length) await storage.remove(photos);
-      return fail("Upload failed. Try again.", 500);
-    }
-    photos.push(path);
-  }
-
-  const { data: charge, error } = await admin
-    .from("trip_charges")
-    .insert({
-      trip_id: tripId,
-      host_id: trip.host_id,
-      guest_id: trip.guest_id,
-      kind,
-      amount_cents: amountCents,
-      description,
-      photos,
-    })
-    .select("*")
-    .single();
-  if (error || !charge) {
-    if (photos.length) await storage.remove(photos);
+  const charge = await createCharge({
+    tripId,
+    hostId: trip.host_id,
+    guestId: trip.guest_id,
+    kind,
+    amountCents,
+    description,
+    photos,
+  });
+  if (!charge) {
+    await removePhotos(photos);
     return fail("Couldn't send the charge. Try again.", 500);
   }
 
@@ -168,6 +154,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ tripId
       .select("status")
       .maybeSingle();
     if (!data) return fail("This charge is already settled.", 409);
+    await followClaim(chargeId, "dropped");
     return NextResponse.json({ status: "cancelled" });
   }
 
@@ -183,6 +170,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ tripId
       .select("status")
       .maybeSingle();
     if (!data) return fail("This charge can't be disputed any more.", 409);
+    await followClaim(chargeId, "disputed");
     await notifyTrip(tripId, "charge_disputed", { amountCents: charge.amount_cents, note, key: chargeId });
     return NextResponse.json({ status: "disputed" });
   }

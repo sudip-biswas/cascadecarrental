@@ -84,6 +84,7 @@ export const CHARGE_LABEL: Record<ChargeKind, string> = {
   extra_miles: "Extra miles",
   fuel: "Fuel",
   tolls: "Tolls",
+  ticket: "Ticket",
   cleaning: "Cleaning",
   smoking: "Smoking",
   late_return: "Late return",

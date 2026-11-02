@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { CHARGE_WINDOW_DAYS, CLAIM_WINDOW_DAYS, TOLL_WINDOW_DAYS } from "@/lib/charge-windows";
 import { sendEmail } from "@/lib/email";
 import { messagePreview } from "@/lib/message-photos";
 import { formatCurrency, formatDateTime, formatRange } from "@/lib/utils";
@@ -115,6 +116,13 @@ export type TripEvent =
   | "charge_failed"
   | "deposit_held"
   | "deposit_released"
+  | "claim_reported_by_host"
+  | "claim_reported_by_guest"
+  | "claim_escalated"
+  | "claim_settled"
+  | "claim_withdrawn"
+  | "claim_resolved"
+  | "claim_closed"
   | "review_from_guest"
   | "review_from_host"
   | "driver_added"
@@ -198,7 +206,7 @@ export async function notifyTrip(
     case "completed":
       await Promise.all([
         toGuest(`Thanks for driving the ${car}`, `Your receipt is ready. When you have a minute, tell other guests how it went.`, "See receipt and review", `${guestTrip}/receipt`),
-        toHost(`${guest}'s trip is done`, `${car}, ${when}.\nYour share is on its way to your bank. You can review ${guest}, and send any charges for extra miles, fuel or tolls within 7 days.`),
+        toHost(`${guest}'s trip is done`, `${car}, ${when}.\nYour share is on its way to your bank. You can review ${guest}, and send charges for extra miles or fuel within ${CHARGE_WINDOW_DAYS} days, and tolls or tickets within ${TOLL_WINDOW_DAYS}. Report damage within 24 hours.`),
       ]);
       return;
     case "change_requested":
@@ -228,6 +236,31 @@ export async function notifyTrip(
     case "deposit_released":
       await toGuest("Your deposit is released", `The ${amount} hold for the ${car} is gone from your card. Banks can take a few days to show it.`);
       return;
+    case "claim_reported_by_host":
+      await toGuest(`${host} reported damage on the ${car}`, `${when}.\n${extra.note ?? ""}\nThere's nothing to pay yet. You can see the report on your trip page.`, "See the report", `${guestTrip}#claim`);
+      return;
+    case "claim_reported_by_guest":
+      await toHost(`${guest} reported damage on your ${car}`, `${when}.\n${extra.note ?? ""}\nYou have until ${CLAIM_WINDOW_DAYS} days after the trip to ask ${guest} to pay or escalate.`, "See the report", `${hostTrip}#claim`);
+      return;
+    case "claim_escalated":
+      await toGuest(`${host} sent the damage claim to Cascade`, `${car}, ${when}.\nCascade will look at both sides. You can see where it stands on your trip page.`, "See the claim", `${guestTrip}#claim`);
+      return;
+    case "claim_settled":
+      await toGuest(`The damage claim on the ${car} is resolved`, `${when}.\nYour payment settled it.`, "See the claim", `${guestTrip}#claim`);
+      return;
+    case "claim_withdrawn":
+      await toGuest(`${host} closed the damage claim`, `${car}, ${when}.${extra.note ? `\n${extra.note}` : ""}`, "See the claim", `${guestTrip}#claim`);
+      return;
+    case "claim_resolved":
+    case "claim_closed": {
+      const title = `Cascade ${event === "claim_resolved" ? "resolved" : "closed"} the damage claim`;
+      const body = `${car}, ${when}.${extra.note ? `\n${extra.note}` : ""}`;
+      await Promise.all([
+        toGuest(title, body, "See the claim", `${guestTrip}#claim`),
+        toHost(title, body, "See the claim", `${hostTrip}#claim`),
+      ]);
+      return;
+    }
     case "review_from_guest":
       await toHost(`${guest} reviewed your ${car}`, `${extra.note ?? ""}\nYou can reply from Ratings.`.trim(), "See the review", "/host/business/ratings");
       return;

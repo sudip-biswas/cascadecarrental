@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BadgeCheck, CalendarClock, Flag, Gavel, Receipt, Shield, TicketPercent, Users, type LucideIcon } from "lucide-react";
+import { BadgeCheck, CalendarClock, Flag, Gavel, Receipt, Shield, ShieldAlert, TicketPercent, Users, type LucideIcon } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NO_INDEX } from "@/lib/site";
 import { PageTitle, Tile, type Tone } from "@/components/kit";
@@ -28,8 +28,9 @@ export default async function AdminPage() {
   const now = new Date().toISOString();
   const count = { count: "exact", head: true } as const;
 
-  const [disputes, awaiting, pickups, returns, verifications, promos, reports] = await Promise.all([
+  const [disputes, claims, awaiting, pickups, returns, verifications, promos, reports] = await Promise.all([
     admin.from("trip_charges").select("id", count).eq("status", "disputed"),
+    admin.from("trip_claims").select("id", count).eq("status", "escalated"),
     admin.from("trip_charges").select("id", count).eq("status", "requested"),
     admin
       .from("trips")
@@ -54,6 +55,7 @@ export default async function AdminPage() {
 
       <div className="flex flex-wrap gap-4">
         <Stat href="/host/admin/disputes" label="Open disputes" count={disputes.count ?? 0} icon={Gavel} tone="peach" />
+        <Stat href="/host/admin/claims" label="Open claims" count={claims.count ?? 0} icon={ShieldAlert} tone="peach" />
         <Stat href="/host/admin/disputes?status=requested" label="Charges awaiting payment" count={awaiting.count ?? 0} icon={Receipt} tone="butter" />
         <Stat
           href="/host/admin/trips?q=today"
@@ -70,6 +72,7 @@ export default async function AdminPage() {
       <Tile className="flex flex-wrap gap-2">
         {[
           { href: "/host/admin/disputes", label: "Disputes", icon: Gavel },
+          { href: "/host/admin/claims", label: "Claims", icon: ShieldAlert },
           { href: "/host/admin/trips", label: "Every trip", icon: CalendarClock },
           { href: "/host/admin/users", label: "Users", icon: Users },
           { href: "/host/admin/promos", label: "Promo codes", icon: TicketPercent },

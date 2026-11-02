@@ -12,7 +12,9 @@ export interface TripExtra {
   unlimited_miles: boolean;
 }
 
-export type ChargeKind = "extra_miles" | "fuel" | "tolls" | "cleaning" | "smoking" | "late_return" | "damage" | "other";
+export type ChargeKind = "extra_miles" | "fuel" | "tolls" | "ticket" | "cleaning" | "smoking" | "late_return" | "damage" | "other";
+
+export type ClaimStatus = "reported" | "with_guest" | "disputed" | "escalated" | "resolved" | "closed";
 
 export type Json =
   | string
@@ -1253,6 +1255,77 @@ export type Database = {
           }
         ];
       };
+      trip_claims: {
+        Row: {
+          id: string;
+          trip_id: string;
+          vehicle_id: string;
+          host_id: string;
+          guest_id: string;
+          reported_by: "host" | "guest";
+          incident_at: string;
+          description: string;
+          photos: string[];
+          estimate_cents: number | null;
+          reported_late: boolean;
+          status: ClaimStatus;
+          charge_id: string | null;
+          escalated_at: string | null;
+          documents_due_at: string | null;
+          resolution_note: string | null;
+          resolved_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          trip_id: string;
+          vehicle_id: string;
+          host_id: string;
+          guest_id: string;
+          reported_by: "host" | "guest";
+          incident_at: string;
+          description: string;
+          photos?: string[];
+          estimate_cents?: number | null;
+          reported_late?: boolean;
+          status?: ClaimStatus;
+          charge_id?: string | null;
+          escalated_at?: string | null;
+          documents_due_at?: string | null;
+          resolution_note?: string | null;
+          resolved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          photos?: string[];
+          estimate_cents?: number | null;
+          status?: ClaimStatus;
+          charge_id?: string | null;
+          escalated_at?: string | null;
+          documents_due_at?: string | null;
+          resolution_note?: string | null;
+          resolved_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "trip_claims_trip_id_fkey";
+            columns: ["trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "trip_claims_charge_id_fkey";
+            columns: ["charge_id"];
+            isOneToOne: false;
+            referencedRelation: "trip_charges";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       trip_changes: {
         Row: {
           id: string;
@@ -1775,6 +1848,7 @@ export type TripInspection = Tables["trip_inspections"]["Row"];
 export type VehicleInspection = Tables["vehicle_inspections"]["Row"];
 export type VehicleMaintenance = Tables["vehicle_maintenance"]["Row"];
 export type TripCharge = Tables["trip_charges"]["Row"];
+export type TripClaim = Tables["trip_claims"]["Row"];
 export type TripChange = Tables["trip_changes"]["Row"];
 export type TripDriver = Tables["trip_drivers"]["Row"];
 export type GuestInsurance = Tables["guest_insurance"]["Row"];

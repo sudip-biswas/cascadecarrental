@@ -1,5 +1,5 @@
 import { CigaretteOff, Clock, Fuel, Gauge, Receipt, Sparkles, Zap, type LucideIcon } from "lucide-react";
-import { CHARGE_WINDOW_DAYS } from "@/lib/charges";
+import { CHARGE_WINDOW_DAYS, CLAIM_WINDOW_DAYS, TOLL_WINDOW_DAYS } from "@/lib/charge-windows";
 import { Tile, TileTitle } from "@/components/kit";
 
 function Rule({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
@@ -48,12 +48,12 @@ export function RulesOfTheRoad({
           title="Mind the miles"
           body={`${distanceIncludedMi} miles a day are included. Each mile over is ${extraMileFeeCents}¢.`}
         />
-        <Rule icon={Receipt} title="Tolls are on you" body="Tolls and bridge fees from your trip are passed on, with the statement." />
+        <Rule icon={Receipt} title="Tolls and tickets are on you" body="Tolls, bridge fees and tickets from your trip are passed on, with the statement." />
         <Rule icon={Clock} title="Be back on time" body="Running late? Ask for more time from your trip page. Late returns can be charged." />
       </ul>
       <p className="rounded-[16px] bg-board px-4 py-3 text-sm text-slate">
-        Any charge comes within {CHARGE_WINDOW_DAYS} days of the trip, with photos or receipts. You can pay it or dispute it, and
-        Cascade looks at both sides.
+        Charges come within {CHARGE_WINDOW_DAYS} days of the trip, damage claims within {CLAIM_WINDOW_DAYS} and tolls and tickets
+        within {TOLL_WINDOW_DAYS}, with photos or receipts. You can pay a charge or dispute it, and Cascade looks at both sides.
       </p>
     </Tile>
   );

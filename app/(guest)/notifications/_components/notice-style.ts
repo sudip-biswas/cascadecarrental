@@ -9,6 +9,7 @@ import {
   CreditCard,
   RotateCcw,
   ShieldCheck,
+  TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 import type { Tone } from "@/components/kit";
@@ -47,6 +48,15 @@ export function noticeStyle(kind: string): { icon: LucideIcon; tone: Tone } {
     case "deposit_held":
     case "deposit_released":
       return { icon: ShieldCheck, tone: "sky" };
+    case "claim_reported_by_host":
+    case "claim_reported_by_guest":
+    case "claim_escalated":
+      return { icon: TriangleAlert, tone: "peach" };
+    case "claim_settled":
+    case "claim_withdrawn":
+    case "claim_resolved":
+    case "claim_closed":
+      return { icon: CircleCheck, tone: "mint" };
     default:
       return { icon: Bell, tone: "board" };
   }

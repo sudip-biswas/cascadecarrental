@@ -20,6 +20,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isCancelled, settleTripStatuses } from "@/lib/trips";
 import { hostEarningsCents, tripDays } from "@/lib/pricing";
 import { freeCancellationUntil } from "@/lib/cancellation";
+import { claimWindow } from "@/lib/claims";
 import { tripMiles } from "@/lib/inspections";
 import { type Cover, tripCover } from "@/lib/guest-checks";
 import { tripStatus } from "@/lib/trip-status";
@@ -37,6 +38,7 @@ import { signMessagePhotos } from "@/components/messaging/inbox";
 import { HOST_REPLIES } from "@/components/messaging/replies";
 import { InspectionPanel } from "@/components/trip-panels/InspectionPanel";
 import { ChargesPanel } from "@/components/trip-panels/ChargesPanel";
+import { ClaimsPanel } from "@/components/trip-panels/ClaimsPanel";
 import { ChangePanel } from "@/components/trip-panels/ChangePanel";
 import { ReviewPanel } from "@/components/trip-panels/ReviewPanel";
 import { InstructionsHostNote } from "@/components/trip-panels/InstructionsHostNote";
@@ -71,8 +73,9 @@ type HostTripDetail = Trip & {
 const TRIP_SELECT =
   "*, guest:profiles!guest_id(id, full_name, phone, created_at, driving_license_verified, identity_verified), vehicle:vehicles(id, make, model, year, location_name, location_address, location_lat, location_lng, vehicle_images(url, is_cover, position))";
 
-export default async function HostTripPage({ params }: PageProps<"/host/trips/[tripId]">) {
+export default async function HostTripPage({ params, searchParams }: PageProps<"/host/trips/[tripId]">) {
   const { tripId } = await params;
+  const { report } = await searchParams;
   const supabase = await createClient();
   const user = await getUser();
   if (!user) redirect(`/login?redirectTo=/host/trips/${tripId}`);
@@ -267,6 +270,7 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
           <div id="check-in" className="scroll-mt-4">
             <InspectionPanel {...panel} />
           </div>
+          <ClaimsPanel {...panel} report={report === "1"} />
           <div id="charges" className="scroll-mt-4">
             <ChargesPanel {...panel} />
           </div>
@@ -299,6 +303,11 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
                 <Button asChild variant="secondary" className="h-[48px] text-base">
                   <a href="#check-in">{trip.status === "active" ? "Check the car back in" : "See check-in photos"}</a>
                 </Button>
+                {claimWindow(trip).open && (
+                  <Button asChild variant="secondary" className="h-[48px] text-base">
+                    <a href="#claim">Report damage</a>
+                  </Button>
+                )}
               </>
             )}
             <Button asChild variant="outline" className="h-[48px] text-base">
@@ -307,6 +316,11 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
             {(trip.status === "approved" || afterPickup) && (
               <Button asChild variant="outline" className="h-[48px] text-base">
                 <Link href={`/trips/${trip.id}/agreement`}>Trip agreement</Link>
+              </Button>
+            )}
+            {(trip.status === "approved" || trip.status === "active") && (
+              <Button asChild variant="outline" className="h-[48px] text-base">
+                <Link href={`/trips/${trip.id}/incident-card`}>Incident card</Link>
               </Button>
             )}
           </Tile>

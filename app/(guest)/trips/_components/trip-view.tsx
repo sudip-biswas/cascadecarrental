@@ -7,6 +7,7 @@ import { CancelTripButton } from "@/components/trips/CancelTripButton";
 import { ReviewForm } from "@/components/trips/ReviewForm";
 import { InspectionPanel } from "@/components/trip-panels/InspectionPanel";
 import { ChargesPanel } from "@/components/trip-panels/ChargesPanel";
+import { ClaimsPanel } from "@/components/trip-panels/ClaimsPanel";
 import { ChangePanel } from "@/components/trip-panels/ChangePanel";
 import { DriversPanel } from "@/components/trip-panels/DriversPanel";
 import { ChecksPanel } from "@/components/trip-panels/ChecksPanel";
@@ -108,10 +109,13 @@ export function TripView({
   trip,
   reviewed,
   userId,
+  report = false,
 }: {
   trip: TripRow;
   reviewed: boolean;
   userId: string;
+  /** Came from the incident card to report damage. */
+  report?: boolean;
   /** Just back from Stripe's licence check. */
 }) {
   const now = new Date();
@@ -186,6 +190,7 @@ export function TripView({
           <ChangePanel tripId={trip.id} viewer="guest" userId={userId} />
           <DriversPanel tripId={trip.id} userId={userId} />
           <InspectionPanel tripId={trip.id} viewer="guest" userId={userId} />
+          <ClaimsPanel tripId={trip.id} viewer="guest" userId={userId} report={report} />
           <ChargesPanel tripId={trip.id} viewer="guest" userId={userId} />
 
           <Tile className="flex flex-col gap-4 sm:p-6">
