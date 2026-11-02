@@ -73,7 +73,11 @@ export async function createCharge(input: {
   description: string;
   photos: string[];
 }): Promise<TripCharge | null> {
-  const { data, error } = await createAdminClient()
+  const admin = createAdminClient();
+  // A closed account can't log in to answer, so Cascade reviews the charge
+  // instead of collecting it unanswered.
+  const { data: guest } = await admin.from("profiles").select("closed_at").eq("id", input.guestId).maybeSingle();
+  const { data, error } = await admin
     .from("trip_charges")
     .insert({
       trip_id: input.tripId,
@@ -83,6 +87,7 @@ export async function createCharge(input: {
       amount_cents: input.amountCents,
       description: input.description,
       photos: input.photos,
+      ...(guest?.closed_at ? { status: "disputed" as const, guest_note: "Guest account closed." } : {}),
     })
     .select("*")
     .single();
@@ -403,12 +408,12 @@ export async function processDueCharges(): Promise<void> {
   for (const charge of due ?? []) await chargeGuest(charge.id);
 
   // Deposits go back 48 hours after the trip, or straight away if it was
-  // cancelled, unless a charge is still open. Only a charge already sent holds
+  // cancelled, unless a charge or a damage claim is still open. Only those hold
   // one: the 90 days hosts have for tolls and tickets don't.
   const releaseBefore = new Date(now - DEPOSIT_RELEASE_HOURS * 3_600_000).toISOString();
   const { data: held } = await admin
     .from("trips")
-    .select("id, deposit_cents, deposit_payment_intent_id, trip_charges(status)")
+    .select("id, deposit_cents, deposit_payment_intent_id, trip_charges(status), trip_claims(status)")
     .eq("deposit_status", "held")
     .or(`ends_at.lt.${releaseBefore},status.in.(cancelled_guest,cancelled_host)`)
     .limit(100);
@@ -416,7 +421,8 @@ export async function processDueCharges(): Promise<void> {
     const open = (trip.trip_charges as { status: string }[] | null)?.some(
       (c) => c.status === "requested" || c.status === "disputed"
     );
-    if (!open) await releaseDeposit(trip);
+    const claim = (trip.trip_claims as { status: string }[] | null)?.some((c) => c.status !== "resolved" && c.status !== "closed");
+    if (!open && !claim) await releaseDeposit(trip);
   }
 
   // Paid charges whose host had no bank connected yet.

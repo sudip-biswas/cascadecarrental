@@ -1,5 +1,4 @@
--- Top host for guests, and honest trip counts on car listings. Additive and
--- safe to run more than once.
+-- Top host for guests. Additive and safe to run more than once.
 
 -- ---------------------------------------------------------------------------
 -- Top host
@@ -38,50 +37,3 @@ begin
       for each row execute function public.protect_top_host();
   end if;
 end $$;
-
--- ---------------------------------------------------------------------------
--- A car's trip count
--- ---------------------------------------------------------------------------
--- vehicles.trip_count only moved when a guest left a review, so a car with
--- finished trips and no reviews still read "New listing". It now moves when a
--- trip finishes too. Row-level, so settling many trips at once counts each car.
-create or replace function public.update_vehicle_trip_count()
-returns trigger
-language plpgsql
-security definer
-set search_path to 'public'
-as $$
-begin
-  update vehicles set
-    trip_count = (
-      select count(*) from trips
-      where vehicle_id = new.vehicle_id and status = 'completed'
-    )
-  where id = new.vehicle_id;
-  return null;
-end;
-$$;
-
--- Only ever run by its trigger.
-revoke execute on function public.update_vehicle_trip_count() from public, anon, authenticated;
-
-do $$
-begin
-  if not exists (select 1 from pg_trigger where tgname = 'on_trip_completed' and tgrelid = 'public.trips'::regclass) then
-    create trigger on_trip_completed
-      after update of status on public.trips
-      for each row
-      when (new.status = 'completed' and old.status is distinct from 'completed')
-      execute function public.update_vehicle_trip_count();
-  end if;
-end $$;
-
--- Catch up the cars that fell behind. Only ever raises a count.
-update public.vehicles v
-set trip_count = done.trips
-from (
-  select vehicle_id, count(*) as trips from public.trips
-  where status = 'completed'
-  group by vehicle_id
-) done
-where done.vehicle_id = v.id and done.trips > v.trip_count;

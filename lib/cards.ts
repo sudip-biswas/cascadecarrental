@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
-import { chargeWindow } from "@/lib/charges";
+import { chargeWindow } from "@/lib/charge-windows";
 
 const DAY_MS = 86_400_000;
 
@@ -56,7 +56,7 @@ export async function cardHeldBy(userId: string, paymentMethodId: string): Promi
   const admin = createAdminClient();
   const { data: trips, error } = await admin
     .from("trips")
-    .select("id, status, ends_at")
+    .select("id, status, starts_at, ends_at")
     .eq("guest_id", userId)
     .eq("stripe_payment_method_id", paymentMethodId)
     .in("status", ["pending", "approved", "active", "completed"]);
@@ -64,9 +64,10 @@ export async function cardHeldBy(userId: string, paymentMethodId: string): Promi
 
   if (trips.some((t) => t.status !== "completed")) return "This card is on a current trip. You can remove it after the trip.";
 
-  const open = trips.filter((t) => chargeWindow(t).open);
+  // Tolls and tickets are the last charges a trip can get, so they set the date.
+  const open = trips.filter((t) => chargeWindow(t, "tolls").open);
   if (open.length > 0) {
-    const closes = Math.max(...open.map((t) => chargeWindow(t).closesAt.getTime()));
+    const closes = Math.max(...open.map((t) => chargeWindow(t, "tolls").closesAt.getTime()));
     const days = Math.ceil((closes - Date.now()) / DAY_MS);
     return `This card can still be charged for a recent trip. You can remove it in ${days === 1 ? "1 day" : `${days} days`}.`;
   }
