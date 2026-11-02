@@ -35,6 +35,7 @@ import { DriversCard } from "@/components/host/DriversCard";
 import { MessageThread } from "@/components/messaging/MessageThread";
 import { signMessagePhotos } from "@/components/messaging/inbox";
 import { HOST_REPLIES } from "@/components/messaging/replies";
+import { CheckinPanel } from "@/components/trip-panels/checkin/CheckinPanel";
 import { InspectionPanel } from "@/components/trip-panels/InspectionPanel";
 import { ChargesPanel } from "@/components/trip-panels/ChargesPanel";
 import { ChangePanel } from "@/components/trip-panels/ChangePanel";
@@ -52,7 +53,6 @@ type HostTripDetail = Trip & {
     full_name: string;
     phone: string | null;
     created_at: string;
-    driving_license_verified: boolean;
     identity_verified: boolean;
   } | null;
   vehicle: {
@@ -69,7 +69,7 @@ type HostTripDetail = Trip & {
 };
 
 const TRIP_SELECT =
-  "*, guest:profiles!guest_id(id, full_name, phone, created_at, driving_license_verified, identity_verified), vehicle:vehicles(id, make, model, year, location_name, location_address, location_lat, location_lng, vehicle_images(url, is_cover, position))";
+  "*, guest:profiles!guest_id(id, full_name, phone, created_at, identity_verified), vehicle:vehicles(id, make, model, year, location_name, location_address, location_lat, location_lng, vehicle_images(url, is_cover, position))";
 
 export default async function HostTripPage({ params }: PageProps<"/host/trips/[tripId]">) {
   const { tripId } = await params;
@@ -85,7 +85,7 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
   if (!trip) notFound();
 
   const admin = createAdminClient();
-  const [{ data: readings }, { data: conversations }, { data: guestAuth }, { data: insurance }] = await Promise.all([
+  const [{ data: readings }, { data: conversations }, { data: guestAuth }, { data: insurance }, { data: checkin }] = await Promise.all([
     supabase.from("trip_inspections").select("kind, role, odometer_mi, photos").eq("trip_id", trip.id),
     supabase
       .from("conversations")
@@ -96,10 +96,12 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
     admin.auth.admin.getUserById(trip.guest_id),
     // Hosts see the insurer and the end date, never the policy number or the card.
     admin.from("guest_insurance").select("has_none, insurer, expires_on").eq("user_id", trip.guest_id).maybeSingle(),
+    admin.from("trip_checkins").select("status").eq("trip_id", trip.id).maybeSingle(),
   ]);
   const cover = tripCover(trip, insurance);
   const covered = cover.kind === "plan" || cover.kind === "insurance";
-  const checksLeft = !trip.guest?.driving_license_verified || !covered;
+  const checkinApproved = checkin?.status === "approved";
+  const checksLeft = !checkinApproved || !covered;
 
   // The trip's own conversation, or any earlier one with the same guest.
   const threads = (conversations ?? []) as unknown as { id: string; trip_id: string | null; messages: Message[] }[];
@@ -263,6 +265,7 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
           </Tile>
 
           <DriversCard tripId={trip.id} userId={user.id} />
+          {!isCancelled(trip.status) && <CheckinPanel tripId={trip.id} userId={user.id} />}
           <ChangePanel {...panel} />
           <div id="check-in" className="scroll-mt-4">
             <InspectionPanel {...panel} />
@@ -335,7 +338,7 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
               </p>
             )}
             <ul className="flex flex-col gap-2 text-[15px]">
-              <Verified ok={!!trip.guest?.driving_license_verified}>Driver&apos;s licence checked</Verified>
+              <Verified ok={checkinApproved}>Driver&apos;s licence and selfie approved</Verified>
               <Verified ok={!!trip.guest?.identity_verified}>ID checked</Verified>
               <Verified ok={covered}>{coverLabel(cover)}</Verified>
               <Verified ok={!!guestAuth.user?.email_confirmed_at}>Email confirmed</Verified>

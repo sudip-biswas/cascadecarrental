@@ -1,6 +1,6 @@
 import { Check, IdCard, ShieldCheck } from "lucide-react";
 import { Tag, Tile, TileTitle } from "@/components/kit";
-import { LicenceCheck } from "@/components/profile/LicenceCheck";
+import { CheckinUpload } from "@/components/trip-panels/checkin/CheckinUpload";
 import { InsuranceForm } from "@/components/profile/InsuranceForm";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isCancelled } from "@/lib/trips";
@@ -71,11 +71,11 @@ export async function ChecksPanel({ tripId, userId }: { tripId: string; userId: 
   if (!trip || trip.guest_id !== userId) return null;
   if (trip.status === "completed" || isCancelled(trip.status)) return null;
 
-  const [{ data: profile }, insurance] = await Promise.all([
-    admin.from("profiles").select("full_name, date_of_birth, driving_license_verified, identity_status, identity_error").eq("id", userId).maybeSingle(),
+const [{ data: checkin }, insurance] = await Promise.all([
+    admin.from("trip_checkins").select("status, host_notes").eq("trip_id", tripId).maybeSingle(),
     loadOwnInsurance(userId),
   ]);
-  const checks = guestChecks(trip, profile, insurance);
+  const checks = guestChecks(trip, checkin, insurance);
   const started = new Date() >= new Date(trip.starts_at);
   // Once the trip is under way there's nothing to nag about if it's all done.
   if (started && !checks.missing.length) return null;
@@ -100,13 +100,7 @@ export async function ChecksPanel({ tripId, userId }: { tripId: string; userId: 
 
       <ul className="flex flex-col gap-2">
         <Item icon={<IdCard className="size-5" strokeWidth={1.75} />} title="Driver's licence and selfie" done={licenceDone} onColour={left > 0}>
-          <LicenceCheck
-            status={checks.licence}
-            error={checks.licenceError}
-            name={profile?.full_name ?? ""}
-            hasBirthday={!!profile?.date_of_birth}
-            leadClassName="text-slate"
-          />
+          <CheckinUpload tripId={tripId} status={checks.licence} rejectionNotes={checks.licenceError} />
         </Item>
         <Item
           icon={<ShieldCheck className="size-5" strokeWidth={1.75} />}

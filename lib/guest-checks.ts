@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { GuestInsurance, Profile, Trip } from "@/lib/supabase/types";
+import type { GuestInsurance, Trip } from "@/lib/supabase/types";
 import { notify } from "@/lib/notify";
 import { LICENCE_BUCKET } from "@/lib/licence";
 import { formatDateTime, toDateKey } from "@/lib/utils";
@@ -18,6 +18,9 @@ export type CheckId = "licence" | "cover";
 export const INSURANCE_BUCKET = "insurance-cards";
 export const INSURANCE_LIMITS = { photoMaxBytes: 10 * 1024 * 1024 } as const;
 
+export const CHECKIN_BUCKET = "checkin-photos";
+export const CHECKIN_LIMITS = { photoMaxBytes: 10 * 1024 * 1024 } as const;
+
 /** Photo links last long enough to look over the form. */
 const SIGNED_URL_SECONDS = 60 * 60;
 
@@ -28,7 +31,7 @@ export const PLAN_NAMES: Record<NonNullable<Trip["protection_plan"]>, string> = 
 };
 
 type ChecksTrip = Pick<Trip, "starts_at" | "protection_plan">;
-type ChecksProfile = Pick<Profile, "driving_license_verified" | "identity_status" | "identity_error">;
+type CheckinRow = { status: "pending" | "approved" | "rejected"; host_notes: string | null } | null;
 type ChecksInsurance = Pick<GuestInsurance, "has_none" | "insurer" | "expires_on">;
 
 export type Cover =
@@ -50,19 +53,27 @@ export function tripCover(trip: ChecksTrip, insurance: ChecksInsurance | null): 
 }
 
 export interface GuestChecks {
-  licence: "verified" | ChecksProfile["identity_status"];
+  licence: "verified" | "unverified" | "pending" | "failed";
   licenceError: string | null;
   cover: Cover;
   missing: CheckId[];
 }
 
-export function guestChecks(trip: ChecksTrip, profile: ChecksProfile | null, insurance: ChecksInsurance | null): GuestChecks {
-  const licence = profile?.driving_license_verified ? "verified" : (profile?.identity_status ?? "unverified");
+export function guestChecks(trip: ChecksTrip, checkin: CheckinRow, insurance: ChecksInsurance | null): GuestChecks {
+  const licence = !checkin
+    ? "unverified"
+    : checkin.status === "approved"
+      ? "verified"
+      : checkin.status === "pending"
+        ? "pending"
+        : "failed"; // rejected
+  const licenceError =
+    checkin?.status === "rejected" ? (checkin.host_notes ?? "Your check-in photos weren't accepted.") : null;
   const cover = tripCover(trip, insurance);
   const missing: CheckId[] = [];
   if (licence !== "verified") missing.push("licence");
   if (cover.kind !== "plan" && cover.kind !== "insurance") missing.push("cover");
-  return { licence, licenceError: profile?.identity_error ?? null, cover, missing };
+  return { licence, licenceError, cover, missing };
 }
 
 /** A trip's checks, read on the server. Only call after checking the viewer is on the trip. */
@@ -74,11 +85,35 @@ export async function loadGuestChecks(tripId: string): Promise<(GuestChecks & { 
     .eq("id", tripId)
     .maybeSingle();
   if (!trip) return null;
-  const [{ data: profile }, { data: insurance }] = await Promise.all([
-    admin.from("profiles").select("driving_license_verified, identity_status, identity_error").eq("id", trip.guest_id).maybeSingle(),
+  const [{ data: checkin }, { data: insurance }] = await Promise.all([
+    admin.from("trip_checkins").select("status, host_notes").eq("trip_id", tripId).maybeSingle(),
     admin.from("guest_insurance").select("has_none, insurer, expires_on").eq("user_id", trip.guest_id).maybeSingle(),
   ]);
-  return { ...guestChecks(trip, profile, insurance), guestId: trip.guest_id, startsAt: trip.starts_at };
+  return { ...guestChecks(trip, checkin, insurance), guestId: trip.guest_id, startsAt: trip.starts_at };
+}
+
+/**
+ * The trip's check-in record with signed photo URLs (1 hour). For the host
+ * review panel. Returns null if no submission has been made.
+ */
+export async function loadTripCheckin(tripId: string) {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("trip_checkins")
+    .select("id, status, host_notes, reviewed_at, submitted_at, license_path, selfie_path")
+    .eq("trip_id", tripId)
+    .maybeSingle();
+  if (!data) return null;
+
+  const paths = [data.license_path, data.selfie_path];
+  const { data: signed } = await admin.storage.from(CHECKIN_BUCKET).createSignedUrls(paths, SIGNED_URL_SECONDS);
+  const urlMap = new Map((signed ?? []).flatMap((s) => (s.path && s.signedUrl ? [[s.path, s.signedUrl] as const] : [])));
+
+  return {
+    ...data,
+    licenseUrl: urlMap.get(data.license_path) ?? null,
+    selfieUrl: urlMap.get(data.selfie_path) ?? null,
+  };
 }
 
 /** The guest's own policy, with a short-lived link to the card photo. For the guest only. */

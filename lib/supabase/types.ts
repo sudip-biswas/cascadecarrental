@@ -1381,6 +1381,51 @@ export type Database = {
           }
         ];
       };
+      trip_checkins: {
+        Row: {
+          id: string;
+          trip_id: string;
+          guest_id: string;
+          license_path: string;
+          selfie_path: string;
+          status: "pending" | "approved" | "rejected";
+          host_notes: string | null;
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          submitted_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          trip_id: string;
+          guest_id: string;
+          license_path: string;
+          selfie_path: string;
+          status?: "pending" | "approved" | "rejected";
+          host_notes?: string | null;
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          submitted_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          trip_id?: string;
+          guest_id?: string;
+          license_path?: string;
+          selfie_path?: string;
+          status?: "pending" | "approved" | "rejected";
+          host_notes?: string | null;
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          submitted_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       favorites: {
         Row: {
           user_id: string;

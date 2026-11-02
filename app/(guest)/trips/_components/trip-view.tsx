@@ -112,7 +112,7 @@ export function TripView({
   trip: TripRow;
   reviewed: boolean;
   userId: string;
-  /** Just back from Stripe's licence check. */
+
 }) {
   const now = new Date();
   const host = hostFirstName(trip);
