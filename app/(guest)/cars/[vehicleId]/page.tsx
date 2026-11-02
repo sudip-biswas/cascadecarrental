@@ -45,7 +45,7 @@ type CarRow = PublicVehicle & {
   vehicle_images: VehicleImage[];
   vehicle_features: { category: string; feature: string }[];
   vehicle_extras: { name: string; active: boolean; position: number }[];
-  host: { id: string; full_name: string; avatar_url: string | null; host_since: string | null } | null;
+  host: { id: string; full_name: string; avatar_url: string | null; host_since: string | null; top_host: boolean } | null;
   persona: { id: string; name: string; avatar_url: string | null; host_since: string | null; bio: string | null; trip_count: number; rating: number | null; rating_count: number } | null;
 };
 
@@ -59,7 +59,7 @@ type ReviewRow = {
 };
 
 const CAR_SELECT =
-  `${VEHICLE_PUBLIC}, min_age, young_driver_fee_cents, delivery_enabled, airport_delivery_fee_cents, vehicle_images(*), vehicle_features(category, feature), vehicle_extras(name, active, position), host:profiles!host_id(id, full_name, avatar_url, host_since), persona:host_personas!persona_id(id, name, avatar_url, host_since, bio, trip_count, rating, rating_count)`;
+  `${VEHICLE_PUBLIC}, min_age, young_driver_fee_cents, delivery_enabled, airport_delivery_fee_cents, vehicle_images(*), vehicle_features(category, feature), vehicle_extras(name, active, position), host:profiles!host_id(id, full_name, avatar_url, host_since, top_host), persona:host_personas!persona_id(id, name, avatar_url, host_since, bio, trip_count, rating, rating_count)`;
 
 /** Shared by the page and its metadata, so the car is read once per request. */
 const getCar = cache(async (id: string) => {
@@ -432,6 +432,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
         }
         messageHref={!isOwner && car.host ? `/messages/new?host=${car.host.id}` : null}
         cars={hostCars}
+        topHost={car.host?.top_host ?? false}
       />
       <RulesOfTheRoad
         host={host}

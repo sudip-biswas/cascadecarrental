@@ -8,7 +8,7 @@ import { daysBetween, type DateKey } from "./dates";
 /** A listed car as search and the home page load it. */
 export type ListedVehicle = PublicVehicle & {
   vehicle_images: VehicleImage[];
-  host: { full_name: string } | null;
+  host: { full_name: string; top_host: boolean } | null;
   persona: { name: string } | null;
   vehicle_extras: { unlimited_miles: boolean; active: boolean }[];
   /** The host's own and dynamic day prices over the searched dates, when search has dates. */
@@ -18,7 +18,7 @@ export type ListedVehicle = PublicVehicle & {
 };
 
 /** Columns those pages select. */
-export const LISTED_VEHICLE_SELECT = `${VEHICLE_PUBLIC}, delivery_enabled, trip_buffer_hours, weekend_min_two_days, three_day_discount_pct, two_week_discount_pct, three_week_discount_pct, last_minute_boost_pct, vehicle_images(*), vehicle_extras(unlimited_miles, active), host:profiles!host_id(full_name), persona:host_personas!persona_id(name)`;
+export const LISTED_VEHICLE_SELECT = `${VEHICLE_PUBLIC}, delivery_enabled, trip_buffer_hours, weekend_min_two_days, three_day_discount_pct, two_week_discount_pct, three_week_discount_pct, last_minute_boost_pct, vehicle_images(*), vehicle_extras(unlimited_miles, active), host:profiles!host_id(full_name, top_host), persona:host_personas!persona_id(name)`;
 
 export function coverImage(images: VehicleImage[] | null | undefined) {
   if (!images?.length) return null;

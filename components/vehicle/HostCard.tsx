@@ -3,6 +3,7 @@ import { MessageSquare, Star } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, pluralize } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Tag } from "@/components/kit";
 
 export interface HostCardProps {
   hostId: string;
@@ -18,6 +19,7 @@ export interface HostCardProps {
   messageHref: string | null;
   /** How many cars the host has listed. */
   cars: number | null;
+  topHost: boolean;
 }
 
 /** Whole years since a date. */
@@ -55,7 +57,7 @@ function Avatar({ name, url }: { name: string; url: string | null }) {
 }
 
 /** "Hosted by Morgan": rating, trips, years hosting and cars, with a way to ask a question. */
-export async function HostCard({ hostId, name, avatarUrl, bio, hostSince, profileHref, persona, messageHref, cars }: HostCardProps) {
+export async function HostCard({ hostId, name, avatarUrl, bio, hostSince, profileHref, persona, messageHref, cars, topHost }: HostCardProps) {
   const stats = await hostStats(hostId);
   const tripCount = persona ? persona.tripCount : stats.tripCount;
   const rating = persona ? persona.rating : stats.rating;
@@ -91,13 +93,16 @@ export async function HostCard({ hostId, name, avatarUrl, bio, hostSince, profil
         )}
       </span>
       <span className="flex min-w-0 flex-[1_1_200px] flex-col gap-1">
-        {profileHref ? (
-          <Link href={profileHref} className="font-display text-[22px] font-extrabold hover:underline sm:text-[24px]">
-            Hosted by {name}
-          </Link>
-        ) : (
-          <span className="font-display text-[22px] font-extrabold sm:text-[24px]">Hosted by {name}</span>
-        )}
+        <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          {profileHref ? (
+            <Link href={profileHref} className="font-display text-[22px] font-extrabold hover:underline sm:text-[24px]">
+              Hosted by {name}
+            </Link>
+          ) : (
+            <span className="font-display text-[22px] font-extrabold sm:text-[24px]">Hosted by {name}</span>
+          )}
+          {topHost && <Tag tone="butter">Top host</Tag>}
+        </span>
         {facts.length > 0 && <span className="text-[14px] text-slate">{facts.join(" · ")}</span>}
         {bio && <p className="mt-1 text-[15px] text-slate">{bio}</p>}
       </span>

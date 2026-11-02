@@ -120,6 +120,7 @@ function Card({ vehicle, dates, months, layout = "tile", priority, heart, distan
       : (price?.dailyCents ?? vehicle.price_today_cents ?? vehicle.daily_rate_cents);
   const week = dates ? null : weekPrice(vehicle);
   const isNew = vehicle.trip_count === 0;
+  const topHost = vehicle.host?.top_host ?? false;
   const unlimited = offersUnlimitedMiles(vehicle);
   const host = firstName(vehicle.persona?.name ?? vehicle.host?.full_name);
   const place = distanceMi != null ? `${vehicle.location_name} · ${formatMiles(distanceMi)}` : vehicle.location_name;
@@ -129,7 +130,10 @@ function Card({ vehicle, dates, months, layout = "tile", priority, heart, distan
       <Link href={href} className="flex items-center gap-3 rounded-[24px] bg-white p-2 transition-colors hover:bg-white/70">
         <Photo vehicle={vehicle} className="h-[88px] w-28 shrink-0 rounded-[17px]" sizes="112px" />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-[17px] font-extrabold">{name}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-[17px] font-extrabold">{name}</span>
+            {topHost && <Tag tone="butter">Top host</Tag>}
+          </span>
           <span className="truncate text-sm text-slate">
             {vehicle.year} · {isNew ? "New listing" : `${vehicle.seats} seats`} · {place}
           </span>
@@ -179,6 +183,7 @@ function Card({ vehicle, dates, months, layout = "tile", priority, heart, distan
             <Tag className="font-semibold">{vehicle.distance_included_mi} mi/day</Tag>
             {unlimited && <Tag tone="lilac">Unlimited miles add-on</Tag>}
             {vehicle.instant_book && <Tag tone="sky">Instant book</Tag>}
+            {topHost && <Tag tone="butter">Top host</Tag>}
           </span>
           <span className="figures mt-auto flex items-baseline justify-between gap-3 pt-1">
             <span className="text-[15px] text-slate">{formatPrice(perDay)} a day</span>
@@ -234,6 +239,7 @@ function Card({ vehicle, dates, months, layout = "tile", priority, heart, distan
             Instant book
           </Tag>
         )}
+        {topHost && <Tag tone="butter" className="absolute right-2.5 bottom-2.5">Top host</Tag>}
       </span>
       <span className="flex flex-col gap-1 px-2.5">
         <span className="flex items-start justify-between gap-2">

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { allRows } from "@/lib/supabase/all-rows";
 import type { Trip } from "@/lib/supabase/types";
 
 export type HostTripRow = Pick<
@@ -20,15 +21,18 @@ export type HostTripRow = Pick<
 /** Every trip on this host's cars, newest first. */
 export async function hostTrips(hostId: string): Promise<HostTripRow[]> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("trips")
-    .select(
-      "id, vehicle_id, status, payment_status, subtotal_cents, starts_at, ends_at, created_at, cancellation_reason, guest:profiles!guest_id(full_name), vehicles(make, model)"
-    )
-    .eq("host_id", hostId)
-    .order("ends_at", { ascending: false })
-    .overrideTypes<HostTripRow[], { merge: false }>();
-  return data ?? [];
+  return allRows<HostTripRow>((from, to) =>
+    supabase
+      .from("trips")
+      .select(
+        "id, vehicle_id, status, payment_status, subtotal_cents, starts_at, ends_at, created_at, cancellation_reason, guest:profiles!guest_id(full_name), vehicles(make, model)"
+      )
+      .eq("host_id", hostId)
+      .order("ends_at", { ascending: false })
+      .order("id")
+      .range(from, to)
+      .overrideTypes<HostTripRow[], { merge: false }>()
+  );
 }
 
 /** Paid and not cancelled: money the host keeps. */

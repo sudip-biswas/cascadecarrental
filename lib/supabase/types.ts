@@ -45,6 +45,7 @@ export type Database = {
           identity_session_id: string | null;
           identity_error: string | null;
           suspended_at: string | null;
+          top_host: boolean;
         };
         Insert: {
           id: string;
@@ -65,6 +66,7 @@ export type Database = {
           identity_session_id?: string | null;
           identity_error?: string | null;
           suspended_at?: string | null;
+          top_host?: boolean;
         };
         Update: {
           id?: string;
@@ -84,6 +86,7 @@ export type Database = {
           identity_session_id?: string | null;
           identity_error?: string | null;
           suspended_at?: string | null;
+          top_host?: boolean;
         };
         Relationships: [];
       };

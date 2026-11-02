@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient, getUser } from "@/lib/supabase/server";
+import { allRows } from "@/lib/supabase/all-rows";
 import { settleTripStatuses } from "@/lib/trips";
+import { TOP_HOST_REVIEW_COLUMNS, topHostStanding } from "@/lib/top-host";
 import { cn, formatDateShort, pluralize, zonedInstant } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { EmptyState, PageTitle, Tag, Tile, TileTitle } from "@/components/kit";
@@ -54,7 +56,7 @@ export default async function PerformancePage({ searchParams }: PageProps<"/host
   if (!user) redirect("/login?redirectTo=/host/business/performance");
 
   await settleTripStatuses(user.id);
-  const [{ car: carParam }, { data: carsData }, trips, { data: convData }, { data: reviewData }] = await Promise.all([
+  const [{ car: carParam }, { data: carsData }, trips, { data: convData }, reviews] = await Promise.all([
     searchParams,
     supabase
       .from("vehicles")
@@ -63,14 +65,16 @@ export default async function PerformancePage({ searchParams }: PageProps<"/host
       .order("created_at", { ascending: true }),
     hostTrips(user.id),
     supabase.from("conversations").select("messages(sender_id, created_at)").eq("host_id", user.id),
-    supabase
-      .from("reviews")
-      .select(
-        "trip_id, rating_overall, rating_cleanliness, rating_maintenance, rating_communication, rating_convenience, rating_accuracy, issue_tags"
-      )
-      .eq("reviewee_id", user.id)
-      .eq("kind", "guest_to_host")
-      .overrideTypes<ScoredReview[], { merge: false }>(),
+    allRows<ScoredReview>((from, to) =>
+      supabase
+        .from("reviews")
+        .select(TOP_HOST_REVIEW_COLUMNS)
+        .eq("reviewee_id", user.id)
+        .eq("kind", "guest_to_host")
+        .order("id")
+        .range(from, to)
+        .overrideTypes<ScoredReview[], { merge: false }>()
+    ),
   ]);
   const cars = (carsData ?? []) as CarRow[];
 
@@ -130,7 +134,7 @@ export default async function PerformancePage({ searchParams }: PageProps<"/host
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
       <PageTitle title="Performance" />
 
-      <TopHost trips={trips} reviews={reviewData ?? []} now={new Date()} />
+      <TopHost standing={topHostStanding(trips, reviews, new Date())} />
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-[28px] leading-tight sm:text-[32px]">Bookings and replies</h2>
