@@ -117,6 +117,7 @@ export type TripEvent =
   | "deposit_released"
   | "review_from_guest"
   | "review_from_host"
+  | "review_deadline"
   | "driver_added"
   | "driver_approved"
   | "driver_declined";
@@ -233,6 +234,10 @@ export async function notifyTrip(
       return;
     case "review_from_host":
       await toGuest(`${host} reviewed you`, `${car}, ${when}.${extra.note ? `\n${extra.note}` : ""}`);
+      return;
+    // `note` is the time left, `key` which reminder this is.
+    case "review_deadline":
+      await toHost(`${extra.note} left to rate ${guest}`, `${car}, ${when}.\nOther hosts see your rating on ${guest}'s requests.`, `Rate ${guest}`, `${hostTrip}#review`);
       return;
     // `note` is the driver's name, `key` their row.
     case "driver_added":

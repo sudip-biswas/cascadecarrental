@@ -9,6 +9,7 @@ import {
   CreditCard,
   RotateCcw,
   ShieldCheck,
+  Star,
   type LucideIcon,
 } from "lucide-react";
 import type { Tone } from "@/components/kit";
@@ -44,6 +45,8 @@ export function noticeStyle(kind: string): { icon: LucideIcon; tone: Tone } {
     case "charge_disputed":
     case "charge_failed":
       return { icon: CreditCard, tone: "peach" };
+    case "review_deadline":
+      return { icon: Star, tone: "butter" };
     case "deposit_held":
     case "deposit_released":
       return { icon: ShieldCheck, tone: "sky" };

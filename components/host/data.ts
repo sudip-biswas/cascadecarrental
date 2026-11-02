@@ -12,6 +12,7 @@ export type HostTrip = Pick<
   | "guest_id"
   | "starts_at"
   | "ends_at"
+  | "completed_at"
   | "status"
   | "payment_status"
   | "subtotal_cents"
@@ -32,7 +33,7 @@ export type HostTrip = Pick<
 };
 
 const TRIP_SELECT =
-  "id, vehicle_id, guest_id, starts_at, ends_at, status, payment_status, subtotal_cents, total_cents, distance_included_mi, protection_plan, cancellation_reason, created_at, guest:profiles!guest_id(id, full_name, created_at, identity_verified, driving_license_verified), vehicle:vehicles(id, make, model, year)";
+  "id, vehicle_id, guest_id, starts_at, ends_at, completed_at, status, payment_status, subtotal_cents, total_cents, distance_included_mi, protection_plan, cancellation_reason, created_at, guest:profiles!guest_id(id, full_name, created_at, identity_verified, driving_license_verified), vehicle:vehicles(id, make, model, year)";
 
 /** A host's trips, oldest pick-up first, without checkouts nobody finished. */
 export async function loadHostTrips(

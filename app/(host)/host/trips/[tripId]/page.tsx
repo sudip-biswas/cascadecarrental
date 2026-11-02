@@ -270,7 +270,9 @@ export default async function HostTripPage({ params }: PageProps<"/host/trips/[t
           <div id="charges" className="scroll-mt-4">
             <ChargesPanel {...panel} />
           </div>
-          <ReviewPanel {...panel} />
+          <div id="review" className="scroll-mt-4">
+            <ReviewPanel {...panel} />
+          </div>
 
           <section id="messages" className="flex scroll-mt-4 flex-col gap-3">
             <TileTitle className="px-1">Messages</TileTitle>
