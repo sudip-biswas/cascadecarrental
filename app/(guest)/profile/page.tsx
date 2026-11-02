@@ -11,6 +11,8 @@ import { GuestRecord } from "@/components/host/GuestRecord";
 import { SignOutButton } from "@/components/profile/SignOutButton";
 import { InsuranceForm } from "@/components/profile/InsuranceForm";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
+import { PaymentMethods } from "@/components/profile/PaymentMethods";
+import { CloseAccount, FinishClosing } from "@/components/profile/CloseAccount";
 import { loadOwnInsurance } from "@/lib/guest-checks";
 import { cn, formatDate, pluralize, zonedInstant } from "@/lib/utils";
 import { NO_INDEX } from "@/lib/site";
@@ -27,7 +29,7 @@ export default async function ProfilePage() {
     // Phone is a private column, so read your own profile with the admin client.
     createAdminClient()
       .from("profiles")
-      .select("id, full_name, bio, phone, is_host, driving_license_verified, identity_verified, identity_status, identity_error, date_of_birth, created_at")
+      .select("id, full_name, bio, phone, is_host, driving_license_verified, identity_verified, identity_status, identity_error, date_of_birth, created_at, closed_at")
       .eq("id", user.id)
       .single(),
     supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("host_id", user.id),
@@ -38,6 +40,18 @@ export default async function ProfilePage() {
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
+
+  // A closure that stopped partway: nothing else here applies any more.
+  if (profile?.closed_at) {
+    return (
+      <Container className="pt-6 pb-12 sm:pt-8">
+        <Tile className="flex flex-col gap-3 p-6">
+          <TileTitle>Your account didn&apos;t finish closing</TileTitle>
+          <FinishClosing />
+        </Tile>
+      </Container>
+    );
+  }
 
   const name = profile?.full_name || user.email || "You";
   const cars = carCount ?? 0;
@@ -173,6 +187,36 @@ export default async function ProfilePage() {
           userId={user.id}
           initial={prefs ?? { messages_email: true, recommendations_email: false, offers_email: false, news_email: false }}
         />
+      </Tile>
+
+      <Tile id="payment-methods" className="flex flex-col gap-2.5 p-6">
+        <TileTitle className="mb-1.5">Payment methods</TileTitle>
+        <PaymentMethods />
+      </Tile>
+
+      <Tile id="your-data" className="flex flex-col items-start gap-2.5 p-6">
+        <TileTitle className="mb-1.5">Your data</TileTitle>
+        <p className="text-[15px] text-slate">Your profile, trips, messages, reviews and charges, as one file.</p>
+        <Button asChild variant="secondary">
+          <a href="/api/account/data" download>
+            Download my data
+          </a>
+        </Button>
+      </Tile>
+
+      <Tile id="close-account" className="flex flex-col gap-3 p-6 md:col-span-2">
+        <TileTitle>Close account</TileTitle>
+        <dl className="grid gap-3 text-[15px] md:grid-cols-2">
+          <div>
+            <dt className="font-bold">Removed</dt>
+            <dd className="text-slate">Your name, photo, bio, phone, date of birth, licence photos and insurance. Your cars come off Cascade.</dd>
+          </div>
+          <div>
+            <dt className="font-bold">Kept</dt>
+            <dd className="text-slate">Trips, receipts, charges, messages and reviews, under &ldquo;Closed account&rdquo;.</dd>
+          </div>
+        </dl>
+        <CloseAccount />
       </Tile>
     </Container>
   );

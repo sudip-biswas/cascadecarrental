@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { CarFront } from "lucide-react";
 import { toneClass, type Tone } from "@/components/kit";
-import { cn } from "@/lib/utils";
+import { CLOSED_ACCOUNT_NAME, cn } from "@/lib/utils";
 
 const INITIAL_TONES: Tone[] = ["lilac", "sky", "butter", "peach", "mint"];
 
@@ -13,6 +13,7 @@ export function toneFor(seed: string): Tone {
 }
 
 export function firstName(fullName: string | null | undefined, fallback = "Guest") {
+  if (fullName === CLOSED_ACCOUNT_NAME) return fullName;
   return fullName?.trim().split(/\s+/)[0] || fallback;
 }
 

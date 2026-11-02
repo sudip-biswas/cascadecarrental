@@ -1,4 +1,5 @@
 import type { Trip } from "@/lib/supabase/types";
+import { CLOSED_ACCOUNT_NAME } from "@/lib/utils";
 
 /** What the guest trip pages read for each trip. */
 export const TRIP_SELECT =
@@ -35,6 +36,7 @@ export function carName(trip: TripRow): string {
 }
 
 export function hostFirstName(trip: TripRow): string {
+  if (trip.host?.full_name === CLOSED_ACCOUNT_NAME) return CLOSED_ACCOUNT_NAME;
   return trip.host?.full_name?.split(" ")[0] || "your host";
 }
 

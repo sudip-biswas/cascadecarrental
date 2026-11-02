@@ -1,6 +1,6 @@
 import { bestDiscount, computePricing, dayRates, lastMinuteBoostPct, type DailyPrices } from "@/lib/pricing";
 import { carPath } from "@/lib/site";
-import { formatPrice, zonedInstant } from "@/lib/utils";
+import { CLOSED_ACCOUNT_NAME, formatPrice, zonedInstant } from "@/lib/utils";
 import { VEHICLE_PUBLIC, type PublicVehicle } from "@/lib/supabase/columns";
 import type { VehicleImage } from "@/lib/supabase/types";
 import { daysBetween, type DateKey } from "./dates";
@@ -26,6 +26,7 @@ export function coverImage(images: VehicleImage[] | null | undefined) {
 }
 
 export function firstName(fullName: string | null | undefined) {
+  if (fullName === CLOSED_ACCOUNT_NAME) return fullName;
   return fullName?.trim().split(/\s+/)[0] || null;
 }
 

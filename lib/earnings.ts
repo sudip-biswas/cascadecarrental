@@ -19,6 +19,7 @@ export type EarningsTrip = Pick<
   | "ends_at"
   | "cancellation_reason"
   | "paid_out_at"
+  | "completed_at"
 > & {
   guest: { full_name: string | null } | null;
   vehicle: Car | null;
@@ -42,7 +43,7 @@ export async function loadEarnings(supabase: Client, hostId: string): Promise<Ea
     supabase
       .from("trips")
       .select(
-        "id, vehicle_id, guest_id, status, payment_status, subtotal_cents, starts_at, ends_at, cancellation_reason, paid_out_at, guest:profiles!guest_id(full_name), vehicle:vehicles(id, make, model, year)"
+        "id, vehicle_id, guest_id, status, payment_status, subtotal_cents, starts_at, ends_at, cancellation_reason, paid_out_at, completed_at, guest:profiles!guest_id(full_name), vehicle:vehicles(id, make, model, year)"
       )
       .eq("host_id", hostId)
       .order("ends_at", { ascending: false })
