@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AddressElement, Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import type { Appearance, StripeElements } from "@stripe/stripe-js";
-import { ArrowLeft, Clock, CreditCard, Lock, Shield, User } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock, CreditCard, Lock, Mail, Phone, Shield, User } from "lucide-react";
 import { getStripe } from "@/lib/stripe/client";
 import {
   NON_REFUNDABLE_DISCOUNT,
@@ -24,15 +24,16 @@ import {
   type RateType,
 } from "@/lib/pricing";
 import { carPath } from "@/lib/site";
-import { cn, formatCurrency, formatDateTime, formatPrice, formatRange, pluralize, zonedInstant } from "@/lib/utils";
+import { cn, formatCurrency, formatDateTime, formatPrice, formatRange, pluralize, toDateKey, zonedInstant } from "@/lib/utils";
 import { Container, Divider, Fact, Tile } from "@/components/kit";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Choice, Notice, Section } from "./parts";
 import { ExtrasSection, type CheckoutExtra } from "./ExtrasSection";
 import { DeliverySection, type Place } from "./DeliverySection";
 import { DriverSection } from "./DriverSection";
 import { PromoField, type AppliedPromo } from "./PromoField";
-import { driverCheck, type DriverRules } from "./rules";
+import { driverCheck, needsAge, type DriverRules } from "./rules";
 import { TOLL_WINDOW_DAYS } from "@/lib/charge-windows";
 import { CAR_SPOT, quotePickup, type PickupChoice, type PickupOption } from "@/lib/locations";
 import { PAID_WITH_LABEL, PAY_OVER_TIME, isPayOverTime, payOverTimeEnabled } from "@/lib/pay-over-time";
@@ -156,6 +157,9 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
   const [place, setPlace] = useState<Place | null>(null);
   const [promo, setPromo] = useState<AppliedPromo | null>(null);
   const [dateOfBirth, setDateOfBirth] = useState(driver?.dateOfBirth ?? null);
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
 
   const start = zonedInstant(from, fromTime);
   const end = zonedInstant(until, untilTime);
@@ -195,11 +199,13 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
     ? "Verify your driver's license to book."
     : !check.ok
       ? check.message
-      : !delivery
-        ? "Pick a delivery address, or another spot."
-        : deliveryResult && !deliveryResult.ok
-          ? deliveryResult.reason
-          : null;
+      : !isAuthenticated && (!guestName.trim() || !guestEmail.trim())
+        ? "Enter your name and email to book."
+        : !delivery
+          ? "Pick a delivery address, or another spot."
+          : deliveryResult && !deliveryResult.ok
+            ? deliveryResult.reason
+            : null;
 
   const request: AddOnRequest = {
     extras: picked.map((e) => ({ id: e.id, quantity: e.quantity })),
@@ -218,8 +224,52 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
           onDateOfBirth={setDateOfBirth}
         />
       ) : (
-        <Section icon={<User />} iconTone="bg-mint" title="Driver&apos;s licence">
-          <p className="text-[15px] text-slate">
+        <Section icon={<User />} iconTone="bg-mint" title="Contact info">
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[13px] font-semibold text-slate">Full name</span>
+              <Input
+                type="text"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                placeholder="Jane Smith"
+                autoComplete="name"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[13px] font-semibold text-slate">Email</span>
+              <Input
+                type="email"
+                value={guestEmail}
+                onChange={(e) => setGuestEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[13px] font-semibold text-slate">Phone (optional)</span>
+              <Input
+                type="tel"
+                value={guestPhone}
+                onChange={(e) => setGuestPhone(e.target.value)}
+                placeholder="+1 (555) 000-0000"
+                autoComplete="tel"
+              />
+            </label>
+            {needsAge(vehicle) && (
+              <label className="flex flex-col gap-1">
+                <span className="text-[13px] font-semibold text-slate">Date of birth</span>
+                <Input
+                  type="date"
+                  value={dateOfBirth ?? ""}
+                  max={toDateKey(new Date())}
+                  onChange={(e) => setDateOfBirth(e.target.value || null)}
+                  aria-label="Date of birth"
+                />
+              </label>
+            )}
+          </div>
+          <p className="text-sm text-slate">
             We&apos;ll ask for a photo of your licence after booking — your reservation is never blocked by an upload problem.
           </p>
         </Section>
@@ -269,6 +319,10 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
         untilTime={untilTime}
         checkoutHere={checkoutHere}
         isAuthenticated={isAuthenticated}
+        guestName={guestName}
+        guestEmail={guestEmail}
+        guestPhone={guestPhone}
+        guestDateOfBirth={isAuthenticated ? null : dateOfBirth}
         start={start}
         end={end}
         pricing={pricing}
@@ -297,6 +351,10 @@ function CheckoutLayout({
   untilTime,
   checkoutHere,
   isAuthenticated,
+  guestName,
+  guestEmail,
+  guestPhone,
+  guestDateOfBirth,
   start,
   end,
   pricing,
@@ -311,6 +369,10 @@ function CheckoutLayout({
   deliveryLabel,
 }: Omit<Props, "initialRate" | "dailyPrices" | "extras" | "pickup" | "initialSpot" | "driver"> & {
   isAuthenticated: boolean;
+  guestName: string;
+  guestEmail: string;
+  guestPhone: string;
+  guestDateOfBirth: string | null;
   start: Date;
   end: Date;
   pricing: PricingResult;
@@ -330,6 +392,8 @@ function CheckoutLayout({
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(paymentNotice ?? null);
   const [busy, setBusy] = useState(false);
+  const [magicLinkSentTo, setMagicLinkSentTo] = useState<string | null>(null);
+  const [guestBooked, setGuestBooked] = useState<string | null>(null);
   // What's picked in the Payment Element, and the card form a lender needs beside it.
   const [method, setMethod] = useState("card");
   const [cardElements, setCardElements] = useState<StripeElements | null>(null);
@@ -383,29 +447,48 @@ function CheckoutLayout({
       cardToken = card.id;
     }
 
+    const guestFields = !isAuthenticated
+      ? {
+          guestName: guestName.trim(),
+          guestEmail: guestEmail.trim(),
+          ...(guestPhone.trim() ? { guestPhone: guestPhone.trim() } : {}),
+          ...(guestDateOfBirth ? { guestDateOfBirth } : {}),
+          checkoutHere,
+        }
+      : {};
+
     const book = (card: { cardConfirmationTokenId?: string; cardSetupIntentId?: string }) =>
       fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-        vehicleId: vehicle.id,
-        from,
-        until,
-        fromTime,
-        untilTime,
-        rateType,
-        protectionPlan: plan,
-        extras: request.extras,
-        delivery: request.delivery,
-        ...(request.promoCode ? { promoCode: request.promoCode } : {}),
-        expectedTotalCents: pricing.totalCents,
-        expectedInstantBook: vehicle.instant_book,
-        confirmationTokenId: confirmationToken.id,
-        ...card,
-      }),
-    });
+          vehicleId: vehicle.id,
+          from,
+          until,
+          fromTime,
+          untilTime,
+          rateType,
+          protectionPlan: plan,
+          extras: request.extras,
+          delivery: request.delivery,
+          ...(request.promoCode ? { promoCode: request.promoCode } : {}),
+          expectedTotalCents: pricing.totalCents,
+          expectedInstantBook: vehicle.instant_book,
+          confirmationTokenId: confirmationToken.id,
+          ...card,
+          ...guestFields,
+        }),
+      });
     let res = await book({ cardConfirmationTokenId: cardToken });
     let data = await res.json().catch(() => ({}));
+
+    // Existing account: magic link sent to that email — show inbox prompt.
+    if (data.magicLinkSent) {
+      setMagicLinkSentTo(data.email ?? guestEmail);
+      setBusy(false);
+      return;
+    }
+
     // The card on file needs its bank's check first; then book again with it saved.
     if (res.ok && data.cardAction) {
       const { clientSecret: cardSecret, setupIntentId } = data.cardAction as { clientSecret: string; setupIntentId: string };
@@ -442,25 +525,29 @@ function CheckoutLayout({
       if (actionError) return stop(actionError.message ?? "The payment didn't go through. Nothing was charged.");
     }
 
-    if (note.trim()) {
+    if (note.trim() && isAuthenticated) {
       await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: note.trim(), tripId }),
       }).catch(() => null);
     }
-    router.push(tripUrl);
+
+    if (isAuthenticated) {
+      router.push(tripUrl);
+    } else {
+      setGuestBooked(guestEmail.trim());
+    }
   }
 
-  const payButton = isAuthenticated ? (
-    <Button size="lg" className="h-[60px] w-full text-[18px]" disabled={!stripe || busy || !!blocker} onClick={pay}>
+  const payButton = (
+    <Button
+      size="lg"
+      className="h-[60px] w-full text-[18px]"
+      disabled={!stripe || busy || !!blocker || !!magicLinkSentTo || !!guestBooked}
+      onClick={pay}
+    >
       {busy ? "Working on it…" : cta}
-    </Button>
-  ) : (
-    <Button size="lg" className="h-[60px] w-full text-[18px]" asChild>
-      <Link href={`/login?redirectTo=${encodeURIComponent(checkoutHere)}`}>
-        Sign in to book · {total}
-      </Link>
     </Button>
   );
 
@@ -539,7 +626,24 @@ function CheckoutLayout({
             </div>
           </Section>
 
-          {isAuthenticated ? (
+          {guestBooked ? (
+            <div className="flex flex-col gap-4 rounded-[24px] bg-sky p-6">
+              <p className="text-[22px] font-extrabold">You&apos;re booked!</p>
+              <p className="text-[15px] text-sky-ink">
+                Confirmation sent to <strong>{guestBooked}</strong>. Check your inbox for a link to view and manage your booking.
+              </p>
+            </div>
+          ) : magicLinkSentTo ? (
+            <div className="flex flex-col gap-4 rounded-[24px] bg-board p-6">
+              <span className="flex size-10 items-center justify-center rounded-[12px] bg-butter">
+                <Mail className="size-5" />
+              </span>
+              <p className="text-[17px] font-bold">Check your inbox</p>
+              <p className="text-[15px] text-slate">
+                We sent a sign-in link to <strong>{magicLinkSentTo}</strong>. Click it to return here and complete your booking — your dates and vehicle are saved.
+              </p>
+            </div>
+          ) : (
             <Section icon={<CreditCard />} iconTone="bg-sky" title="Payment">
               <PaymentElement options={{ layout: "tabs" }} onChange={(e) => setMethod(e.value.type)} />
               {lender ? (
@@ -559,36 +663,20 @@ function CheckoutLayout({
                   Your card is saved to your account for this trip&apos;s deposit and any costs after it, like tolls or fuel.
                 </p>
               )}
-              <label className="flex flex-col gap-1.5 rounded-[16px] bg-board px-3.5 py-3">
-                <span className="text-[13px] font-semibold text-slate">Note to {hostName} (optional)</span>
-                <textarea
-                  rows={2}
-                  maxLength={2000}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="When you land, where you'd like to meet…"
-                  className="w-full resize-none bg-transparent text-base outline-none placeholder:text-quiet"
-                />
-              </label>
+              {isAuthenticated && (
+                <label className="flex flex-col gap-1.5 rounded-[16px] bg-board px-3.5 py-3">
+                  <span className="text-[13px] font-semibold text-slate">Note to {hostName} (optional)</span>
+                  <textarea
+                    rows={2}
+                    maxLength={2000}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="When you land, where you'd like to meet…"
+                    className="w-full resize-none bg-transparent text-base outline-none placeholder:text-quiet"
+                  />
+                </label>
+              )}
             </Section>
-          ) : (
-            <div className="flex flex-col gap-4 rounded-[24px] bg-board p-6">
-              <p className="text-[17px] font-bold">One step left — sign in to pay</p>
-              <p className="text-[15px] text-slate">
-                Your protection and pricing are saved. Create an account or sign in to complete your booking.
-              </p>
-              <Button asChild>
-                <Link href={`/login?redirectTo=${encodeURIComponent(checkoutHere)}`}>
-                  Sign in to book · {total}
-                </Link>
-              </Button>
-              <p className="text-center text-[13px] text-slate">
-                New here?{" "}
-                <Link href={`/register?redirectTo=${encodeURIComponent(checkoutHere)}`} className="font-semibold underline">
-                  Create a free account
-                </Link>
-              </p>
-            </div>
           )}
         </main>
 
@@ -640,7 +728,7 @@ function CheckoutLayout({
 
       <div className="fixed inset-x-0 bottom-0 z-40 flex flex-col gap-2 rounded-t-[26px] bg-white px-4 pt-3 pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
         {payButton}
-        {isAuthenticated && (
+        {!magicLinkSentTo && !guestBooked && (
           <span className="text-center text-xs leading-snug text-slate">
             {blocker ??
               (vehicle.instant_book

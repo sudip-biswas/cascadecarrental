@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendEmail } from "@/lib/email";
 import { stripe } from "@/lib/stripe/server";
 import { computePricing, dayRates, lastMinuteBoostPct, tripDays, type ExtraLine } from "@/lib/pricing";
 import { hasConflict, loadDailyPrices, releaseStaleCheckouts } from "@/lib/trips";
@@ -44,6 +45,12 @@ const schema = z.object({
   extras: z.array(z.object({ id: z.string().uuid(), quantity: z.number().int().min(1).max(10) })).max(20).default([]),
   delivery: delivery.default({ spot: CAR_SPOT }),
   promoCode: z.string().trim().min(1).max(40).optional(),
+  // Guest checkout fields — present when the caller is not authenticated.
+  guestEmail: z.string().email().optional(),
+  guestName: z.string().trim().min(1).max(100).optional(),
+  guestPhone: z.string().trim().max(30).optional(),
+  guestDateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  checkoutHere: z.string().optional(),
 });
 
 function fail(error: string, status: number) {
@@ -99,7 +106,6 @@ export async function POST(req: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return fail("Log in to book.", 401);
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("Something's off with this booking. Refresh and try again.", 400);
@@ -119,13 +125,79 @@ export async function POST(req: Request) {
     extras: pickedExtras,
     delivery: deliveryChoice,
     promoCode,
+    guestEmail,
+    guestName,
+    guestPhone: _guestPhone,
+    guestDateOfBirth,
+    checkoutHere,
   } = parsed.data;
+
+  const admin = createAdminClient();
+
+  // Resolve identity: authenticated session or new guest account.
+  let userId: string;
+  let userEmail: string | undefined;
+
+  if (user) {
+    userId = user.id;
+    userEmail = user.email;
+  } else {
+    if (!guestEmail) return fail("Log in or enter your email to book.", 401);
+
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email: guestEmail,
+      email_confirm: true,
+      user_metadata: { full_name: guestName ?? "" },
+    });
+
+    if (createErr) {
+      if (/already (registered|exists)/i.test(createErr.message)) {
+        // Existing account: send a magic link back to this exact checkout URL.
+        const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+        const redirectTo = checkoutHere
+          ? checkoutHere.startsWith("http")
+            ? checkoutHere
+            : `${origin}${checkoutHere}`
+          : origin;
+        const { data: linkData } = await admin.auth.admin.generateLink({
+          type: "magiclink",
+          email: guestEmail,
+          options: { redirectTo },
+        });
+        if (linkData?.properties?.action_link) {
+          await sendEmail({
+            to: guestEmail,
+            subject: "Complete your Cascade booking",
+            lines: ["Click below to sign in and complete your booking — your dates and vehicle are saved."],
+            action: { label: "Complete booking", href: linkData.properties.action_link },
+          });
+        }
+        return NextResponse.json({ magicLinkSent: true, email: guestEmail });
+      }
+      return fail("Could not create account. Try again.", 500);
+    }
+
+    userId = created.user.id;
+    userEmail = guestEmail;
+
+    // Seed profile — admin-created users may not trigger the auto-create trigger.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin.from("profiles") as any).upsert(
+      {
+        id: userId,
+        full_name: guestName ?? "",
+        date_of_birth: guestDateOfBirth ?? null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    );
+  }
 
   const startsAt = zonedInstant(from, fromTime);
   const endsAt = zonedInstant(until, untilTime);
   if (endsAt <= startsAt) return fail("The return date has to be after pick-up.", 400);
 
-  const admin = createAdminClient();
   const { data: vehicle } = await admin
     .from("vehicles")
     .select("*")
@@ -133,7 +205,7 @@ export async function POST(req: Request) {
     .eq("status", "listed")
     .single();
   if (!vehicle) return fail("This car isn't available any more.", 404);
-  if (vehicle.host_id === user.id) return fail("You can't book your own car.", 400);
+  if (vehicle.host_id === userId) return fail("You can't book your own car.", 400);
 
   const days = tripDays(startsAt, endsAt);
   const broken = tripRuleProblem(
@@ -143,7 +215,7 @@ export async function POST(req: Request) {
   );
   if (broken) return fail(broken, 400);
 
-  await releaseStaleCheckouts(vehicleId, user.id);
+  await releaseStaleCheckouts(vehicleId, userId);
   if (await hasConflict(vehicleId, startsAt, endsAt, vehicle.trip_buffer_hours)) {
     // A clash that only the buffer causes isn't someone else's booking.
     const bufferOnly = vehicle.trip_buffer_hours > 0 && !(await hasConflict(vehicleId, startsAt, endsAt));
@@ -158,7 +230,7 @@ export async function POST(req: Request) {
   const { data: profile } = await admin
     .from("profiles")
     .select("stripe_customer_id, date_of_birth, driving_license_verified, suspended_at, closed_at")
-    .eq("id", user.id)
+    .eq("id", userId)
     .single();
   if (!profile) return fail("Couldn't find your profile. Log in again.", 401);
   if (profile.closed_at) return fail("This account is closed.", 403);
@@ -213,7 +285,7 @@ export async function POST(req: Request) {
 
   let promo = null;
   if (promoCode) {
-    const result = await checkPromo(promoCode, user.id, days);
+    const result = await checkPromo(promoCode, userId, days);
     if (!result.ok) return fail(result.error, 409);
     promo = result.terms;
   }
@@ -242,11 +314,11 @@ export async function POST(req: Request) {
   let customerId = profile?.stripe_customer_id;
   if (!customerId) {
     const customer = await stripe.customers.create({
-      email: user.email,
-      metadata: { supabase_user_id: user.id },
+      email: userEmail,
+      metadata: { supabase_user_id: userId },
     });
     customerId = customer.id;
-    await admin.from("profiles").update({ stripe_customer_id: customerId }).eq("id", user.id);
+    await admin.from("profiles").update({ stripe_customer_id: customerId }).eq("id", userId);
   }
 
   const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -268,7 +340,7 @@ export async function POST(req: Request) {
 
   let cardOnFile: string | null = null;
   if (paidWith !== "card") {
-    const card = await keepCardOnFile(customerId, user.id, cardConfirmationTokenId, cardSetupIntentId, returnUrl);
+    const card = await keepCardOnFile(customerId, userId, cardConfirmationTokenId, cardSetupIntentId, returnUrl);
     if (card.ok === "action") {
       return NextResponse.json({ cardAction: { clientSecret: card.clientSecret, setupIntentId: card.setupIntentId } });
     }
@@ -287,7 +359,7 @@ export async function POST(req: Request) {
     metadata: {
       trip_id: tripId,
       vehicle_id: vehicleId,
-      guest_id: user.id,
+      guest_id: userId,
       host_id: vehicle.host_id,
       from,
       until,
@@ -349,7 +421,7 @@ export async function POST(req: Request) {
     .insert({
       id: tripId,
       vehicle_id: vehicleId,
-      guest_id: user.id,
+      guest_id: userId,
       host_id: vehicle.host_id,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
@@ -411,6 +483,23 @@ export async function POST(req: Request) {
     return error?.code === "23P01"
       ? fail("Someone just booked these dates. Try others.", 409)
       : fail("Couldn't start the booking. Try again.", 500);
+  }
+
+  // For guest bookings, send a magic link so they can view their trip while logged in.
+  if (!user && userEmail) {
+    const { data: linkData } = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email: userEmail,
+      options: { redirectTo: `${origin}/trips/${tripId}?booked=1` },
+    });
+    if (linkData?.properties?.action_link) {
+      await sendEmail({
+        to: userEmail,
+        subject: "Your Cascade booking is confirmed",
+        lines: ["Your booking is confirmed. Click below to view your trip and manage your booking."],
+        action: { label: "View booking", href: linkData.properties.action_link },
+      });
+    }
   }
 
   // Klarna, Affirm and Afterpay send the guest to their page, which comes back to the trip.
