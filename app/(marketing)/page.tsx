@@ -21,7 +21,7 @@ export const instant = false;
 export const metadata: Metadata = {
   title: "Cascade Car Rental — Sea-Tac Airport car rental from a local licensed fleet",
   description:
-    "Book a car from Cascade Fleet LLC near Seattle-Tacoma International Airport. Total price includes tax. Instant book, flexible cancellation, protection from $11.99/day.",
+    "Book a car from Cascade Fleet LLC near Seattle-Tacoma International Airport. Total price includes tax. Instant book, flexible cancellation, protection from $9.99/day.",
   alternates: { canonical: "/" },
   openGraph: { ...OPEN_GRAPH, url: "/" },
 };

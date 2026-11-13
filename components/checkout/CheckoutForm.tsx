@@ -490,7 +490,7 @@ function CheckoutLayout({
             <span className="min-w-0">
               <span className="block truncate text-base font-extrabold">
                 {vehicle.make} {vehicle.model}
-                {vehicle.host ? ` · ${hostName}` : ""}
+                {vehicle.host ? ` · Cascade Fleet` : ""}
               </span>
               <span className="text-[13px] text-slate">{formatRange(start, end)} · 10:00</span>
             </span>
@@ -602,7 +602,7 @@ function CheckoutLayout({
                 {vehicle.make} {vehicle.model}
               </span>
               <span className="text-sm text-slate">
-                {[`${vehicle.year}${vehicle.trim ? ` ${vehicle.trim}` : ""}`, vehicle.host?.full_name, vehicle.location_name]
+                {[`${vehicle.year}${vehicle.trim ? ` ${vehicle.trim}` : ""}`, vehicle.host ? "Cascade Fleet" : null, vehicle.location_name]
                   .filter(Boolean)
                   .join(" · ")}
               </span>
