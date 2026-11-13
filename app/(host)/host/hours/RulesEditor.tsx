@@ -12,12 +12,53 @@ import {
   FieldBox,
   NoticeSelect,
   RuleRow,
-  Stepper,
   Toggle,
-  formatDays,
 } from "@/components/listing-wizard/controls";
-import { LIMITS } from "@/lib/listing-limits";
 import { BUFFER_OPTIONS, formatBuffer } from "@/lib/trip-rules";
+
+const MIN_OPTIONS = [1, 2, 3, 4, 5, 7, 14, 21, 30];
+const MAX_OPTIONS = [0, 3, 5, 7, 14, 21, 30, 90];
+
+function formatTripDays(days: number): string {
+  if (days === 0) return "No limit";
+  if (days === 7) return "1 week";
+  if (days === 14) return "2 weeks";
+  if (days === 21) return "3 weeks";
+  if (days === 30) return "1 month";
+  if (days === 90) return "3 months";
+  return days === 1 ? "1 day" : `${days} days`;
+}
+
+function TripDaysSelect({
+  value,
+  options,
+  label,
+  disabled,
+  onChange,
+}: {
+  value: number;
+  options: number[];
+  label: string;
+  disabled?: boolean;
+  onChange: (days: number) => void;
+}) {
+  const all = options.includes(value) ? options : [...options, value].sort((a, b) => a - b);
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="h-[38px] cursor-pointer rounded-[10px] bg-board px-3 text-[15px] font-bold outline-none hover:bg-line focus-visible:ring-2 focus-visible:ring-ink"
+    >
+      {all.map((d) => (
+        <option key={d} value={d}>
+          {formatTripDays(d)}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 /** Hours kept free between one trip's return and the next pickup. */
 function BufferSelect({ value, onChange, disabled }: { value: number; onChange: (hours: number) => void; disabled?: boolean }) {
@@ -126,23 +167,19 @@ export function RulesEditor({ vehicleId, initial, locked }: { vehicleId: string;
       <Tile tone="sky" className="flex flex-col gap-3 text-ink sm:p-6">
         <TileTitle className="mb-1">Trip rules</TileTitle>
         <RuleRow label="Shortest trip">
-          <Stepper
-            label="shortest trip"
+          <TripDaysSelect
+            label="Shortest trip"
             value={rules.min_trip_days}
-            min={1}
-            max={Math.min(LIMITS.minTripMax, rules.max_trip_days)}
-            format={formatDays}
+            options={MIN_OPTIONS}
             disabled={locked}
             onChange={(min_trip_days) => change({ min_trip_days })}
           />
         </RuleRow>
         <RuleRow label="Longest trip">
-          <Stepper
-            label="longest trip"
+          <TripDaysSelect
+            label="Longest trip"
             value={rules.max_trip_days}
-            min={rules.min_trip_days}
-            max={LIMITS.maxTripMax}
-            format={formatDays}
+            options={MAX_OPTIONS}
             disabled={locked}
             onChange={(max_trip_days) => change({ max_trip_days })}
           />
