@@ -1,4 +1,8 @@
-import { readDates, readMonths, type DateKey } from "./dates";
+import { DEFAULT_TIME, readDates, readMonths, type DateKey } from "./dates";
+
+function readTime(value: string | undefined): string {
+  return typeof value === "string" && /^\d{2}:\d{2}$/.test(value) ? value : DEFAULT_TIME;
+}
 
 export type SortKey = "price" | "price_high" | "newest" | "distance";
 
@@ -11,6 +15,8 @@ export interface SearchFilters {
   lat: number | null;
   lng: number | null;
   dates: { from: DateKey; until: DateKey } | null;
+  fromTime: string;
+  untilTime: string;
   /** A monthly search: how many 30-day months from the start date. Dates hold the whole stretch. */
   months: number | null;
   types: string[];
@@ -71,6 +77,8 @@ export function parseSearchParams(raw: RawParams): SearchFilters {
     lat: hasPlace ? lat : null,
     lng: hasPlace ? lng : null,
     dates: monthly?.dates ?? readDates(one(raw.from), one(raw.until)),
+    fromTime: readTime(one(raw.fromTime)),
+    untilTime: readTime(one(raw.untilTime)),
     months: monthly?.months ?? null,
     types: list(raw.type),
     fuels: list(raw.fuel),

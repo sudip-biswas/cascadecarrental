@@ -29,10 +29,10 @@ async function dayPriceRows(ids: string[], from: DateKey, until: DateKey) {
  * limits, weekend minimum and notice window. Each car comes back with its day
  * prices for the dates, so its card shows what checkout will charge.
  */
-export async function availableFor(vehicles: ListedVehicle[], from: DateKey, until: DateKey) {
-  const start = zonedInstant(from);
+export async function availableFor(vehicles: ListedVehicle[], from: DateKey, until: DateKey, fromTime?: string) {
+  const start = zonedInstant(from, fromTime);
   const end = zonedInstant(until);
-  const days = daysBetween(from, until);
+  const days = daysBetween(from, until, fromTime);
   const hoursAhead = (start.getTime() - Date.now()) / 3_600_000;
 
   const bookable = vehicles.filter(

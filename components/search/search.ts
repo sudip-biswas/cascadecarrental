@@ -17,7 +17,7 @@ export async function searchCars(supabase: SupabaseClient<Database>, filters: Se
   let cars = await listedCars(supabase, filters);
   if (filters.dates) {
     const { from, until } = filters.dates;
-    cars = await availableFor(cars, from, until);
+    cars = await availableFor(cars, from, until, filters.fromTime);
     // Long-trip discounts can reorder cars, so sort by what the guest will pay.
     if (filters.sort === "price" || filters.sort === "price_high") {
       const sign = filters.sort === "price" ? 1 : -1;
