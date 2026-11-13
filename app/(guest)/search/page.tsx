@@ -158,6 +158,8 @@ async function Results({ filters, raw, view }: { filters: SearchFilters; raw: Re
       <VehicleCard
         vehicle={car}
         dates={filters.dates}
+        fromTime={filters.fromTime}
+        untilTime={filters.untilTime}
         months={filters.months}
         layout="compact"
         favorite={{ userId, saved: saved.has(car.id) }}
@@ -192,6 +194,8 @@ async function Results({ filters, raw, view }: { filters: SearchFilters; raw: Re
             key={car.id}
             vehicle={car}
             dates={filters.dates}
+            fromTime={filters.fromTime}
+            untilTime={filters.untilTime}
             months={filters.months}
             layout="row"
             priority={i < 2}

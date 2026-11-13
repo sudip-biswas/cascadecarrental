@@ -20,6 +20,8 @@ import type { DateKey } from "./dates";
 interface Props {
   vehicle: ListedVehicle;
   dates?: { from: DateKey; until: DateKey } | null;
+  fromTime?: string;
+  untilTime?: string;
   /** A monthly search: the dates cover this many months, and prices show a month. */
   months?: number | null;
   /** tile: photo on top. row: photo beside the details. compact: small phone row. */
@@ -105,8 +107,8 @@ function SaveTag({ pct }: { pct: number }) {
   return <Tag tone="mint">Save {pct}%</Tag>;
 }
 
-function Card({ vehicle, dates, months, layout = "tile", priority, heart, distanceMi }: Omit<Props, "favorite"> & { heart?: boolean }) {
-  const href = carHref(vehicle, dates);
+function Card({ vehicle, dates, fromTime, untilTime, months, layout = "tile", priority, heart, distanceMi }: Omit<Props, "favorite"> & { heart?: boolean }) {
+  const href = carHref(vehicle, dates, fromTime, untilTime);
   const name = `${vehicle.make} ${vehicle.model}`;
   const price = dates ? tripPrice(vehicle, dates.from, dates.until) : null;
   const total = price?.totalCents ?? null;

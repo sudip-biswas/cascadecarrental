@@ -86,9 +86,17 @@ export function offersUnlimitedMiles(vehicle: ListedVehicle) {
   return vehicle.vehicle_extras?.some((e) => e.unlimited_miles && e.active) ?? false;
 }
 
-export function carHref(vehicle: PublicVehicle, dates?: { from: DateKey; until: DateKey } | null) {
+export function carHref(
+  vehicle: PublicVehicle,
+  dates?: { from: DateKey; until: DateKey } | null,
+  fromTime?: string,
+  untilTime?: string,
+) {
   if (!dates) return carPath(vehicle);
-  return `${carPath(vehicle)}?${new URLSearchParams(dates).toString()}`;
+  const params = new URLSearchParams(dates);
+  if (fromTime) params.set("fromTime", fromTime);
+  if (untilTime) params.set("untilTime", untilTime);
+  return `${carPath(vehicle)}?${params.toString()}`;
 }
 
 /** "$151": totals on cards are rounded to the dollar. Checkout shows the cents. */
