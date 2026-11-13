@@ -151,7 +151,12 @@ export async function POST(req: Request) {
     });
 
     if (createErr) {
-      if (/already (registered|exists)/i.test(createErr.message)) {
+      // 422 is GoTrue's status for "User already registered"; also match common message variants.
+      const alreadyRegistered =
+        createErr.status === 422 ||
+        /already (registered|exists)/i.test(createErr.message) ||
+        /user with this email/i.test(createErr.message);
+      if (alreadyRegistered) {
         // Existing account: send a magic link back to this exact checkout URL.
         const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
         const redirectTo = checkoutHere
