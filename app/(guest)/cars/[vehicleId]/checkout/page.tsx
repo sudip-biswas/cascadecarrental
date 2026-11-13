@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { CalendarX } from "lucide-react";
-import { createClient, getUser } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadDailyPrices } from "@/lib/trips";
 import { loadPickupSpots, publicOption } from "@/lib/locations";
@@ -38,14 +38,14 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
   // Back from Klarna, Affirm or Afterpay without a yes.
   const declined = typeof query.declined === "string" && isPayOverTime(query.declined) ? query.declined : null;
 
-  const supabase = await createClient();
+  // Checkout is accessible without an account — guests see all steps and pricing,
+  // but must sign in to pay. Build the return URL preserving all booking params.
   const user = await getUser();
-  if (!user) {
-    const here = `/cars/${vehicleId}/checkout${from && until ? `?from=${from}&until=${until}` : ""}`;
-    redirect(`/login?redirectTo=${encodeURIComponent(here)}`);
-  }
+  const checkoutHere = `/cars/${vehicleId}/checkout?from=${from ?? ""}&until=${until ?? ""}&fromTime=${fromTime}&untilTime=${untilTime}&rate=${initialRate}`;
 
-  const { data } = await supabase
+  // Use admin client so the vehicle query works for unauthenticated visitors.
+  const admin = createAdminClient();
+  const { data } = await admin
     .from("vehicles")
     .select(
       "id, host_id, make, model, year, trim, location_name, daily_rate_cents, weekly_discount_pct, monthly_discount_pct, three_day_discount_pct, two_week_discount_pct, three_week_discount_pct, last_minute_boost_pct, distance_included_mi, instant_book, min_trip_days, max_trip_days, location_lat, location_lng, min_age, young_driver_fee_cents, deposit_cents, delivery_enabled, delivery_radius_mi, delivery_fee_cents, delivery_fee_per_mi_cents, airport_delivery_fee_cents, vehicle_images(url, is_cover, position), host:profiles!host_id(full_name)"
@@ -57,7 +57,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
   if (!vehicle) notFound();
 
   const problem = (() => {
-    if (vehicle.host_id === user.id) return { title: "That's your car.", body: "You can't book your own listing." };
+    if (user && vehicle.host_id === user.id) return { title: "That's your car.", body: "You can't book your own listing." };
     if (!from || !until) return { title: "Pick your dates first.", body: "Choose pick-up and return dates on the car's page, then come back here." };
     const start = zonedInstant(from, fromTime);
     const end = zonedInstant(until, untilTime);
@@ -90,19 +90,21 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
     );
   }
 
-  const [dailyPrices, { data: extras }, { data: profile }, spots] = await Promise.all([
+  const [dailyPrices, { data: extras }, profile, spots] = await Promise.all([
     loadDailyPrices(vehicle.id, from, until),
-    supabase
+    admin
       .from("vehicle_extras")
       .select("id, name, description, per, price_cents, max_quantity, unlimited_miles")
       .eq("vehicle_id", vehicle.id)
       .eq("active", true)
       .order("position")
       .order("created_at"),
-    // Date of birth is a private column, so read your own profile with the admin client.
-    createAdminClient().from("profiles").select("date_of_birth, driving_license_verified").eq("id", user.id).single(),
+    // Date of birth is private — only read when the user is signed in.
+    user
+      ? admin.from("profiles").select("date_of_birth, driving_license_verified").eq("id", user.id).single().then((r) => r.data)
+      : Promise.resolve(null),
     // Spot addresses are private until booking: read server-side, send names and prices.
-    loadPickupSpots(createAdminClient(), vehicle),
+    loadPickupSpots(admin, vehicle),
   ]);
   return (
     <CheckoutForm
@@ -116,11 +118,16 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
       extras={extras ?? []}
       pickup={spots.map(publicOption)}
       initialSpot={initialSpot}
-      driver={{
-        userId: user.id,
-        dateOfBirth: profile?.date_of_birth ?? null,
-        licenseRequired: process.env.REQUIRE_DRIVER_CHECK === "true" && !profile?.driving_license_verified,
-      }}
+      driver={
+        user
+          ? {
+              userId: user.id,
+              dateOfBirth: profile?.date_of_birth ?? null,
+              licenseRequired: process.env.REQUIRE_DRIVER_CHECK === "true" && !profile?.driving_license_verified,
+            }
+          : null
+      }
+      checkoutHere={checkoutHere}
       paymentNotice={
         declined ? `${PAID_WITH_LABEL[declined]} didn't go through, so nothing was booked. Try again or pay another way.` : undefined
       }

@@ -36,20 +36,20 @@ export function RulesOfTheRoad({
     <Tile className="flex flex-col gap-4 rounded-[24px]">
       <TileTitle>Rules of the road</TileTitle>
       <ul className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-        <Rule icon={CigaretteOff} title="No smoking" body={`Smoke smell or ash means ${host} can charge for the clean-up.`} />
-        <Rule icon={Sparkles} title="Keep it tidy" body="No need to wash it. A car that needs more than a normal clean can be charged for." />
+        <Rule icon={CigaretteOff} title="No smoking" body="$250 smoking fee if smell or ash is found." />
+        <Rule icon={Sparkles} title="Keep it tidy" body="Cars needing more than a normal clean: $150 cleaning fee." />
         <Rule
           icon={electric ? Zap : Fuel}
           title={electric ? "Recharge it" : "Refuel it"}
-          body={`Bring it back with as much ${electric ? "charge" : "fuel"} as it had at pick-up, or pay for what's missing.`}
+          body={`Bring it back at the same level. Missing ${electric ? "charge" : "fuel"}: $6.50/gallon + $15 service fee.`}
         />
         <Rule
           icon={Gauge}
           title="Mind the miles"
           body={`${distanceIncludedMi} miles a day are included. Each mile over is ${extraMileFeeCents}¢.`}
         />
-        <Rule icon={Receipt} title="Tolls and tickets are on you" body="Tolls, bridge fees and tickets from your trip are passed on, with the statement." />
-        <Rule icon={Clock} title="Be back on time" body="Running late? Ask for more time from your trip page. Late returns can be charged." />
+        <Rule icon={Receipt} title="Tolls and tickets are on you" body="Each toll or ticket is passed on plus a $5 admin fee." />
+        <Rule icon={Clock} title="Be back on time" body="1-hour grace, then $15/hour up to the cost of an extra day. Ask for more time from your trip page." />
       </ul>
       <p className="rounded-[16px] bg-board px-4 py-3 text-sm text-slate">
         Charges come within {CHARGE_WINDOW_DAYS} days of the trip, damage claims within {CLAIM_WINDOW_DAYS} and tolls and tickets

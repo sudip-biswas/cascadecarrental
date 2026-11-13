@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Script from "next/script";
 import { Check, MessageSquare } from "lucide-react";
 import { Container, Tile, TileTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,17 @@ export function BookedView({ trip }: { trip: TripRow }) {
   return (
     <>
       {confirming ? <AutoRefresh /> : <PendingNote tripId={trip.id} />}
+      {!confirming && (
+        <Script id="gtm-purchase" strategy="afterInteractive">{`
+          window.dataLayer = window.dataLayer || [];
+          window.dataLayer.push({
+            event: 'purchase',
+            value: ${(trip.total_cents ?? 0) / 100},
+            currency: 'USD',
+            transaction_id: '${trip.id}',
+          });
+        `}</Script>
+      )}
       <section className="bg-mint py-12 text-mint-ink sm:pt-14 sm:pb-16">
         <Container className="flex flex-wrap items-end justify-between gap-8">
           <div className="flex flex-[999_1_520px] flex-col gap-[18px]">

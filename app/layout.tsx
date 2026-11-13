@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Manrope } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { INDEXABLE, OPEN_GRAPH, SITE_NAME, SITE_URL } from "@/lib/site";
@@ -38,7 +39,24 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geist.variable} ${manrope.variable} h-full antialiased`}>
+      <head>
+        <Script id="gtm-head" strategy="afterInteractive">{`
+          (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+          new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+          j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+          'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+          })(window,document,'script','dataLayer','GTM-PJSD947D');
+        `}</Script>
+      </head>
       <body className="min-h-full flex flex-col">
+        <noscript>
+          <iframe
+            src="https://www.googletagmanager.com/ns.html?id=GTM-PJSD947D"
+            height="0"
+            width="0"
+            style={{ display: "none", visibility: "hidden" }}
+          />
+        </noscript>
         {children}
         <Toaster position="top-center" />
       </body>

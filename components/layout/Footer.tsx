@@ -32,6 +32,13 @@ export function Footer() {
           ))}
         </nav>
         <p className="w-full text-sm text-[#9ca0a8]">© Cascade Car Rental · Seattle, WA</p>
+        <p className="w-full text-sm text-[#9ca0a8]">Operated by Cascade Fleet LLC · WA rental car registration #R64728</p>
+        <div className="flex w-full flex-wrap gap-x-5 gap-y-1 text-sm text-[#9ca0a8]">
+          <Link href="/about" className="hover:text-sky">About</Link>
+          <Link href="/terms" className="hover:text-sky">Terms</Link>
+          <Link href="/privacy" className="hover:text-sky">Privacy</Link>
+          <a href="tel:+16502724085" className="hover:text-sky">(650) 272-4085</a>
+        </div>
       </Container>
     </footer>
   );

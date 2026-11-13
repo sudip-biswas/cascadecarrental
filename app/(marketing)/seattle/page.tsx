@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 };
 
 export default async function SeattlePage() {
-  const cars = await publicCars({ sort: "rating" });
+  const cars = await publicCars({ sort: "price" });
   return (
     <RentalLanding
       crumbs={[

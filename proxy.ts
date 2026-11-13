@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { safeRedirect } from "@/lib/utils";
 
 const PROTECTED_GUEST_PATHS = ["/trips", "/messages", "/profile", "/favorites"];
-const CHECKOUT_PATH = /^\/cars\/[^/]+\/checkout/;
 const PROTECTED_HOST_PATHS = ["/host"];
 const AUTH_PATHS = ["/login", "/register"];
 
@@ -53,8 +52,7 @@ export async function proxy(request: NextRequest) {
   const isProtected =
     PROTECTED_GUEST_PATHS.some((p) => pathname.startsWith(p)) ||
     // Whole segments, so public host pages at /hosts/[id] stay public.
-    PROTECTED_HOST_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
-    CHECKOUT_PATH.test(pathname);
+    PROTECTED_HOST_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   if (!user && isProtected) {
     const loginUrl = new URL("/login", request.url);

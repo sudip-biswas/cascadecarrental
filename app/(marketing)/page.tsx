@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, CalendarDays, Check, KeyRound, Route, Undo2 } from "lucide-react";
+import { ArrowRight, CalendarDays, Check, KeyRound, MapPin, Phone, Route, Undo2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { HOST_SHARE } from "@/lib/pricing";
 import { RENTING_FAQ } from "@/lib/rentals";
 import { OPEN_GRAPH, SITE_NAME, SITE_URL, absoluteUrl, carPath } from "@/lib/site";
-import { cn, formatPrice } from "@/lib/utils";
+import { cn, formatCurrency, formatPrice } from "@/lib/utils";
+import { PROTECTION_DAILY_CENTS } from "@/lib/pricing";
 import { Container, toneClass } from "@/components/kit";
 import { Faq } from "@/components/seo/Faq";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -14,11 +14,14 @@ import { SearchForm } from "@/components/search/SearchForm";
 import { VehicleCard } from "@/components/search/VehicleCard";
 import { withTodayPrices } from "@/components/search/prices";
 import { TRIP_CATEGORIES } from "@/components/search/categories";
-import { LISTED_VEHICLE_SELECT, coverImage, firstName, type ListedVehicle } from "@/components/search/vehicle";
+import { LISTED_VEHICLE_SELECT, coverImage, type ListedVehicle } from "@/components/search/vehicle";
 
 export const instant = false;
 
 export const metadata: Metadata = {
+  title: "Cascade Car Rental — Sea-Tac Airport car rental from a local licensed fleet",
+  description:
+    "Book a car from Cascade Fleet LLC near Seattle-Tacoma International Airport. Total price includes tax. Instant book, flexible cancellation, protection from $11.99/day.",
   alternates: { canonical: "/" },
   openGraph: { ...OPEN_GRAPH, url: "/" },
 };
@@ -29,10 +32,12 @@ const ORGANIZATION = [
     "@type": "Organization",
     "@id": `${SITE_URL}/#organization`,
     name: SITE_NAME,
-    legalName: "Cascade Car Rental",
+    legalName: "Cascade Fleet LLC",
     url: SITE_URL,
     logo: absoluteUrl("/logo.png"),
-    description: "Peer-to-peer car rental in Seattle: rent a car from a local host.",
+    description: "Licensed rental car company at Sea-Tac Airport. WA rental car registration #R64728.",
+    telephone: "+16502724085",
+    identifier: { "@type": "PropertyValue", propertyID: "WA Rental Car Registration", value: "R64728" },
     areaServed: { "@type": "City", name: "Seattle", containedInPlace: { "@type": "State", name: "Washington" } },
   },
   {
@@ -45,17 +50,39 @@ const ORGANIZATION = [
 ];
 
 const STEPS = [
-  { icon: CalendarDays, title: "Request", body: "Pick dates and pay. On request-to-book cars your card is only held until the host says yes." },
-  { icon: Check, title: "Host says yes", body: "Instant-book cars skip this step." },
-  { icon: KeyRound, title: "Get the keys", body: "Meet the host at the car and check it over together." },
-  { icon: Route, title: "Drive", body: "Every car shows the miles included per day and what extra miles cost." },
-  { icon: Undo2, title: "Bring it back", body: "Same spot, same fuel. Then leave a review." },
+  {
+    icon: CalendarDays,
+    title: "Pick your car",
+    body: "Choose your dates, select protection, and pay. Your car is booked the moment you confirm.",
+  },
+  {
+    icon: KeyRound,
+    title: "Get the details",
+    body: "We send pickup instructions and the meeting-point address as soon as you book.",
+  },
+  {
+    icon: MapPin,
+    title: "Meet us at the car",
+    body: "We're at the DoubleTree by Hilton SeaTac with your car and keys — no counter, no queue.",
+  },
+  {
+    icon: Route,
+    title: "Drive",
+    body: "Every car shows the miles included per day and what extra miles cost.",
+  },
+  {
+    icon: Undo2,
+    title: "Return and review",
+    body: "Back to the same spot. We log the photos together, then you leave a review.",
+  },
 ];
 
-/** The example on the hosting pitch: a $50 car booked ten days a month. */
-const EXAMPLE_RATE_CENTS = 5000;
-const EXAMPLE_DAYS = 10;
-const BOOKED_DAYS = new Set([0, 1, 5, 6, 7, 12, 13, 19, 20, 21]);
+const TRUST_ITEMS = [
+  "WA-licensed fleet #R64728",
+  "Total price includes tax",
+  "Free cancellation on flexible rates",
+  `Protection from ${formatCurrency(PROTECTION_DAILY_CENTS.basic)}/day`,
+];
 
 async function loadFeatured() {
   const supabase = await createClient();
@@ -63,7 +90,7 @@ async function loadFeatured() {
     .from("vehicles")
     .select(LISTED_VEHICLE_SELECT)
     .eq("status", "listed")
-    .order("rating_avg", { ascending: false, nullsFirst: false })
+    .order("year", { ascending: false })
     .order("daily_rate_cents", { ascending: false })
     .limit(3);
   return withTodayPrices((data ?? []) as unknown as ListedVehicle[]);
@@ -72,7 +99,6 @@ async function loadFeatured() {
 function HeroCar({ car }: { car: ListedVehicle }) {
   const cover = coverImage(car.vehicle_images);
   if (!cover) return null;
-  const host = firstName(car.host?.full_name);
   return (
     <Link href={carPath(car)} className="relative block min-w-0 flex-[1_1_380px]">
       <span className="relative block aspect-[1/0.86] overflow-hidden rounded-[32px]">
@@ -90,17 +116,17 @@ function HeroCar({ car }: { car: ListedVehicle }) {
         <span className="font-sans text-sm font-medium text-slate"> a day</span>
       </span>
       <span className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-[18px] bg-white px-3.5 py-3">
-        <span aria-hidden className="flex size-[42px] shrink-0 items-center justify-center rounded-[12px] bg-mint font-display text-lg font-extrabold">
-          {(host ?? car.make)[0].toUpperCase()}
+        <span
+          aria-hidden
+          className="flex size-[42px] shrink-0 items-center justify-center rounded-[12px] bg-mint font-display text-lg font-extrabold"
+        >
+          C
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-base font-bold">
             {car.make} {car.model} {car.year}
           </span>
-          <span className="truncate text-sm text-slate">
-            {host ? `${host}'s car · ` : ""}
-            {car.location_name}
-          </span>
+          <span className="truncate text-sm text-slate">Cascade Fleet · {car.location_name}</span>
         </span>
         <ArrowRight className="size-5 shrink-0" strokeWidth={2} />
       </span>
@@ -111,18 +137,36 @@ function HeroCar({ car }: { car: ListedVehicle }) {
 export default async function HomePage() {
   const featured = await loadFeatured();
   const hero = featured.find((car) => coverImage(car.vehicle_images));
-  const exampleGross = EXAMPLE_RATE_CENTS * EXAMPLE_DAYS;
 
   return (
     <>
       <JsonLd data={ORGANIZATION} />
       <section className="bg-sky pt-8 pb-12 sm:pt-12 sm:pb-16">
         <Container className="flex flex-wrap items-center gap-8">
-          <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-7">
+          <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-5">
             <h1 className="headline text-[clamp(46px,7vw,112px)] leading-none text-ink">
-              Borrow a car from someone nearby.
+              Car rental at Sea&#8209;Tac, without the rental counter.
             </h1>
+            <p className="max-w-xl text-lg leading-snug text-ink/80">
+              Book a car from a local, licensed fleet near Seattle-Tacoma International Airport.
+              The price includes tax. We meet you at the car — no lines, no shuttle, no surprises.
+            </p>
             <SearchForm />
+            <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-ink/70">
+              {TRUST_ITEMS.map((t) => (
+                <li key={t} className="flex items-center gap-1.5">
+                  <Check className="size-3.5 shrink-0" strokeWidth={2.5} />
+                  {t}
+                </li>
+              ))}
+              <li className="flex items-center gap-1.5">
+                <Phone className="size-3.5 shrink-0" strokeWidth={1.75} />
+                {/* TODO: replace with local 206 number when acquired */}
+                <a href="tel:+16502724085" className="font-semibold">
+                  (650) 272-4085
+                </a>
+              </li>
+            </ul>
           </div>
           {hero && <HeroCar car={hero} />}
         </Container>
@@ -156,7 +200,7 @@ export default async function HomePage() {
 
       <Container className="pt-12 sm:pt-16">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-4 sm:mb-5">
-          <h2 className="headline text-[28px] leading-[1.12] sm:text-[44px]">Near Seattle</h2>
+          <h2 className="headline text-[28px] leading-[1.12] sm:text-[44px]">Popular at Sea-Tac Airport</h2>
           <Link
             href="/seattle"
             className="flex items-center gap-1.5 rounded-[12px] bg-white px-4 py-3 text-base font-bold transition-colors hover:bg-line"
@@ -176,25 +220,6 @@ export default async function HomePage() {
               <VehicleCard vehicle={car} />
             </div>
           ))}
-          <Link
-            href="/host/vehicles/new"
-            className="flex min-h-[260px] flex-col justify-between gap-5 rounded-[28px] bg-ink p-6 text-white transition-colors hover:bg-graphite sm:min-h-[340px] sm:p-[26px]"
-          >
-            <svg width="72" height="72" viewBox="0 0 48 48" aria-hidden="true">
-              <rect x="2" y="8" width="26" height="9" rx="4.5" fill="#CFE2FF" />
-              <rect x="10" y="20" width="26" height="9" rx="4.5" fill="#C9EED6" />
-              <rect x="18" y="32" width="26" height="9" rx="4.5" fill="#FFE7A0" />
-            </svg>
-            <span className="flex flex-col gap-3">
-              <span className="font-display text-[30px] leading-[1.12] font-extrabold tracking-[-0.03em] sm:text-[34px]">
-                Got a car that sits all week?
-              </span>
-              <span className="flex items-center gap-1.5 text-base font-semibold text-butter">
-                List your car
-                <ArrowRight className="size-[18px]" strokeWidth={2} />
-              </span>
-            </span>
-          </Link>
         </div>
       </Container>
 
@@ -222,53 +247,6 @@ export default async function HomePage() {
               </li>
             ))}
           </ol>
-        </Container>
-      </section>
-
-      <section className="bg-peach py-14 sm:py-[72px]">
-        <Container className="flex flex-wrap items-center gap-10">
-          <div className="flex min-w-0 flex-[999_1_460px] flex-col items-start gap-7">
-            <h2 className="headline text-[clamp(44px,6vw,96px)] leading-none">Your car can earn while it&apos;s parked.</h2>
-            <Link
-              href="/host/vehicles/new"
-              className="flex items-center gap-2.5 rounded-[16px] bg-ink px-[26px] py-[18px] text-lg font-bold text-white transition-colors hover:bg-graphite"
-            >
-              List your car
-              <ArrowRight className="size-5" strokeWidth={2} />
-            </Link>
-          </div>
-          <div className="flex min-w-0 flex-[1_1_440px] flex-col gap-5 rounded-[32px] bg-white p-5 sm:p-7">
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="rounded-[18px] bg-board px-4 py-3.5">
-                <div className="text-[13px] font-semibold text-slate">Your price</div>
-                <div className="font-display text-[30px] font-extrabold sm:text-[34px]">
-                  {formatPrice(EXAMPLE_RATE_CENTS)}
-                  <span className="font-sans text-[15px] font-medium text-slate"> /day</span>
-                </div>
-              </div>
-              <div className="rounded-[18px] bg-board px-4 py-3.5">
-                <div className="text-[13px] font-semibold text-slate">Days booked</div>
-                <div className="font-display text-[30px] font-extrabold sm:text-[34px]">
-                  {EXAMPLE_DAYS}
-                  <span className="font-sans text-[15px] font-medium text-slate"> a month</span>
-                </div>
-              </div>
-            </div>
-            <div aria-hidden className="grid grid-cols-[repeat(15,minmax(0,1fr))] gap-[5px]">
-              {Array.from({ length: 30 }, (_, day) => (
-                <span key={day} className={cn("aspect-square rounded-[5px]", BOOKED_DAYS.has(day) ? "bg-ink" : "bg-line")} />
-              ))}
-            </div>
-            <div className="figures flex flex-wrap items-baseline justify-between gap-3">
-              <span className="text-base text-slate">
-                Example month: {formatPrice(exampleGross)} in bookings, less Cascade&apos;s{" "}
-                {Math.round((1 - HOST_SHARE) * 100)}% fee
-              </span>
-              <span className="font-display text-[48px] leading-none font-extrabold tracking-[-0.03em] sm:text-[56px]">
-                {formatPrice(Math.round(exampleGross * HOST_SHARE))}
-              </span>
-            </div>
-          </div>
         </Container>
       </section>
 

@@ -142,13 +142,11 @@ export async function listedCars(supabase: Client, filters: Partial<SearchFilter
 
   // Distance is sorted after the fetch, from the cheapest up until then.
   query =
-    filters.sort === "rating"
-      ? query.order("rating_avg", { ascending: false, nullsFirst: false })
-      : filters.sort === "newest"
-        ? query.order("created_at", { ascending: false })
-        : filters.sort === "price_high"
-          ? query.order("daily_rate_cents", { ascending: false })
-          : query.order("daily_rate_cents", { ascending: true });
+    filters.sort === "newest"
+      ? query.order("created_at", { ascending: false })
+      : filters.sort === "price_high"
+        ? query.order("daily_rate_cents", { ascending: false })
+        : query.order("daily_rate_cents", { ascending: true });
 
   const { data, error } = await query.limit(MAX_RESULTS);
   if (error) throw error;

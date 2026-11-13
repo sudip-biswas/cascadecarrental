@@ -1,6 +1,6 @@
 import { readDates, readMonths, type DateKey } from "./dates";
 
-export type SortKey = "price" | "price_high" | "rating" | "newest" | "distance";
+export type SortKey = "price" | "price_high" | "newest" | "distance";
 
 /** Miles a day the car must include, or a car that offers unlimited miles. */
 export type MilesFilter = 100 | 200 | 300 | "unlimited";
@@ -91,7 +91,7 @@ export function parseSearchParams(raw: RawParams): SearchFilters {
     weekDiscount: one(raw.discount) === "week",
     // Distance needs a picked place to measure from.
     sort:
-      sort === "rating" || sort === "newest" || sort === "price_high" || (sort === "distance" && hasPlace)
+      sort === "newest" || sort === "price_high" || (sort === "distance" && hasPlace)
         ? sort
         : "price",
   };

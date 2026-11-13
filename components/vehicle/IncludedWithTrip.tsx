@@ -92,7 +92,7 @@ export function IncludedWithTrip({
             <Item
               icon={UserPlus}
               title="Add drivers after booking"
-              body={`${host} approves each one. No extra charge.`}
+              body="Our team approves each one — no extra charge."
             />
             <Item
               icon={CalendarSync}
@@ -121,7 +121,7 @@ export function IncludedWithTrip({
             <Item
               icon={ShieldCheck}
               title="Protection plans"
-              body={`From ${formatCurrency(PROTECTION_DAILY_CENTS.basic)} a day, picked at checkout.`}
+              body={`Three tiers from ${formatCurrency(PROTECTION_DAILY_CENTS.basic)} a day — see plans below.`}
             />
             <Item
               icon={Camera}

@@ -6,11 +6,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AddressElement, Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import type { Appearance, StripeElements } from "@stripe/stripe-js";
-import { ArrowLeft, Clock, CreditCard, Lock, Shield } from "lucide-react";
+import { ArrowLeft, Clock, CreditCard, Lock, Shield, User } from "lucide-react";
 import { getStripe } from "@/lib/stripe/client";
 import {
   NON_REFUNDABLE_DISCOUNT,
   PROTECTION_DAILY_CENTS,
+  PROTECTION_PLAN_NAMES,
+  PROTECTION_OUT_OF_POCKET,
   computePricing,
   dayRates,
   lastMinuteBoostPct,
@@ -77,7 +79,8 @@ interface Props {
     dateOfBirth: string | null;
     /** REQUIRE_DRIVER_CHECK is on and their license isn't verified yet. */
     licenseRequired: boolean;
-  };
+  } | null;
+  checkoutHere: string;
   /** Shown first, like a lender that said no on the way back here. */
   paymentNotice?: string;
 }
@@ -119,9 +122,9 @@ const PAYMENT_TYPES = ["card", ...(payOverTimeEnabled() ? PAY_OVER_TIME : [])];
 
 const PLANS: { id: ProtectionPlan | null; name: string }[] = [
   { id: null, name: "No protection" },
-  { id: "basic", name: "Basic" },
-  { id: "standard", name: "Standard" },
-  { id: "premium", name: "Premium" },
+  { id: "basic", name: PROTECTION_PLAN_NAMES.basic },
+  { id: "standard", name: PROTECTION_PLAN_NAMES.standard },
+  { id: "premium", name: PROTECTION_PLAN_NAMES.premium },
 ];
 
 const RATES: { id: RateType; name: string; desc: string }[] = [
@@ -144,14 +147,15 @@ function coverOf(vehicle: CheckoutVehicle) {
   return images[0]?.url ?? null;
 }
 
-export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initialRate, dailyPrices, extras, pickup, initialSpot, driver, paymentNotice }: Props) {
+export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initialRate, dailyPrices, extras, pickup, initialSpot, driver, checkoutHere, paymentNotice }: Props) {
+  const isAuthenticated = driver !== null;
   const [rateType, setRateType] = useState<RateType>(initialRate);
   const [plan, setPlan] = useState<ProtectionPlan | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [spot, setSpot] = useState(() => (pickup.some((o) => o.id === initialSpot) ? initialSpot! : CAR_SPOT));
   const [place, setPlace] = useState<Place | null>(null);
   const [promo, setPromo] = useState<AppliedPromo | null>(null);
-  const [dateOfBirth, setDateOfBirth] = useState(driver.dateOfBirth);
+  const [dateOfBirth, setDateOfBirth] = useState(driver?.dateOfBirth ?? null);
 
   const start = zonedInstant(from, fromTime);
   const end = zonedInstant(until, untilTime);
@@ -187,7 +191,7 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
   });
 
   // Why the button can't book yet, if it can't.
-  const blocker = driver.licenseRequired
+  const blocker = driver?.licenseRequired
     ? "Verify your driver's license to book."
     : !check.ok
       ? check.message
@@ -205,13 +209,21 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
 
   const addOns = (
     <>
-      <DriverSection
-        car={vehicle}
-        check={check}
-        licenseRequired={driver.licenseRequired}
-        userId={driver.userId}
-        onDateOfBirth={setDateOfBirth}
-      />
+      {driver ? (
+        <DriverSection
+          car={vehicle}
+          check={check}
+          licenseRequired={driver.licenseRequired}
+          userId={driver.userId}
+          onDateOfBirth={setDateOfBirth}
+        />
+      ) : (
+        <Section icon={<User />} iconTone="bg-mint" title="Driver&apos;s licence">
+          <p className="text-[15px] text-slate">
+            We&apos;ll ask for a photo of your licence after booking — your reservation is never blocked by an upload problem.
+          </p>
+        </Section>
+      )}
       {pickup.length > 1 && (
         <DeliverySection
           options={pickup}
@@ -255,6 +267,8 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
         until={until}
         fromTime={fromTime}
         untilTime={untilTime}
+        checkoutHere={checkoutHere}
+        isAuthenticated={isAuthenticated}
         start={start}
         end={end}
         pricing={pricing}
@@ -281,6 +295,8 @@ function CheckoutLayout({
   until,
   fromTime,
   untilTime,
+  checkoutHere,
+  isAuthenticated,
   start,
   end,
   pricing,
@@ -294,6 +310,7 @@ function CheckoutLayout({
   blocker,
   deliveryLabel,
 }: Omit<Props, "initialRate" | "dailyPrices" | "extras" | "pickup" | "initialSpot" | "driver"> & {
+  isAuthenticated: boolean;
   start: Date;
   end: Date;
   pricing: PricingResult;
@@ -435,9 +452,15 @@ function CheckoutLayout({
     router.push(tripUrl);
   }
 
-  const payButton = (
+  const payButton = isAuthenticated ? (
     <Button size="lg" className="h-[60px] w-full text-[18px]" disabled={!stripe || busy || !!blocker} onClick={pay}>
       {busy ? "Working on it…" : cta}
+    </Button>
+  ) : (
+    <Button size="lg" className="h-[60px] w-full text-[18px]" asChild>
+      <Link href={`/login?redirectTo=${encodeURIComponent(checkoutHere)}`}>
+        Sign in to book · {total}
+      </Link>
     </Button>
   );
 
@@ -479,6 +502,7 @@ function CheckoutLayout({
             <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,200px),1fr))] gap-2">
               {PLANS.map((p) => {
                 const perDay = p.id ? PROTECTION_DAILY_CENTS[p.id] : 0;
+                const cap = p.id ? PROTECTION_OUT_OF_POCKET[p.id] : undefined;
                 return (
                   <Choice key={p.name} on={plan === p.id} onClick={() => onPlan(p.id)}>
                     <span className="flex w-full items-center justify-between gap-2">
@@ -488,12 +512,20 @@ function CheckoutLayout({
                     <span className="text-sm opacity-75">
                       {p.id
                         ? `${formatCurrency(perDay * pricing.days)} for this trip`
-                        : "Your own insurance covers the car. You add it before pick-up."}
+                        : "No damage waiver. You cover any loss yourself."}
                     </span>
+                    {p.id !== null && (
+                      <span className="text-xs opacity-60">
+                        Max out-of-pocket: {cap === null ? "$0" : `$${(cap as number).toLocaleString()}`}
+                      </span>
+                    )}
                   </Choice>
                 );
               })}
             </div>
+            <p className="text-sm text-slate">
+              $500 refundable hold placed at pick-up — reduced to $200 with Complete. Damage waiver from Cascade Fleet LLC.
+            </p>
           </Section>
 
           <Section icon={<Clock />} iconTone="bg-butter" title="How you pay">
@@ -507,37 +539,57 @@ function CheckoutLayout({
             </div>
           </Section>
 
-          <Section icon={<CreditCard />} iconTone="bg-sky" title="Payment">
-            <PaymentElement options={{ layout: "tabs" }} onChange={(e) => setMethod(e.value.type)} />
-            {lender ? (
-              <>
-                <AddressElement options={{ mode: "billing", allowedCountries: ["US"] }} />
-                <div className="flex flex-col gap-2 rounded-[18px] bg-board p-3.5">
-                  <span className="text-[15px] font-extrabold">Card on file</span>
-                  <span className="text-sm text-slate">
-                    {PAID_WITH_LABEL[lender]} pays for the trip. The {vehicle.deposit_cents > 0 ? "deposit hold and any " : ""}costs
-                    after it, like tolls or fuel, go on a card. Nothing is charged to it now.
-                  </span>
-                  <CardOnFile appearance={appearance} fonts={fonts} onElements={onCardElements} />
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-slate">
-                Your card is saved to your account for this trip&apos;s deposit and any costs after it, like tolls or fuel.
+          {isAuthenticated ? (
+            <Section icon={<CreditCard />} iconTone="bg-sky" title="Payment">
+              <PaymentElement options={{ layout: "tabs" }} onChange={(e) => setMethod(e.value.type)} />
+              {lender ? (
+                <>
+                  <AddressElement options={{ mode: "billing", allowedCountries: ["US"] }} />
+                  <div className="flex flex-col gap-2 rounded-[18px] bg-board p-3.5">
+                    <span className="text-[15px] font-extrabold">Card on file</span>
+                    <span className="text-sm text-slate">
+                      {PAID_WITH_LABEL[lender]} pays for the trip. The {vehicle.deposit_cents > 0 ? "deposit hold and any " : ""}costs
+                      after it, like tolls or fuel, go on a card. Nothing is charged to it now.
+                    </span>
+                    <CardOnFile appearance={appearance} fonts={fonts} onElements={onCardElements} />
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-slate">
+                  Your card is saved to your account for this trip&apos;s deposit and any costs after it, like tolls or fuel.
+                </p>
+              )}
+              <label className="flex flex-col gap-1.5 rounded-[16px] bg-board px-3.5 py-3">
+                <span className="text-[13px] font-semibold text-slate">Note to {hostName} (optional)</span>
+                <textarea
+                  rows={2}
+                  maxLength={2000}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="When you land, where you'd like to meet…"
+                  className="w-full resize-none bg-transparent text-base outline-none placeholder:text-quiet"
+                />
+              </label>
+            </Section>
+          ) : (
+            <div className="flex flex-col gap-4 rounded-[24px] bg-board p-6">
+              <p className="text-[17px] font-bold">One step left — sign in to pay</p>
+              <p className="text-[15px] text-slate">
+                Your protection and pricing are saved. Create an account or sign in to complete your booking.
               </p>
-            )}
-            <label className="flex flex-col gap-1.5 rounded-[16px] bg-board px-3.5 py-3">
-              <span className="text-[13px] font-semibold text-slate">Note to {hostName} (optional)</span>
-              <textarea
-                rows={2}
-                maxLength={2000}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="When you land, where you'd like to meet…"
-                className="w-full resize-none bg-transparent text-base outline-none placeholder:text-quiet"
-              />
-            </label>
-          </Section>
+              <Button asChild>
+                <Link href={`/login?redirectTo=${encodeURIComponent(checkoutHere)}`}>
+                  Sign in to book · {total}
+                </Link>
+              </Button>
+              <p className="text-center text-[13px] text-slate">
+                New here?{" "}
+                <Link href={`/register?redirectTo=${encodeURIComponent(checkoutHere)}`} className="font-semibold underline">
+                  Create a free account
+                </Link>
+              </p>
+            </div>
+          )}
         </main>
 
         <aside className="flex min-w-0 flex-[1_1_360px] flex-col gap-3.5 rounded-[30px] bg-white p-5 lg:sticky lg:top-4">
@@ -588,14 +640,16 @@ function CheckoutLayout({
 
       <div className="fixed inset-x-0 bottom-0 z-40 flex flex-col gap-2 rounded-t-[26px] bg-white px-4 pt-3 pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
         {payButton}
-        <span className="text-center text-xs leading-snug text-slate">
-          {blocker ??
-            (vehicle.instant_book
-              ? lender
-                ? `You pay with ${PAID_WITH_LABEL[lender]} now.`
-                : "You're charged now."
-              : `Held now, charged only if ${hostName} accepts.`)}
-        </span>
+        {isAuthenticated && (
+          <span className="text-center text-xs leading-snug text-slate">
+            {blocker ??
+              (vehicle.instant_book
+                ? lender
+                  ? `You pay with ${PAID_WITH_LABEL[lender]} now.`
+                  : "You're charged now."
+                : `Held now, charged only if ${hostName} accepts.`)}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -658,7 +712,7 @@ function Breakdown({
       )}
       <Line
         swatch="bg-lilac"
-        label={plan ? `${plan[0].toUpperCase()}${plan.slice(1)} protection` : "No protection"}
+        label={plan ? `${PROTECTION_PLAN_NAMES[plan]} protection` : "No protection"}
         value={pricing.protectionCostCents}
       />
       {pricing.promoCents > 0 && (

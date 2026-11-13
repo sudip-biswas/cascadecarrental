@@ -185,7 +185,7 @@ export function rentalPage(slug: string) {
 export const RENTING_FAQ: Faq[] = [
   {
     q: "How does renting a car on Cascade work?",
-    a: "Pick a car and your dates, then pay. Instant-book cars are yours straight away; on other cars your card is only held until the host says yes. You meet the host at the car at 10:00 on pick-up day and return it to the same spot.",
+    a: "Pick a car and your dates, then pay. All Cascade cars are instant book — your car is reserved the moment you confirm. We send pickup instructions right away and meet you at the car.",
   },
   {
     q: "Is tax included in the price?",
@@ -201,11 +201,27 @@ export const RENTING_FAQ: Faq[] = [
   },
   {
     q: "Are there discounts for longer trips?",
-    a: "Many hosts discount trips of 7 days or more, and 30 days or more. The discount is applied automatically at checkout.",
+    a: "Many cars discount trips of 7 days or more, and 30 days or more. The discount is applied automatically at checkout.",
   },
   {
     q: "Where do I pick up the car?",
-    a: "From the host, where they keep the car. Each listing shows the area, and the exact address shows on your trip once it's confirmed.",
+    a: "We meet you at the DoubleTree by Hilton Seattle Airport, 18740 International Blvd, SeaTac WA 98188. Text us when you land — we'll have your car waiting. Return to the same spot.",
+  },
+  {
+    q: "Is Cascade a real rental company?",
+    a: "Yes. Cascade Car Rental is operated by Cascade Fleet LLC, a Washington-licensed rental car company (WA rental car registration #R64728), based near Sea-Tac Airport. Call us at (650) 272-4085.",
+  },
+  {
+    q: "What do I need to book?",
+    a: "A valid driver's licence, age 21 or older (21–24 adds a $20/day young-driver fee for most vehicles), and a payment card. We'll ask for a licence photo after booking — it never delays your reservation.",
+  },
+  {
+    q: "What does protection cover?",
+    a: "Three tiers: Basic ($11.99/day, $3,000 max out-of-pocket), Standard ($19.99/day, $500 max), Complete ($29.99/day, $0). All are damage waivers from Cascade Fleet LLC, not third-party insurance. A $500 refundable hold is placed at pick-up (reduced to $200 with Complete).",
+  },
+  {
+    q: "Where exactly do I pick up at Sea-Tac?",
+    a: "DoubleTree by Hilton Seattle Airport, 18740 International Blvd, SeaTac WA 98188. We meet you at the car — no rental counter. Text your flight number when you land and we'll be ready.",
   },
 ];
 

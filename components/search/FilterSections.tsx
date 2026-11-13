@@ -172,7 +172,6 @@ export function sortChoices(filters: SearchFilters): { value: SortKey; label: st
     { value: "price", label: filters.dates ? "Lowest total" : "Lowest price" },
     { value: "price_high", label: filters.dates ? "Highest total" : "Highest price" },
     ...(filters.lat !== null ? [{ value: "distance" as const, label: "Closest first" }] : []),
-    { value: "rating", label: "Top rated" },
     { value: "newest", label: "Newest" },
   ];
 }

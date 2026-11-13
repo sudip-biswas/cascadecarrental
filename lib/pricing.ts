@@ -5,8 +5,22 @@ export type RateType = "refundable" | "non_refundable";
 
 export const PROTECTION_DAILY_CENTS: Record<ProtectionPlan, number> = {
   basic: 1199,
-  standard: 2199,
-  premium: 3499,
+  standard: 1999,
+  premium: 2999,
+};
+
+/** Display names for protection plans. "premium" is marketed as "Complete". */
+export const PROTECTION_PLAN_NAMES: Record<ProtectionPlan, string> = {
+  basic: "Basic",
+  standard: "Standard",
+  premium: "Complete",
+};
+
+/** Max guest out-of-pocket for each plan, in dollars. null means $0. */
+export const PROTECTION_OUT_OF_POCKET: Record<ProtectionPlan, number | null> = {
+  basic: 3000,
+  standard: 500,
+  premium: null,
 };
 
 /** Discount for paying up front with no refund after 24 hours. */

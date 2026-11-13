@@ -8,7 +8,6 @@ import { fuelLabel } from "./categories";
 import {
   carHref,
   coverImage,
-  firstName,
   formatMiles,
   offersUnlimitedMiles,
   roughPrice,
@@ -119,10 +118,8 @@ function Card({ vehicle, dates, months, layout = "tile", priority, heart, distan
       ? Math.round(price.totalCents / price.days)
       : (price?.dailyCents ?? vehicle.price_today_cents ?? vehicle.daily_rate_cents);
   const week = dates ? null : weekPrice(vehicle);
-  const isNew = vehicle.trip_count === 0;
   const topHost = vehicle.host?.top_host ?? false;
   const unlimited = offersUnlimitedMiles(vehicle);
-  const host = firstName(vehicle.persona?.name ?? vehicle.host?.full_name);
   const place = distanceMi != null ? `${vehicle.location_name} · ${formatMiles(distanceMi)}` : vehicle.location_name;
 
   if (layout === "compact") {
@@ -135,7 +132,7 @@ function Card({ vehicle, dates, months, layout = "tile", priority, heart, distan
             {topHost && <Tag tone="butter">Top host</Tag>}
           </span>
           <span className="truncate text-sm text-slate">
-            {vehicle.year} · {isNew ? "New listing" : `${vehicle.seats} seats`} · {place}
+            {vehicle.year} · {vehicle.seats} seats · {place}
           </span>
           <span className="figures text-[17px] font-extrabold">
             {perMonth !== null ? roughPrice(perMonth) : formatPrice(perDay)}{" "}
@@ -169,10 +166,10 @@ function Card({ vehicle, dates, months, layout = "tile", priority, heart, distan
         <span className="flex min-w-0 flex-1 flex-col gap-2 px-2 pb-2 sm:py-2 sm:pl-0">
           <span className="flex items-start justify-between gap-2">
             <span className="font-display text-[26px] leading-[1.1] font-extrabold tracking-[-0.025em]">{name}</span>
-            {isNew ? <Tag tone="mint">New listing</Tag> : <Rating vehicle={vehicle} />}
+            {vehicle.trip_count > 0 && <Rating vehicle={vehicle} />}
           </span>
           <span className="text-[15px] text-slate">
-            {[`${vehicle.year}${vehicle.trim ? ` ${vehicle.trim}` : ""}`, host, place]
+            {[`${vehicle.year}${vehicle.trim ? ` ${vehicle.trim}` : ""}`, "Cascade Fleet", place]
               .filter(Boolean)
               .join(" · ")}
           </span>
@@ -233,7 +230,6 @@ function Card({ vehicle, dates, months, layout = "tile", priority, heart, distan
           className="aspect-[4/3] w-full rounded-[20px]"
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 300px"
         />
-        {isNew && <Tag tone="mint" className="absolute top-2.5 left-2.5">New listing</Tag>}
         {vehicle.instant_book && (
           <Tag tone="white" className={cn("absolute", heart ? "bottom-2.5 left-2.5" : "top-2.5 right-2.5")}>
             Instant book

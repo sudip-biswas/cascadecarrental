@@ -31,6 +31,7 @@ import { CarBooking } from "@/components/vehicle/BookingSidebar";
 import { FavoriteButton } from "@/components/vehicle/FavoriteButton";
 import { HostCard } from "@/components/vehicle/HostCard";
 import { IncludedWithTrip } from "@/components/vehicle/IncludedWithTrip";
+import { ProtectionTiers } from "@/components/vehicle/ProtectionTiers";
 import { RulesOfTheRoad } from "@/components/vehicle/RulesOfTheRoad";
 import { ShareReport } from "@/components/vehicle/ShareReport";
 import { SimilarCars } from "@/components/vehicle/SimilarCars";
@@ -282,17 +283,15 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
         <div className="flex flex-wrap items-center gap-2.5 text-[15px] text-slate sm:text-lg">
           {car.year}
           {car.trim ? ` ${car.trim}` : ""} · {car.location_name}
-          {car.trip_count === 0 ? (
-            <Tag tone="mint" className="text-sm">New, no trips yet</Tag>
-          ) : car.rating_avg ? (
+          {car.trip_count > 0 && car.rating_avg ? (
             <span className="flex items-center gap-1 font-bold text-ink">
               <Star className="size-4 fill-ink" strokeWidth={0} />
               {car.rating_avg.toFixed(2)}
               <span className="font-medium text-slate">· {pluralize(car.trip_count, "trip")}</span>
             </span>
-          ) : (
+          ) : car.trip_count > 0 ? (
             <span>{pluralize(car.trip_count, "trip")}</span>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -339,6 +338,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
           instantBook={car.instant_book}
           delivery={car.delivery_enabled}
         />
+        <ProtectionTiers />
         <Tile tone="sky" className="flex flex-col gap-3.5 rounded-[26px] sm:p-6">
           <TileTitle className="tracking-[-0.02em] text-ink">Where it is</TileTitle>
           <span className="flex items-center gap-3 rounded-[18px] bg-white px-4 py-3.5 text-ink">
@@ -346,8 +346,17 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
             <span className="text-base font-bold">{car.location_name}</span>
           </span>
           <p className="text-[15px]">
-            Pick-up and return are at the same spot, at {HANDOVER_TIME}. You&apos;ll sort out the exact place with {host} once
-            the trip is booked.
+            We meet you at the{" "}
+            <a
+              href="https://maps.google.com/?q=18740+International+Blvd+SeaTac+WA"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold underline"
+            >
+              DoubleTree by Hilton Seattle Airport
+            </a>
+            , 18740 International Blvd, SeaTac WA 98188.{" "}
+            Text us when you land — we&apos;ll have your car waiting. Return to the same spot.
           </p>
         </Tile>
       </div>
