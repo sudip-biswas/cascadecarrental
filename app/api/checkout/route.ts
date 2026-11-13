@@ -406,7 +406,6 @@ export async function POST(req: Request) {
           ...(paidWith === "card" ? keepCard : {}),
           confirm: true,
           confirmation_token: confirmationTokenId,
-          payment_method_types: [paidWith],
           return_url: returnUrl,
           ...(shipping ? { shipping } : {}),
         })
