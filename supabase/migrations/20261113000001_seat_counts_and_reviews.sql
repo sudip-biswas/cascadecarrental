@@ -81,8 +81,8 @@ BEGIN
       CASE (ROW_NUMBER() OVER (ORDER BY v.id))::int % 5
         WHEN 0 THEN r1 WHEN 1 THEN r2 WHEN 2 THEN r3 WHEN 3 THEN r4 ELSE r5 END,
       v.host_id,
-      (now() - interval '60 days' - (RANDOM() * 120 || ' days')::interval),
-      (now() - interval '60 days' - (RANDOM() * 120 || ' days')::interval + interval '3 days'),
+      s.starts_at,
+      s.starts_at + interval '3 days',
       'DoubleTree by Hilton SeaTac, 18740 International Blvd',
       v.daily_rate_cents,
       v.daily_rate_cents * 3,
@@ -91,7 +91,11 @@ BEGIN
       v.distance_included_mi, v.extra_mile_fee_cents,
       'non_refundable', 'captured', 'completed',
       now(), now()
-    FROM vehicles v WHERE v.id = v_id;
+    FROM vehicles v
+    CROSS JOIN LATERAL (
+      SELECT now() - interval '60 days' - (RANDOM() * 120 || ' days')::interval AS starts_at
+    ) s
+    WHERE v.id = v_id;
 
     INSERT INTO reviews (
       trip_id, vehicle_id, reviewer_id, reviewee_id,
@@ -107,16 +111,16 @@ BEGIN
       (ARRAY[4,5,5,5])[1 + (RANDOM() * 3)::int],
       5, 5,
       (ARRAY[
-        'Smooth pickup at the DoubleTree — car was clean and ready to go. Easy return too.',
-        'Great car for the airport run. No rental counter hassle, just met the team and drove off.',
-        'Exactly as described. Miles included were plenty, pricing was clear upfront with tax.',
-        'Really straightforward process. Would rent again for Sea-Tac trips.',
-        'Car was in great shape. Pickup and return were quick and painless.',
-        'Super easy. The car was waiting for us when we landed. No surprises on the bill.',
-        'Clean car, honest pricing. Way better than the airport counter experience.',
-        'Drove this for a week. Comfortable, good on gas, and the team was responsive.',
-        'Appreciated the upfront total — no surprise fees at the end. 5 stars.',
-        'Perfect for our family trip to Rainier. Miles included were generous.'
+        'Met us right at the DoubleTree exit with the car ready to go — keys in hand, no paperwork, no waiting in line. Car was clean inside and out and drove great the whole week. Best airport rental experience I''ve had, and I travel for work every month.',
+        'Flying in for a conference and needed something reliable for 4 days. The team texted me the car''s location before I even got my luggage off the belt. No rental counter, no shuttle bus, no upsells at the desk. Just exactly what I booked at the price I saw.',
+        'We did a road trip up to Vancouver and back — about 500 miles total. Miles included covered most of it and the per-mile overage was clearly priced upfront so there were zero surprises on the final bill. Car was comfortable for 3 adults with luggage.',
+        'Third time renting from Cascade and the process gets faster every time. Text when you land, they meet you at the DoubleTree with the car. This trip it was literally a 2-minute handoff. Way better than waiting 45 minutes at the airport counter.',
+        'Picked this up after a red-eye from the East Coast and the team was already there when I arrived. Car had a full tank and I was on the road in under 10 minutes. Return was just as quick — maybe 5 minutes tops. Really appreciate the no-counter model.',
+        'Rented for a family trip to Mount Rainier — 5 adults plus a full trunk of gear. Miles included were generous enough that we never watched the odometer the whole trip. The total at checkout was exactly what I paid, tax already included. No surprise fees at pickup.',
+        'Solo work trip, 5 days in Seattle. Booking was simple, the car was clean and in good shape. Only minor thing: communication is all over text which works fine, but an app would make it even smoother. The pickup logistics are genuinely the best part of the whole experience.',
+        'Car was exactly as listed — no surprises on condition or odometer. The team clearly knows the Sea-Tac area well and they''re easy to reach by phone if you have questions. Much better value than the big-name companies inside the terminal, and faster too.',
+        'Traveled with my partner for a week. The booking total was the amount charged — no resort fees, no hidden young driver charges, nothing extra. Car had a small scuff on the rear bumper (we noted it together at pickup) but ran perfectly. Return took 5 minutes.',
+        'Used Cascade for a 3-day trip out to the Olympic Peninsula. Highway miles, some mountain pass roads — the car handled all of it fine. Good fuel economy for the distance. Pickup and drop-off were the fastest I''ve ever done at Sea-Tac. Would book again without hesitation.'
       ])[1 + (RANDOM() * 9)::int],
       'guest_to_host',
       now() - interval '55 days' - (RANDOM() * 110 || ' days')::interval
