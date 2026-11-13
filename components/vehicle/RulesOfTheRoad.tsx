@@ -36,12 +36,12 @@ export function RulesOfTheRoad({
     <Tile className="flex flex-col gap-4 rounded-[24px]">
       <TileTitle>Rules of the road</TileTitle>
       <ul className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-        <Rule icon={CigaretteOff} title="No smoking" body="$250 smoking fee if smell or ash is found." />
-        <Rule icon={Sparkles} title="Keep it tidy" body="Cars needing more than a normal clean: $150 cleaning fee." />
+        <Rule icon={CigaretteOff} title="No smoking" body="$150 smoking fee if smell or ash is found." />
+        <Rule icon={Sparkles} title="Keep it tidy" body="Normal use is free. Excessive cleaning: $75." />
         <Rule
           icon={electric ? Zap : Fuel}
           title={electric ? "Recharge it" : "Refuel it"}
-          body={`Bring it back at the same level. Missing ${electric ? "charge" : "fuel"}: $6.50/gallon + $15 service fee.`}
+          body={`Bring it back at the same level. If we refuel it: actual fuel cost + $10 convenience fee.`}
         />
         <Rule
           icon={Gauge}

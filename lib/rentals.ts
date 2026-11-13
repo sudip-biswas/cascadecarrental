@@ -213,11 +213,11 @@ export const RENTING_FAQ: Faq[] = [
   },
   {
     q: "What do I need to book?",
-    a: "A valid driver's licence, age 21 or older (21–24 adds a $20/day young-driver fee for most vehicles), and a payment card. We'll ask for a licence photo after booking — it never delays your reservation.",
+    a: "A valid driver's licence, age 21 or older (21–24 adds a $10/day young-driver fee for most vehicles), and a payment card. We'll ask for a licence photo after booking — it never delays your reservation.",
   },
   {
     q: "What does protection cover?",
-    a: "Three tiers: Basic ($11.99/day, $3,000 max out-of-pocket), Standard ($19.99/day, $500 max), Complete ($29.99/day, $0). All are damage waivers from Cascade Fleet LLC, not third-party insurance. A $500 refundable hold is placed at pick-up (reduced to $200 with Complete).",
+    a: "Three tiers: Basic ($9.99/day, $3,000 max out-of-pocket), Standard ($16.99/day, $500 max), Complete ($24.99/day, $0). All are damage waivers from Cascade Fleet LLC, not third-party insurance. A $250 refundable hold is placed at pick-up — waived with Complete. Roadside assistance available at $2.99/day.",
   },
   {
     q: "Where exactly do I pick up at Sea-Tac?",

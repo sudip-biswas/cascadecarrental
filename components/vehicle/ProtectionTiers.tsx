@@ -66,9 +66,9 @@ export function ProtectionTiers() {
           Selected at checkout; Standard is pre-selected.
         </p>
         <p>
-          A <strong className="text-ink">$500 refundable hold</strong> is placed on your card at
-          pick-up — reduced to <strong className="text-ink">$200 with Complete</strong>.
-          Roadside assistance available at $3.99/day, added at checkout.
+          A <strong className="text-ink">$250 refundable hold</strong> is placed on your card at
+          pick-up — <strong className="text-ink">waived with Complete</strong>.
+          Roadside assistance available at $2.99/day, added at checkout.
         </p>
       </div>
     </Tile>

@@ -244,7 +244,8 @@ export function CarBooking({
   }
 
   const checkoutUrl = `/cars/${vehicle.id}/checkout?${query({ from, until, fromTime, untilTime, rate })}${spot === CAR_SPOT ? "" : `&spot=${spot}`}`;
-  const reserveHref = isLoggedIn ? checkoutUrl : `/login?redirectTo=${encodeURIComponent(checkoutUrl)}`;
+  // Auth is enforced in checkout itself, so everyone goes straight there.
+  const reserveHref = checkoutUrl;
 
   const chargeNote = vehicle.instant_book
     ? "Instant book: you're charged when you book."

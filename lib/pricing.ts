@@ -4,10 +4,13 @@ export type ProtectionPlan = "basic" | "standard" | "premium";
 export type RateType = "refundable" | "non_refundable";
 
 export const PROTECTION_DAILY_CENTS: Record<ProtectionPlan, number> = {
-  basic: 1199,
-  standard: 1999,
-  premium: 2999,
+  basic: 999,
+  standard: 1699,
+  premium: 2499,
 };
+
+/** Roadside assistance add-on, sold separately from the protection plan. */
+export const ROADSIDE_DAILY_CENTS = 299;
 
 /** Display names for protection plans. "premium" is marketed as "Complete". */
 export const PROTECTION_PLAN_NAMES: Record<ProtectionPlan, string> = {

@@ -29,7 +29,7 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { PhotoGallery } from "@/components/vehicle/PhotoGallery";
 import { CarBooking } from "@/components/vehicle/BookingSidebar";
 import { FavoriteButton } from "@/components/vehicle/FavoriteButton";
-import { HostCard } from "@/components/vehicle/HostCard";
+import { FleetCard } from "@/components/vehicle/FleetCard";
 import { IncludedWithTrip } from "@/components/vehicle/IncludedWithTrip";
 import { ProtectionTiers } from "@/components/vehicle/ProtectionTiers";
 import { RulesOfTheRoad } from "@/components/vehicle/RulesOfTheRoad";
@@ -421,28 +421,13 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
             <Star className="size-6" strokeWidth={1.75} />
           </span>
           <span className="flex-[1_1_240px]">
-            <span className="mb-1.5 block font-display text-[24px] font-extrabold">No reviews yet</span>
-            <span className="text-[15px] text-slate">The first trip writes the first one.</span>
+            <span className="mb-1.5 block font-display text-[24px] font-extrabold">Be the first to review</span>
+            <span className="text-[15px] text-slate">Reviews appear here after each completed trip.</span>
           </span>
         </div>
       )}
 
-      <HostCard
-        hostId={car.host_id}
-        name={host}
-        avatarUrl={hostAvatar}
-        bio={hostBio}
-        hostSince={hostSince ?? null}
-        profileHref={hostProfileHref}
-        persona={
-          car.persona
-            ? { tripCount: car.persona.trip_count, rating: car.persona.rating, ratingCount: car.persona.rating_count }
-            : null
-        }
-        messageHref={!isOwner && car.host ? `/messages/new?host=${car.host.id}` : null}
-        cars={hostCars}
-        topHost={car.host?.top_host ?? false}
-      />
+      <FleetCard messageHref={!isOwner && car.host ? `/messages/new?host=${car.host.id}` : null} />
       <RulesOfTheRoad
         host={host}
         electric={isElectric}

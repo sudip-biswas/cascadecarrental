@@ -524,7 +524,7 @@ function CheckoutLayout({
               })}
             </div>
             <p className="text-sm text-slate">
-              $500 refundable hold placed at pick-up — reduced to $200 with Complete. Damage waiver from Cascade Fleet LLC.
+              $250 refundable hold placed at pick-up — waived with Complete. Damage waiver from Cascade Fleet LLC.
             </p>
           </Section>
 
@@ -626,9 +626,9 @@ function CheckoutLayout({
               {holdNote} {miles}
             </span>
           </p>
-          {vehicle.deposit_cents > 0 && (
+          {vehicle.deposit_cents > 0 && plan !== "premium" && (
             <Notice tone="peach">
-              A {formatPrice(vehicle.deposit_cents)} hold is placed when the trip starts and released after return.
+              A {formatPrice(vehicle.deposit_cents)} refundable hold is placed at pick-up and released after return. Waived with Complete.
             </Notice>
           )}
           <p className="px-1 text-[13px] leading-snug text-slate">

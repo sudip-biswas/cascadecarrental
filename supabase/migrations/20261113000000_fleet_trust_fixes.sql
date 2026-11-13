@@ -6,8 +6,9 @@ UPDATE vehicles SET instant_book = true;
 UPDATE vehicles SET min_age = 21
   WHERE min_age IS NULL OR min_age < 21;
 
-UPDATE vehicles SET young_driver_fee_cents = 2000
+UPDATE vehicles SET young_driver_fee_cents = 1000
   WHERE young_driver_fee_cents IS NULL OR young_driver_fee_cents = 0;
 
-UPDATE vehicles SET deposit_cents = 50000
+-- $250 hold ($0 with Complete — enforced in checkout logic).
+UPDATE vehicles SET deposit_cents = 25000
   WHERE deposit_cents IS NULL OR deposit_cents = 0;
