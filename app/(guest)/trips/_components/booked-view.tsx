@@ -71,13 +71,17 @@ export function BookedView({ trip }: { trip: TripRow }) {
       {confirming ? <AutoRefresh /> : <PendingNote tripId={trip.id} />}
       {!confirming && (
         <Script id="gtm-purchase" strategy="afterInteractive">{`
-          window.dataLayer = window.dataLayer || [];
-          window.dataLayer.push({
-            event: 'purchase',
-            value: ${(trip.total_cents ?? 0) / 100},
-            currency: 'USD',
-            transaction_id: '${trip.id}',
-          });
+          (function() {
+            var key = 'gtm_purchase_${trip.id}';
+            try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch(e) {}
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push({
+              event: 'purchase',
+              value: ${(trip.total_cents ?? 0) / 100},
+              currency: 'USD',
+              transaction_id: '${trip.id}',
+            });
+          })();
         `}</Script>
       )}
       <section className="bg-mint py-12 text-mint-ink sm:pt-14 sm:pb-16">

@@ -393,7 +393,27 @@ function CheckoutLayout({
   const [error, setError] = useState<string | null>(paymentNotice ?? null);
   const [busy, setBusy] = useState(false);
   const [magicLinkSentTo, setMagicLinkSentTo] = useState<string | null>(null);
-  const [guestBooked, setGuestBooked] = useState<string | null>(null);
+  const [guestBooked, setGuestBooked] = useState<{ email: string; tripId: string; totalCents: number } | null>(null);
+
+  // Fire the GTM purchase event exactly once per trip UUID, guarded by sessionStorage so
+  // a re-render or a later magic-link sign-in to the same trip can't double-fire.
+  useEffect(() => {
+    if (!guestBooked) return;
+    const key = `gtm_purchase_${guestBooked.tripId}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch { /* storage blocked — fire anyway */ }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).dataLayer = (window as any).dataLayer || [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).dataLayer.push({
+      event: "purchase",
+      value: guestBooked.totalCents / 100,
+      currency: "USD",
+      transaction_id: guestBooked.tripId,
+    });
+  }, [guestBooked]);
   // What's picked in the Payment Element, and the card form a lender needs beside it.
   const [method, setMethod] = useState("card");
   const [cardElements, setCardElements] = useState<StripeElements | null>(null);
@@ -537,7 +557,7 @@ function CheckoutLayout({
       router.push(tripUrl);
     } else {
       setBusy(false);
-      setGuestBooked(guestEmail.trim());
+      setGuestBooked({ email: guestEmail.trim(), tripId, totalCents: pricing.totalCents });
     }
   }
 
@@ -631,7 +651,7 @@ function CheckoutLayout({
             <div className="flex flex-col gap-4 rounded-[24px] bg-sky p-6">
               <p className="text-[22px] font-extrabold">You&apos;re booked!</p>
               <p className="text-[15px] text-sky-ink">
-                Confirmation sent to <strong>{guestBooked}</strong>. Check your inbox for a link to view and manage your booking.
+                Confirmation sent to <strong>{guestBooked.email}</strong>. Check your inbox for a link to view and manage your booking.
               </p>
             </div>
           ) : magicLinkSentTo ? (
