@@ -536,6 +536,7 @@ function CheckoutLayout({
     if (isAuthenticated) {
       router.push(tripUrl);
     } else {
+      setBusy(false);
       setGuestBooked(guestEmail.trim());
     }
   }
