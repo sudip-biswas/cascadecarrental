@@ -158,7 +158,7 @@ export async function POST(req: Request) {
         /user with this email/i.test(createErr.message);
       if (alreadyRegistered) {
         // Existing account: send a magic link back to this exact checkout URL.
-        const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+        const origin = new URL(req.url).origin;
         const redirectTo = checkoutHere
           ? checkoutHere.startsWith("http")
             ? checkoutHere
@@ -326,7 +326,7 @@ export async function POST(req: Request) {
     await admin.from("profiles").update({ stripe_customer_id: customerId }).eq("id", userId);
   }
 
-  const origin = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const origin = new URL(req.url).origin;
   // The trip's id is set here so the lenders' pages can send the guest straight back to it.
   const tripId = crypto.randomUUID();
   const returnUrl = `${origin}/trips/${tripId}?booked=1`;
