@@ -4,11 +4,26 @@ import { cache } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import {
+  Bike,
+  Bluetooth,
+  Camera,
   Cog,
+  Compass,
+  Eye,
+  Flame,
   Fuel,
   Gauge,
+  KeyRound,
   MapPin,
+  Mountain,
+  Navigation,
+  PawPrint,
+  Plug,
+  Smartphone,
+  Snowflake,
   Star,
+  Sun,
+  Ticket,
   Users,
   Zap,
   type LucideIcon,
@@ -23,7 +38,7 @@ import { NO_INDEX, OPEN_GRAPH, absoluteUrl, carIdFromSlug, carPath } from "@/lib
 import { VEHICLE_PUBLIC, type PublicVehicle } from "@/lib/supabase/columns";
 import type { VehicleImage } from "@/lib/supabase/types";
 import { HANDOVER_TIME, cn, formatDate, formatPrice, pluralize, toDateKey } from "@/lib/utils";
-import { Tag, Tile, TileTitle, toneClass, type Tone } from "@/components/kit";
+import { Tile, TileTitle, toneClass, type Tone } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { PhotoGallery } from "@/components/vehicle/PhotoGallery";
@@ -31,7 +46,6 @@ import { CarBooking } from "@/components/vehicle/BookingSidebar";
 import { FavoriteButton } from "@/components/vehicle/FavoriteButton";
 import { FleetCard } from "@/components/vehicle/FleetCard";
 import { IncludedWithTrip } from "@/components/vehicle/IncludedWithTrip";
-import { ProtectionTiers } from "@/components/vehicle/ProtectionTiers";
 import { RulesOfTheRoad } from "@/components/vehicle/RulesOfTheRoad";
 import { ShareReport } from "@/components/vehicle/ShareReport";
 import { SimilarCars } from "@/components/vehicle/SimilarCars";
@@ -100,6 +114,59 @@ export async function generateMetadata({ params }: PageProps<"/cars/[vehicleId]"
     // Unlisted cars are only visible to their owner.
     ...(car.status === "listed" ? {} : NO_INDEX),
   };
+}
+
+const FEATURE_ICONS: Record<string, LucideIcon> = {
+  "All-wheel drive": Compass,
+  "Android Auto": Smartphone,
+  "Apple CarPlay": Smartphone,
+  "Backup camera": Camera,
+  "Bike rack": Bike,
+  "Blind spot warning": Eye,
+  "Bluetooth": Bluetooth,
+  "Child seat": Users,
+  "GPS": Navigation,
+  "Heated seats": Flame,
+  "Keyless entry": KeyRound,
+  "Pet friendly": PawPrint,
+  "Ski rack": Mountain,
+  "Snow tires": Snowflake,
+  "Sunroof": Sun,
+  "Toll pass": Ticket,
+  "USB charger": Plug,
+};
+
+function VehicleFeatures({ features }: { features: { category: string; feature: string }[] }) {
+  if (features.length === 0) return null;
+  const groups = features.reduce<Record<string, string[]>>((acc, f) => {
+    (acc[f.category] ??= []).push(f.feature);
+    return acc;
+  }, {});
+  const groupEntries = Object.entries(groups).filter(([, list]) => list.length > 0);
+  if (groupEntries.length === 0) return null;
+  return (
+    <Tile className="flex flex-col gap-4 rounded-[26px] sm:p-6">
+      <TileTitle>Features</TileTitle>
+      <div className="flex flex-col gap-4">
+        {groupEntries.map(([category, list]) => (
+          <div key={category} className="flex flex-col gap-2">
+            <h3 className="text-[12px] font-extrabold tracking-widest text-slate uppercase">{category}</h3>
+            <div className="flex flex-wrap gap-2">
+              {list.map((feature) => {
+                const Icon = FEATURE_ICONS[feature] ?? Cog;
+                return (
+                  <span key={feature} className="flex items-center gap-2 rounded-[12px] bg-board px-3 py-2">
+                    <Icon className="size-[15px] shrink-0" strokeWidth={1.75} />
+                    <span className="text-[13px] font-semibold">{feature}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Tile>
+  );
 }
 
 function Spec({ icon: Icon, tone, title, body }: { icon: LucideIcon; tone: Tone; title: string; body: string }) {
@@ -338,7 +405,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
           instantBook={car.instant_book}
           delivery={car.delivery_enabled}
         />
-        <ProtectionTiers />
+        <VehicleFeatures features={car.vehicle_features} />
         <Tile tone="sky" className="flex flex-col gap-3.5 rounded-[26px] sm:p-6">
           <TileTitle className="tracking-[-0.02em] text-ink">Where it is</TileTitle>
           <span className="flex items-center gap-3 rounded-[18px] bg-white px-4 py-3.5 text-ink">
@@ -368,18 +435,6 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
         </Tile>
       )}
 
-      {features.length > 0 && (
-        <Tile className="flex flex-col gap-3 rounded-[24px]">
-          <TileTitle>Features</TileTitle>
-          <div className="flex flex-wrap gap-1.5">
-            {features.flatMap(([, list]) => list).map((feature) => (
-              <Tag key={feature} className="px-2.5 py-1.5 text-sm font-semibold">
-                {feature}
-              </Tag>
-            ))}
-          </div>
-        </Tile>
-      )}
 
       {reviews.length ? (
         <Tile className="flex flex-col gap-4 rounded-[24px]">
@@ -487,6 +542,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
             youngDriverFeeCents: car.young_driver_fee_cents,
             delivery: pickup.length > 1,
             extras: car.vehicle_extras.filter((e) => e.active).sort((a, b) => a.position - b.position).map((e) => e.name),
+            depositCents: car.deposit_cents || undefined,
           }}
         >
           {details}

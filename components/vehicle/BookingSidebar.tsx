@@ -66,6 +66,7 @@ export interface BookingPerks {
   delivery: boolean;
   /** Names of the extras on offer. */
   extras: string[];
+  depositCents?: number;
 }
 
 /** "Delivery available. Child seat and 2 more at checkout." and "Drivers 21+, under 25 adds $15/day." */
@@ -80,7 +81,10 @@ function perkLines(perks: BookingPerks): string[] {
     (perks.youngDriverFeeCents > 0 && perks.minAge < YOUNG_DRIVER_AGE
       ? `, under ${YOUNG_DRIVER_AGE} adds ${formatPrice(perks.youngDriverFeeCents)}/day`
       : "");
-  return [offers.length > 0 ? `${offers.join(". ")}.` : null, `${age}.`].filter((line) => line !== null);
+  const deposit = perks.depositCents
+    ? `${formatPrice(perks.depositCents)} refundable hold at pick-up — waived with Complete.`
+    : null;
+  return [offers.length > 0 ? `${offers.join(". ")}.` : null, `${age}.`, deposit].filter((line) => line !== null);
 }
 
 interface Props {

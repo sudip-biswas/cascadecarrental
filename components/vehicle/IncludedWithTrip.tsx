@@ -121,7 +121,7 @@ export function IncludedWithTrip({
             <Item
               icon={ShieldCheck}
               title="Protection plans"
-              body={`Three tiers from ${formatCurrency(PROTECTION_DAILY_CENTS.basic)} a day — see plans below.`}
+              body={`Three tiers from ${formatCurrency(PROTECTION_DAILY_CENTS.basic)} a day — you pick yours at checkout.`}
             />
             <Item
               icon={Camera}
