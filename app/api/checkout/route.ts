@@ -11,7 +11,7 @@ import { formatCurrency, zonedInstant } from "@/lib/utils";
 import { driverCheck } from "@/components/checkout/rules";
 import { CAR_SPOT, loadPickupSpots, quotePickup } from "@/lib/locations";
 import { checkPromo } from "@/app/api/promo/check";
-import { PAID_WITH_LABEL, isPayOverTime, payOverTimeFor, type PaidWith } from "@/lib/pay-over-time";
+import { PAID_WITH_LABEL, PAY_OVER_TIME, isPayOverTime, payOverTimeEnabled, payOverTimeFor, type PaidWith } from "@/lib/pay-over-time";
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -406,6 +406,8 @@ export async function POST(req: Request) {
           ...(paidWith === "card" ? keepCard : {}),
           confirm: true,
           confirmation_token: confirmationTokenId,
+          // Must match the full allowed_payment_method_types the CT was created with in Elements.
+          payment_method_types: ["card", ...(payOverTimeEnabled() ? PAY_OVER_TIME : [])],
           return_url: returnUrl,
           ...(shipping ? { shipping } : {}),
         })
