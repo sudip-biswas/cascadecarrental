@@ -218,7 +218,7 @@ export async function POST(req: Request) {
 
   const { data: profile } = await admin
     .from("profiles")
-    .select("stripe_customer_id, date_of_birth, driving_license_verified, suspended_at, closed_at")
+    .select("stripe_customer_id, full_name, date_of_birth, driving_license_verified, suspended_at, closed_at")
     .eq("id", userId)
     .single();
   if (!profile) return fail("Couldn't find your profile. Log in again.", 401);
@@ -475,10 +475,7 @@ export async function POST(req: Request) {
       : fail("Couldn't start the booking. Try again.", 500);
   }
 
-  // For guest bookings, send a plain confirmation email.
-  // The "View booking" sign-in link is sent separately by the browser via signInWithOtp
-  // (PKCE) after it receives the tripId — admin.generateLink uses implicit flow with
-  // tokens that expire immediately on this project.
+  // Guest confirmation email (plain — magic link sent separately by the browser via signInWithOtp).
   if (!user && userEmail) {
     await sendEmail({
       to: userEmail,
@@ -487,6 +484,26 @@ export async function POST(req: Request) {
         "Your booking is confirmed and your payment has been processed.",
         "You'll receive a separate email shortly with a link to view and manage your trip.",
       ],
+    });
+  }
+
+  // Host notification email.
+  const { data: hostAuthUser } = await admin.auth.admin.getUserById(vehicle.host_id);
+  const hostEmail = hostAuthUser?.user?.email;
+  if (hostEmail) {
+    const guestDisplayName = guestName?.trim() || (profile as { full_name?: string | null }).full_name || userEmail || "A guest";
+    const fmtDate = (d: string) =>
+      new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    await sendEmail({
+      to: hostEmail,
+      subject: `New trip booked — ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+      lines: [
+        `${guestDisplayName} just booked your ${vehicle.year} ${vehicle.make} ${vehicle.model}.`,
+        `Pick-up: ${fmtDate(from)} at ${fromTime}`,
+        `Return: ${fmtDate(until)} at ${untilTime}`,
+        `${days} day${days === 1 ? "" : "s"} · ${formatCurrency(pricing.totalCents)} charged`,
+      ],
+      action: { label: "View trip", href: `/host/trips/${tripId}` },
     });
   }
 
