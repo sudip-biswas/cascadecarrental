@@ -37,6 +37,7 @@ import { driverCheck, needsAge, type DriverRules } from "./rules";
 import { TOLL_WINDOW_DAYS } from "@/lib/charge-windows";
 import { CAR_SPOT, quotePickup, type PickupChoice, type PickupOption } from "@/lib/locations";
 import { PAID_WITH_LABEL, PAY_OVER_TIME, isPayOverTime, payOverTimeEnabled } from "@/lib/pay-over-time";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { CardOnFile, PayOverTimeNote, pendingNoteKey } from "./PayOverTime";
 
 export interface CheckoutVehicle extends DeliverySettings, DriverRules {
@@ -502,8 +503,17 @@ function CheckoutLayout({
     let res = await book({ cardConfirmationTokenId: cardToken });
     let data = await res.json().catch(() => ({}));
 
-    // Existing account: magic link sent to that email — show inbox prompt.
-    if (data.magicLinkSent) {
+    // Existing account: trigger a PKCE magic link from the browser client so the
+    // token goes through /auth/callback (reliable, full 1-hour TTL).
+    if (data.existingAccount) {
+      const { error: otpErr } = await createSupabaseClient().auth.signInWithOtp({
+        email: data.email ?? guestEmail,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(checkoutHere)}`,
+        },
+      });
+      if (otpErr) return stop("Could not send sign-in link. Try again.");
       setMagicLinkSentTo(data.email ?? guestEmail);
       setBusy(false);
       return;

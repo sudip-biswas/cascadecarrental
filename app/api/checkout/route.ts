@@ -157,26 +157,11 @@ export async function POST(req: Request) {
         /already (registered|exists)/i.test(createErr.message) ||
         /user with this email/i.test(createErr.message);
       if (alreadyRegistered) {
-        // Existing account: send a magic link to /auth/magic, a client-side page that
-        // processes the implicit-flow hash tokens (admin.generateLink uses implicit flow,
-        // not PKCE, so /auth/callback's exchangeCodeForSession won't work here).
-        const origin = new URL(req.url).origin;
-        const checkoutPath = checkoutHere?.startsWith("/") ? checkoutHere : `/${checkoutHere ?? ""}`;
-        const redirectTo = `${origin}/auth/magic?next=${encodeURIComponent(checkoutPath)}`;
-        const { data: linkData } = await admin.auth.admin.generateLink({
-          type: "magiclink",
-          email: guestEmail,
-          options: { redirectTo },
-        });
-        if (linkData?.properties?.action_link) {
-          await sendEmail({
-            to: guestEmail,
-            subject: "Complete your Cascade booking",
-            lines: ["Click below to sign in and return to checkout — your vehicle and dates are saved. You'll just need to enter your payment details to confirm."],
-            action: { label: "Complete booking", href: linkData.properties.action_link },
-          });
-        }
-        return NextResponse.json({ magicLinkSent: true, email: guestEmail });
+        // Existing account: tell the client to trigger signInWithOtp() from the browser.
+        // admin.generateLink() uses implicit flow (tokens in URL hash) with a very short
+        // TTL; the browser's signInWithOtp() uses PKCE and the full 1-hour OTP expiry,
+        // and its redirect goes through /auth/callback which already works.
+        return NextResponse.json({ existingAccount: true, email: guestEmail });
       }
       return fail("Could not create account. Try again.", 500);
     }
