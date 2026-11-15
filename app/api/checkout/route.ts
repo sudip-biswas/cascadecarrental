@@ -475,21 +475,26 @@ export async function POST(req: Request) {
       : fail("Couldn't start the booking. Try again.", 500);
   }
 
-  // For guest bookings, send a magic link so they can view their trip while logged in.
+  // For guest bookings, send a confirmation email with a magic link to the trip page.
+  // Route through /auth/magic so implicit-flow hash tokens are handled client-side.
+  // Always send the email — fall back to a plain link if generateLink fails.
   if (!user && userEmail) {
+    const tripNext = `/trips/${tripId}?booked=1`;
+    const magicRedirectTo = `${origin}/auth/magic?next=${encodeURIComponent(tripNext)}`;
     const { data: linkData } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email: userEmail,
-      options: { redirectTo: `${origin}/trips/${tripId}?booked=1` },
+      options: { redirectTo: magicRedirectTo },
     });
-    if (linkData?.properties?.action_link) {
-      await sendEmail({
-        to: userEmail,
-        subject: "Your Cascade booking is confirmed",
-        lines: ["Your booking is confirmed. Click below to view your trip and manage your booking."],
-        action: { label: "View booking", href: linkData.properties.action_link },
-      });
-    }
+    await sendEmail({
+      to: userEmail,
+      subject: "Your Cascade booking is confirmed",
+      lines: ["Your booking is confirmed. Click below to view your trip and manage your booking."],
+      action: {
+        label: "View booking",
+        href: linkData?.properties?.action_link ?? `${origin}${tripNext}`,
+      },
+    });
   }
 
   // Klarna, Affirm and Afterpay send the guest to their page, which comes back to the trip.
