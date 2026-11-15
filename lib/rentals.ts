@@ -59,7 +59,7 @@ export const RENTAL_PAGES: RentalPage[] = [
     description:
       "Rent a car parked near Seattle-Tacoma International Airport from a local host. No rental counter, full price with tax up front, pick up at 10:00.",
     intro: [
-      "These cars are parked within about ten miles of Seattle-Tacoma International Airport. There's no rental counter: you meet the host at the car, check it over together and drive off.",
+      "There's no rental counter and no shuttle line. We meet you at the car — at our meeting point right by Sea-Tac, or delivered to the airport parking garage, your choice. Check it over together, take the keys, and drive off. Just send us your flight details and we'll have it ready when you land.",
       "Pick-up and return are at 10:00 on the dates you choose, so pick dates that suit your flights. The exact address shows on your trip once it's confirmed.",
     ],
     filters: { nearSea: true },
