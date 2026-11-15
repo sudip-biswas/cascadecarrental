@@ -475,25 +475,18 @@ export async function POST(req: Request) {
       : fail("Couldn't start the booking. Try again.", 500);
   }
 
-  // For guest bookings, send a confirmation email with a magic link to the trip page.
-  // Route through /auth/magic so implicit-flow hash tokens are handled client-side.
-  // Always send the email — fall back to a plain link if generateLink fails.
+  // For guest bookings, send a plain confirmation email.
+  // The "View booking" sign-in link is sent separately by the browser via signInWithOtp
+  // (PKCE) after it receives the tripId — admin.generateLink uses implicit flow with
+  // tokens that expire immediately on this project.
   if (!user && userEmail) {
-    const tripNext = `/trips/${tripId}?booked=1`;
-    const magicRedirectTo = `${origin}/auth/magic?next=${encodeURIComponent(tripNext)}`;
-    const { data: linkData } = await admin.auth.admin.generateLink({
-      type: "magiclink",
-      email: userEmail,
-      options: { redirectTo: magicRedirectTo },
-    });
     await sendEmail({
       to: userEmail,
       subject: "Your Cascade booking is confirmed",
-      lines: ["Your booking is confirmed. Click below to view your trip and manage your booking."],
-      action: {
-        label: "View booking",
-        href: linkData?.properties?.action_link ?? `${origin}${tripNext}`,
-      },
+      lines: [
+        "Your booking is confirmed and your payment has been processed.",
+        "You'll receive a separate email shortly with a link to view and manage your trip.",
+      ],
     });
   }
 

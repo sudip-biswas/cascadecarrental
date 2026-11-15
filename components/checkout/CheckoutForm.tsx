@@ -396,10 +396,13 @@ function CheckoutLayout({
   const [magicLinkSentTo, setMagicLinkSentTo] = useState<string | null>(null);
   const [guestBooked, setGuestBooked] = useState<{ email: string; tripId: string; totalCents: number } | null>(null);
 
-  // Fire the GTM purchase event exactly once per trip UUID, guarded by sessionStorage so
-  // a re-render or a later magic-link sign-in to the same trip can't double-fire.
+  // After a guest booking: fire GTM purchase event + send PKCE magic link so the user
+  // can access their trip page. signInWithOtp uses the browser client (PKCE, 1-hour TTL)
+  // which works reliably — admin.generateLink (implicit flow) has immediate expiry here.
   useEffect(() => {
     if (!guestBooked) return;
+
+    // GTM purchase event — fire once per trip UUID.
     const key = `gtm_purchase_${guestBooked.tripId}`;
     try {
       if (sessionStorage.getItem(key)) return;
@@ -413,6 +416,15 @@ function CheckoutLayout({
       value: guestBooked.totalCents / 100,
       currency: "USD",
       transaction_id: guestBooked.tripId,
+    });
+
+    // Send the "View booking" magic link email via browser signInWithOtp (PKCE).
+    createSupabaseClient().auth.signInWithOtp({
+      email: guestBooked.email,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(`/trips/${guestBooked.tripId}?booked=1`)}`,
+      },
     });
   }, [guestBooked]);
   // What's picked in the Payment Element, and the card form a lender needs beside it.
