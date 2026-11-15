@@ -157,13 +157,11 @@ export async function POST(req: Request) {
         /already (registered|exists)/i.test(createErr.message) ||
         /user with this email/i.test(createErr.message);
       if (alreadyRegistered) {
-        // Existing account: send a magic link back to this exact checkout URL.
+        // Existing account: send a magic link that routes through /auth/callback so the
+        // PKCE code is exchanged for a session cookie before landing on checkout.
         const origin = new URL(req.url).origin;
-        const redirectTo = checkoutHere
-          ? checkoutHere.startsWith("http")
-            ? checkoutHere
-            : `${origin}${checkoutHere}`
-          : origin;
+        const checkoutPath = checkoutHere?.startsWith("/") ? checkoutHere : `/${checkoutHere ?? ""}`;
+        const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(checkoutPath)}`;
         const { data: linkData } = await admin.auth.admin.generateLink({
           type: "magiclink",
           email: guestEmail,
@@ -173,7 +171,7 @@ export async function POST(req: Request) {
           await sendEmail({
             to: guestEmail,
             subject: "Complete your Cascade booking",
-            lines: ["Click below to sign in and complete your booking — your dates and vehicle are saved."],
+            lines: ["Click below to sign in and return to checkout — your vehicle and dates are saved. You'll just need to enter your payment details to confirm."],
             action: { label: "Complete booking", href: linkData.properties.action_link },
           });
         }
