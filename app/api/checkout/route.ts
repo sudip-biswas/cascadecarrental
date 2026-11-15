@@ -157,11 +157,12 @@ export async function POST(req: Request) {
         /already (registered|exists)/i.test(createErr.message) ||
         /user with this email/i.test(createErr.message);
       if (alreadyRegistered) {
-        // Existing account: send a magic link that routes through /auth/callback so the
-        // PKCE code is exchanged for a session cookie before landing on checkout.
+        // Existing account: send a magic link to /auth/magic, a client-side page that
+        // processes the implicit-flow hash tokens (admin.generateLink uses implicit flow,
+        // not PKCE, so /auth/callback's exchangeCodeForSession won't work here).
         const origin = new URL(req.url).origin;
         const checkoutPath = checkoutHere?.startsWith("/") ? checkoutHere : `/${checkoutHere ?? ""}`;
-        const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(checkoutPath)}`;
+        const redirectTo = `${origin}/auth/magic?next=${encodeURIComponent(checkoutPath)}`;
         const { data: linkData } = await admin.auth.admin.generateLink({
           type: "magiclink",
           email: guestEmail,
