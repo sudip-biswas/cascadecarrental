@@ -161,7 +161,7 @@ export function ListingWizard() {
     clearDraft();
     data.photos.forEach((p) => URL.revokeObjectURL(p.url));
     toast.success(json.listed ? "Your car is live." : "Saved. It goes live once it has 3 photos.");
-    router.push(`/host/vehicles/${json.vehicleId}`);
+    window.location.href = `/host/vehicles/${json.vehicleId}`;
   }
 
   const busy = progress !== null;
