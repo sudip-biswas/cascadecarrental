@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, CalendarDays, Check, KeyRound, MapPin, Phone, Route, Undo2 } from "lucide-react";
+import { ArrowRight, BadgeCheck, CalendarDays, Check, KeyRound, MapPin, Phone, PlaneLanding, Route, ShieldCheck, Undo2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { RENTING_FAQ } from "@/lib/rentals";
 import { OPEN_GRAPH, SITE_NAME, SITE_URL, absoluteUrl, carPath } from "@/lib/site";
@@ -84,6 +84,24 @@ const TRUST_ITEMS = [
   `Protection from ${formatCurrency(PROTECTION_DAILY_CENTS.basic)}/day`,
 ];
 
+const BENEFITS = [
+  {
+    icon: PlaneLanding,
+    title: "Easy airport pickup",
+    body: "We meet you at the car — DoubleTree by Hilton SeaTac. No counter, no shuttle, no queue.",
+  },
+  {
+    icon: BadgeCheck,
+    title: "Price includes tax",
+    body: "No surprise fees at checkout. The total you see is the total you pay.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Licensed fleet",
+    body: `WA rental car registration #R64728. Protection from ${formatCurrency(PROTECTION_DAILY_CENTS.basic)}/day.`,
+  },
+];
+
 async function loadFeatured() {
   const supabase = await createClient();
   const { data } = await supabase
@@ -92,7 +110,7 @@ async function loadFeatured() {
     .eq("status", "listed")
     .order("year", { ascending: false })
     .order("daily_rate_cents", { ascending: false })
-    .limit(3);
+    .limit(12);
   return withTodayPrices((data ?? []) as unknown as ListedVehicle[]);
 }
 
@@ -100,35 +118,35 @@ function HeroCar({ car }: { car: ListedVehicle }) {
   const cover = coverImage(car.vehicle_images);
   if (!cover) return null;
   return (
-    <Link href={carPath(car)} className="relative block min-w-0 flex-[1_1_380px]">
-      <span className="relative block aspect-[1/0.86] overflow-hidden rounded-[32px]">
+    <Link href={carPath(car)} className="relative block min-w-0 flex-[1_1_320px]">
+      <span className="relative block aspect-[1/0.86] overflow-hidden rounded-[28px]">
         <Image
           src={cover.url}
           alt={`${car.year} ${car.make} ${car.model} in ${car.location_name}`}
           fill
           priority
-          sizes="(max-width: 1024px) 100vw, 480px"
+          sizes="(max-width: 1024px) 100vw, 420px"
           className="object-cover"
         />
       </span>
-      <span className="figures absolute top-4 left-4 rounded-[14px] bg-white px-3.5 py-2.5 font-display text-2xl font-extrabold">
+      <span className="figures absolute top-3 left-3 rounded-[12px] bg-white px-3 py-2 font-display text-xl font-extrabold">
         {formatPrice(car.price_today_cents ?? car.daily_rate_cents)}
-        <span className="font-sans text-sm font-medium text-slate"> a day</span>
+        <span className="font-sans text-xs font-medium text-slate"> a day</span>
       </span>
-      <span className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-[18px] bg-white px-3.5 py-3">
+      <span className="absolute inset-x-3 bottom-3 flex items-center gap-2.5 rounded-[14px] bg-white px-3 py-2.5">
         <span
           aria-hidden
-          className="flex size-[42px] shrink-0 items-center justify-center rounded-[12px] bg-mint font-display text-lg font-extrabold"
+          className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-mint font-display text-base font-extrabold"
         >
           C
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-base font-bold">
+          <span className="truncate text-sm font-bold">
             {car.make} {car.model} {car.year}
           </span>
-          <span className="truncate text-sm text-slate">Cascade Fleet · {car.location_name}</span>
+          <span className="truncate text-xs text-slate">Cascade Fleet · {car.location_name}</span>
         </span>
-        <ArrowRight className="size-5 shrink-0" strokeWidth={2} />
+        <ArrowRight className="size-4 shrink-0" strokeWidth={2} />
       </span>
     </Link>
   );
@@ -141,27 +159,28 @@ export default async function HomePage() {
   return (
     <>
       <JsonLd data={ORGANIZATION} />
-      <section className="bg-sky pt-8 pb-12 sm:pt-12 sm:pb-16">
-        <Container className="flex flex-wrap items-center gap-8">
-          <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-5">
-            <h1 className="headline text-[clamp(46px,7vw,112px)] leading-none text-ink">
-              Car rental at Sea&#8209;Tac, without the rental counter.
+
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <section className="bg-sky pt-5 pb-8 sm:pt-7 sm:pb-10">
+        <Container className="flex flex-wrap items-center gap-6 sm:gap-8">
+          <div className="flex min-w-0 flex-[999_1_480px] flex-col gap-4">
+            <h1 className="headline text-[clamp(28px,3vw,40px)] leading-[1.08] text-ink">
+              Rent a car in Seattle,{" "}
+              <span className="text-ink/60">without the rental counter.</span>
             </h1>
-            <p className="max-w-xl text-lg leading-snug text-ink/80">
-              Book a car from a local, licensed fleet near Seattle-Tacoma International Airport.
-              The price includes tax. We meet you at the car — no lines, no shuttle, no surprises.
+            <p className="max-w-lg text-sm leading-relaxed text-ink/70 sm:text-base">
+              Convenient Sea-Tac pickup. Great cars. Transparent pricing.
             </p>
             <SearchForm />
-            <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-ink/70">
+            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink/60">
               {TRUST_ITEMS.map((t) => (
-                <li key={t} className="flex items-center gap-1.5">
-                  <Check className="size-3.5 shrink-0" strokeWidth={2.5} />
+                <li key={t} className="flex items-center gap-1">
+                  <Check className="size-3 shrink-0" strokeWidth={2.5} />
                   {t}
                 </li>
               ))}
-              <li className="flex items-center gap-1.5">
-                <Phone className="size-3.5 shrink-0" strokeWidth={1.75} />
-                {/* TODO: replace with local 206 number when acquired */}
+              <li className="flex items-center gap-1">
+                <Phone className="size-3 shrink-0" strokeWidth={1.75} />
                 <a href="tel:+16502724085" className="font-semibold">
                   (650) 272-4085
                 </a>
@@ -172,85 +191,101 @@ export default async function HomePage() {
         </Container>
       </section>
 
-      <Container className="pt-12 sm:pt-14">
-        <h2 className="headline mb-4 text-[28px] leading-[1.12] sm:mb-5 sm:text-[44px]">What&apos;s the trip?</h2>
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-[repeat(auto-fit,minmax(250px,1fr))] sm:gap-4 sm:overflow-visible sm:px-0">
+      {/* ── Featured vehicles ─────────────────────────────────────────────── */}
+      <Container className="pt-8 sm:pt-10">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-extrabold sm:text-2xl">Popular at Sea-Tac Airport</h2>
+          <Link
+            href="/seattle"
+            className="flex items-center gap-1 rounded-[10px] bg-board px-3.5 py-2.5 text-sm font-bold transition-colors hover:bg-line"
+          >
+            View all cars
+            <ArrowRight className="size-4" strokeWidth={2} />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 sm:gap-4">
+          {featured.map((car, i) => (
+            <VehicleCard key={car.id} vehicle={car} priority={i < 4} />
+          ))}
+        </div>
+      </Container>
+
+      {/* ── Benefits ──────────────────────────────────────────────────────── */}
+      <section className="mt-8 bg-board py-8 sm:mt-10 sm:py-10">
+        <Container>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {BENEFITS.map(({ icon: Icon, title, body }) => (
+              <div key={title} className="flex gap-4 rounded-[20px] bg-white p-5">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-board">
+                  <Icon className="size-5 text-ink" strokeWidth={1.75} />
+                </span>
+                <span>
+                  <p className="text-sm font-extrabold">{title}</p>
+                  <p className="mt-0.5 text-sm leading-snug text-slate">{body}</p>
+                </span>
+              </div>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* ── Trip categories ───────────────────────────────────────────────── */}
+      <Container className="pt-8 sm:pt-10">
+        <h2 className="mb-4 text-xl font-extrabold sm:text-2xl">What&apos;s the trip?</h2>
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-3 sm:overflow-visible sm:px-0">
           {TRIP_CATEGORIES.map(({ key, title, blurb, icon: Icon, tone, page }) => (
             <Link
               key={key}
               href={`/seattle/${page}`}
               className={cn(
-                "flex w-[150px] shrink-0 flex-col justify-between gap-6 rounded-[22px] p-3.5 transition-[filter] hover:brightness-[0.97] sm:min-h-[230px] sm:w-auto sm:rounded-[28px] sm:p-6",
+                "flex w-[140px] shrink-0 flex-col justify-between gap-5 rounded-[20px] p-3 transition-[filter] hover:brightness-[0.97] sm:min-h-[200px] sm:w-auto sm:rounded-[24px] sm:p-5",
                 toneClass[tone]
               )}
             >
-              <span className="flex size-11 items-center justify-center rounded-[14px] bg-white text-ink sm:size-14 sm:rounded-[16px]">
-                <Icon className="size-6 sm:size-7" strokeWidth={1.75} />
+              <span className="flex size-10 items-center justify-center rounded-[12px] bg-white text-ink sm:size-12 sm:rounded-[14px]">
+                <Icon className="size-5 sm:size-6" strokeWidth={1.75} />
               </span>
               <span>
-                <span className="block text-base leading-tight font-extrabold text-ink sm:mb-1.5 sm:font-display sm:text-[30px] sm:leading-[1.12] sm:tracking-[-0.03em]">
+                <span className="block text-sm leading-tight font-extrabold text-ink sm:mb-1 sm:font-display sm:text-[24px] sm:leading-[1.12] sm:tracking-[-0.03em]">
                   {title}
                 </span>
-                <span className="hidden text-base sm:block">{blurb}</span>
+                <span className="hidden text-sm sm:block">{blurb}</span>
               </span>
             </Link>
           ))}
         </div>
       </Container>
 
-      <Container className="pt-12 sm:pt-16">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-4 sm:mb-5">
-          <h2 className="headline text-[28px] leading-[1.12] sm:text-[44px]">Popular at Sea-Tac Airport</h2>
-          <Link
-            href="/seattle"
-            className="flex items-center gap-1.5 rounded-[12px] bg-white px-4 py-3 text-base font-bold transition-colors hover:bg-line"
-          >
-            See all cars
-            <ArrowRight className="size-[18px]" strokeWidth={2} />
-          </Link>
-        </div>
-        <div className="flex flex-col gap-2 sm:hidden">
-          {featured.map((car) => (
-            <VehicleCard key={car.id} vehicle={car} layout="compact" />
-          ))}
-        </div>
-        <div className="grid gap-4 sm:grid-cols-[repeat(auto-fit,minmax(270px,1fr))]">
-          {featured.map((car) => (
-            <div key={car.id} className="hidden sm:block">
-              <VehicleCard vehicle={car} />
-            </div>
-          ))}
-        </div>
-      </Container>
-
-      <section className="mt-14 bg-butter py-12 sm:mt-[72px] sm:py-16">
-        <Container className="flex flex-col gap-6 sm:gap-8">
-          <h2 className="headline text-[clamp(40px,5.4vw,80px)] leading-none">How a trip works</h2>
-          <ol className="grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(210px,1fr))]">
+      {/* ── How it works ──────────────────────────────────────────────────── */}
+      <section className="mt-8 bg-butter py-8 sm:mt-10 sm:py-10">
+        <Container className="flex flex-col gap-5 sm:gap-6">
+          <h2 className="headline text-[clamp(24px,3vw,40px)] leading-none">How a trip works</h2>
+          <ol className="grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(190px,1fr))]">
             {STEPS.map(({ icon: Icon, title, body }, i) => (
-              <li key={title} className="flex flex-col gap-4 rounded-[24px] bg-white p-[22px]">
+              <li key={title} className="flex flex-col gap-3 rounded-[20px] bg-white p-5">
                 <span className="flex items-center justify-between">
                   <span
                     className={cn(
-                      "flex size-[50px] items-center justify-center rounded-[15px]",
+                      "flex size-[44px] items-center justify-center rounded-[13px]",
                       i === 0 ? "bg-ink text-white" : "bg-board text-ink"
                     )}
                   >
-                    <Icon className="size-6" strokeWidth={1.75} />
+                    <Icon className="size-5" strokeWidth={1.75} />
                   </span>
-                  <span aria-hidden className="font-display text-[44px] leading-none font-extrabold text-butter">
+                  <span aria-hidden className="font-display text-[40px] leading-none font-extrabold text-butter">
                     {i + 1}
                   </span>
                 </span>
-                <span className="font-display text-[25px] font-extrabold">{title}</span>
-                <span className="text-[15px] leading-[1.45] text-slate">{body}</span>
+                <span className="font-display text-xl font-extrabold">{title}</span>
+                <span className="text-sm leading-[1.45] text-slate">{body}</span>
               </li>
             ))}
           </ol>
         </Container>
       </section>
 
-      <Container className="py-14 sm:py-[72px]">
+      {/* ── FAQ ───────────────────────────────────────────────────────────── */}
+      <Container className="py-10 sm:py-14">
         <Faq items={RENTING_FAQ} title="Renting a car on Cascade" />
       </Container>
     </>
