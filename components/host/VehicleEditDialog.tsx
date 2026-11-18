@@ -18,6 +18,9 @@ type NumericColumn = {
 type BooleanColumn = {
   [K in keyof VehicleUpdate]-?: NonNullable<VehicleUpdate[K]> extends boolean ? K : never;
 }[keyof VehicleUpdate];
+type StringColumn = {
+  [K in keyof VehicleUpdate]-?: NonNullable<VehicleUpdate[K]> extends string ? K : never;
+}[keyof VehicleUpdate];
 type NullableColumn = {
   [K in NumericColumn]-?: null extends VehicleUpdate[K] ? K : never;
 }[NumericColumn];
@@ -49,13 +52,25 @@ interface ToggleField {
   value: boolean;
 }
 
-export type EditField = NumberField | OptionalNumberField | ToggleField;
+interface TextField {
+  kind: "text";
+  column: StringColumn;
+  label: string;
+  value: string;
+  maxLength?: number;
+  placeholder?: string;
+  /** If true, an empty value is allowed (saves as empty string). */
+  allowBlank?: boolean;
+}
+
+export type EditField = NumberField | OptionalNumberField | ToggleField | TextField;
 type NumericField = NumberField | OptionalNumberField;
 
 const SUFFIX: Record<NumberField["unit"], string> = { dollars: "", cents: "¢", percent: "%", miles: "mi", years: "years old" };
 
 const toInput = (f: EditField) => {
   if (f.kind === "toggle") return "";
+  if (f.kind === "text") return f.value ?? "";
   const value = f.value ?? f.min;
   return String(f.unit === "dollars" ? value / 100 : value);
 };
@@ -92,10 +107,18 @@ export function VehicleEditDialog({
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const update: Record<string, number | boolean | null> = {};
+    const update: Record<string, number | boolean | string | null> = {};
     for (const [i, f] of fields.entries()) {
       if (f.kind === "toggle") {
         update[f.column] = on[i];
+        continue;
+      }
+      if (f.kind === "text") {
+        if (!f.allowBlank && values[i].trim() === "") {
+          toast.error(`${f.label} can't be blank.`);
+          return;
+        }
+        update[f.column] = values[i].trim();
         continue;
       }
       if (f.kind === "optional" && !on[i]) {
@@ -160,7 +183,22 @@ export function VehicleEditDialog({
           </DialogHeader>
           <form onSubmit={save} className="flex flex-col gap-4">
             {fields.map((f, i) =>
-              f.kind === "toggle" ? (
+              f.kind === "text" ? (
+                <div key={f.column} className="flex flex-col gap-1.5">
+                  <Label htmlFor={`edit-${f.column}`} className="text-sm font-semibold text-slate">
+                    {f.label}
+                  </Label>
+                  <Input
+                    id={`edit-${f.column}`}
+                    type="text"
+                    value={values[i]}
+                    maxLength={f.maxLength}
+                    placeholder={f.placeholder}
+                    onChange={(e) => setValues((v) => v.map((x, j) => (j === i ? e.target.value : x)))}
+                    className="text-base font-bold"
+                  />
+                </div>
+              ) : f.kind === "toggle" ? (
                 <Switch key={f.column} checked={on[i]} onChange={(next) => flip(i, next)} label={f.label} className="self-start" />
               ) : f.kind === "optional" ? (
                 <div key={f.column} className="flex flex-col gap-2.5">

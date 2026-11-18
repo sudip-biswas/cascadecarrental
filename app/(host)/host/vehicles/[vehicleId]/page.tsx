@@ -93,7 +93,19 @@ export default async function HostCarPage({ params }: PageProps<"/host/vehicles/
         />
         <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-3.5 p-2">
           <h1 className="headline text-[clamp(40px,5vw,64px)]">{name}</h1>
-          <p className="text-base text-slate">{details.join(" · ")}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-base text-slate">{details.join(" · ")}</p>
+            <VehicleEditDialog
+              vehicleId={car.id}
+              title="Car details"
+              saved="Saved."
+              fields={[
+                { kind: "text", column: "license_plate", label: "License plate", value: car.license_plate ?? "", maxLength: 20 },
+                { kind: "text", column: "color", label: "Color", value: car.color ?? "", maxLength: 40, allowBlank: true },
+                { kind: "text", column: "trim", label: "Trim (optional)", value: car.trim ?? "", maxLength: 60, placeholder: "e.g. XLE, Sport, Base", allowBlank: true },
+              ]}
+            />
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <VehicleStatusToggle
               vehicleId={car.id}
