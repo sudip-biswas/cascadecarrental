@@ -353,6 +353,13 @@ CREATE POLICY "vehicle_images_delete_own" ON vehicle_images FOR DELETE
   USING (EXISTS (
     SELECT 1 FROM vehicles v WHERE v.id = vehicle_id AND v.host_id = auth.uid()
   ));
+CREATE POLICY "vehicle_images_update_own" ON vehicle_images FOR UPDATE
+  USING (EXISTS (
+    SELECT 1 FROM vehicles v WHERE v.id = vehicle_id AND v.host_id = auth.uid()
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM vehicles v WHERE v.id = vehicle_id AND v.host_id = auth.uid()
+  ));
 
 -- VEHICLE FEATURES (same pattern as images)
 CREATE POLICY "vehicle_features_select" ON vehicle_features FOR SELECT
