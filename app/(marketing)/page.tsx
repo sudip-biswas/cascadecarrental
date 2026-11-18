@@ -104,14 +104,45 @@ const BENEFITS = [
 
 async function loadFeatured() {
   const supabase = await createClient();
+  // Fetch a larger pool so we can deduplicate and shuffle for variety.
   const { data } = await supabase
     .from("vehicles")
     .select(LISTED_VEHICLE_SELECT)
     .eq("status", "listed")
     .order("year", { ascending: false })
     .order("daily_rate_cents", { ascending: false })
-    .limit(12);
-  return withTodayPrices((data ?? []) as unknown as ListedVehicle[]);
+    .limit(40);
+  const pool = (data ?? []) as unknown as ListedVehicle[];
+
+  // Allow at most 2 of the same make+model so one model doesn't dominate.
+  const modelCount = new Map<string, number>();
+  const deduped = pool.filter((car) => {
+    const key = `${car.make}|${car.model}`;
+    const count = modelCount.get(key) ?? 0;
+    if (count >= 2) return false;
+    modelCount.set(key, count + 1);
+    return true;
+  });
+
+  // Shuffle within year groups: newer years first, random order within each year.
+  const byYear = new Map<number, ListedVehicle[]>();
+  for (const car of deduped) {
+    if (!byYear.has(car.year)) byYear.set(car.year, []);
+    byYear.get(car.year)!.push(car);
+  }
+  const years = [...byYear.keys()].sort((a, b) => b - a);
+  const shuffled: ListedVehicle[] = [];
+  for (const year of years) {
+    const group = byYear.get(year)!;
+    // Fisher-Yates within each year group
+    for (let i = group.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [group[i], group[j]] = [group[j], group[i]];
+    }
+    shuffled.push(...group);
+  }
+
+  return withTodayPrices(shuffled.slice(0, 12));
 }
 
 function HeroCar({ car }: { car: ListedVehicle }) {
