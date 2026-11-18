@@ -49,6 +49,7 @@ export function PhotoManager({ vehicleId, initialPhotos }: Props) {
         body: JSON.stringify({ order: reordered.map((p) => p.id) }),
       });
       if (!res.ok) throw new Error(await readError(res, "Couldn't save order."));
+      router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't save order.");
       setPhotos(photos); // revert
