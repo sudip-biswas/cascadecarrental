@@ -65,14 +65,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ vehicle
   }
 
   const position = Math.max(-1, ...car.vehicle_images.map((img) => img.position)) + 1;
-  const { error } = await supabase.from("vehicle_images").insert({
+  const { data: image, error } = await supabase.from("vehicle_images").insert({
     vehicle_id: vehicleId,
     url: parsed.data.url,
     storage_path: parsed.data.url.slice(STORAGE_PREFIX.length),
     position,
     is_cover: car.vehicle_images.length === 0,
-  });
-  if (error) return NextResponse.json({ error: "Couldn't save the photo." }, { status: 500 });
+  }).select().single();
+  if (error || !image) return NextResponse.json({ error: "Couldn't save the photo." }, { status: 500 });
 
-  return NextResponse.json({ ok: true }, { status: 201 });
+  return NextResponse.json({ ok: true, image }, { status: 201 });
 }

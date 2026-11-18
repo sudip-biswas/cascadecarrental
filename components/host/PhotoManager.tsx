@@ -95,6 +95,8 @@ export function PhotoManager({ vehicleId, initialPhotos }: Props) {
           body: JSON.stringify({ url }),
         });
         if (!saved.ok) throw new Error(await readError(saved, "Couldn't save photo."));
+        const { image } = await saved.json();
+        if (image) setPhotos((prev) => [...prev, image]);
       }
       toast.success(list.length === 1 ? "Photo added" : `${list.length} photos added`);
       router.refresh();
