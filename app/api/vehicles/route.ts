@@ -17,7 +17,7 @@ const schema = z
     make: text(40).min(1, "Add the make"),
     model: text(60).min(1, "Add the model"),
     year: z.number().int().min(LIMITS.yearMin).max(LIMITS.yearMax),
-    trim: optionalText(40),
+    trim: optionalText(60),
     color: optionalText(30),
     licensePlate: text(LIMITS.plateMax).min(1, "Add the plate").transform((v) => v.toUpperCase()),
     vin: z

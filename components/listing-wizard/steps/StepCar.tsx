@@ -83,7 +83,7 @@ export function StepCar({ data, errors, onChange, onConflict }: Props) {
         make: json.make,
         model: json.model ?? data.model,
         year: resolvedYear,
-        trim: json.trim ?? "",
+        trim: (json.trim ?? "").slice(0, 60),
         ...(json.fuelType ? { fuelType: json.fuelType } : {}),
         ...(json.transmission ? { transmission: json.transmission } : {}),
         ...(json.seats && json.seats <= LIMITS.seatsMax ? { seats: json.seats } : {}),
