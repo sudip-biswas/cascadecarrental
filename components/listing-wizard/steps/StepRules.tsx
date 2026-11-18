@@ -1,7 +1,7 @@
 "use client";
 
 import { Tile, TileTitle } from "@/components/kit";
-import { BoxInput, FieldBox, NoticeSelect, RuleRow, Stepper, Toggle, formatDays } from "../controls";
+import { BoxInput, DaysSelect, FieldBox, NoticeSelect, RuleRow, Toggle } from "../controls";
 import type { Errors, WizardData } from "../data";
 import { LIMITS } from "@/lib/listing-limits";
 import { AddressAutocomplete } from "../AddressAutocomplete";
@@ -48,22 +48,20 @@ export function StepRules({ data, errors, onChange }: Props) {
       <Tile tone="sky" className="flex flex-col gap-2.5 text-ink">
         <TileTitle className="mb-1">Trips</TileTitle>
         <RuleRow label="Shortest trip">
-          <Stepper
+          <DaysSelect
             label="shortest trip"
             value={data.minTripDays}
             min={1}
             max={Math.min(LIMITS.minTripMax, data.maxTripDays)}
-            format={formatDays}
             onChange={(minTripDays) => onChange({ minTripDays })}
           />
         </RuleRow>
         <RuleRow label="Longest trip">
-          <Stepper
+          <DaysSelect
             label="longest trip"
             value={data.maxTripDays}
             min={data.minTripDays}
             max={LIMITS.maxTripMax}
-            format={formatDays}
             onChange={(maxTripDays) => onChange({ maxTripDays })}
           />
         </RuleRow>

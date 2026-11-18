@@ -207,3 +207,48 @@ export function NoticeSelect({
 }
 
 export const formatDays = (days: number) => pluralize(days, "day");
+
+function formatDayOption(d: number) {
+  if (d === 365) return "1 year";
+  if (d % 30 === 0 && d >= 30) return pluralize(d / 30, "month");
+  if (d % 7 === 0 && d >= 7) return pluralize(d / 7, "week");
+  return pluralize(d, "day");
+}
+
+function daysOptions(min: number, max: number): number[] {
+  if (max <= 30) return Array.from({ length: max - min + 1 }, (_, i) => i + min);
+  const individual = Array.from({ length: Math.min(14, max) - min + 1 }, (_, i) => i + min);
+  const milestones = [21, 28, 30, 45, 60, 90, 120, 180, 270, 365].filter((d) => d > 14 && d >= min && d <= max);
+  return [...individual, ...milestones];
+}
+
+export function DaysSelect({
+  value,
+  min,
+  max,
+  label,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  label: string;
+  onChange: (days: number) => void;
+}) {
+  const base = daysOptions(min, max);
+  const options = base.includes(value) ? base : [...base, value].sort((a, b) => a - b);
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="h-[38px] cursor-pointer rounded-[10px] bg-board px-3 text-[15px] font-bold outline-none hover:bg-line focus-visible:ring-2 focus-visible:ring-ink"
+    >
+      {options.map((d) => (
+        <option key={d} value={d}>
+          {formatDayOption(d)}
+        </option>
+      ))}
+    </select>
+  );
+}
