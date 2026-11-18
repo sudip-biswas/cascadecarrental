@@ -195,7 +195,7 @@ export function SortMenu() {
 
   function choose(sort: string) {
     const params = Object.fromEntries(searchParams);
-    if (sort === "price") delete params.sort;
+    if (sort === "recommended") delete params.sort;
     else params.sort = sort;
     router.push(href(params), { scroll: false });
   }

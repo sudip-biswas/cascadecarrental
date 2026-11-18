@@ -33,6 +33,36 @@ export async function searchCars(supabase: SupabaseClient<Database>, filters: Se
   if (filters.sort === "distance") {
     cars.sort((a, b) => (distanceFrom(filters, a) ?? 0) - (distanceFrom(filters, b) ?? 0));
   }
+  if (filters.sort === "recommended") {
+    const price = (car: ListedVehicle) => car.price_today_cents ?? car.daily_rate_cents;
+    cars.sort((a, b) => {
+      const aReviewed = (a.trip_count ?? 0) > 0;
+      const bReviewed = (b.trip_count ?? 0) > 0;
+      if (aReviewed !== bReviewed) return aReviewed ? -1 : 1;
+      if (aReviewed && bReviewed) {
+        const rDiff = (b.rating_avg ?? 0) - (a.rating_avg ?? 0);
+        if (rDiff !== 0) return rDiff;
+      }
+      if (a.instant_book !== b.instant_book) return a.instant_book ? -1 : 1;
+      if (a.year !== b.year) return b.year - a.year;
+      return price(a) - price(b);
+    });
+    // At most 2 of the same make+model in the first 12 results; push extras down.
+    const head: ListedVehicle[] = [];
+    const tail: ListedVehicle[] = [];
+    const modelCount = new Map<string, number>();
+    for (const car of cars) {
+      const key = `${car.make}|${car.model}`;
+      const count = modelCount.get(key) ?? 0;
+      if (head.length < 12 && count < 2) {
+        head.push(car);
+        modelCount.set(key, count + 1);
+      } else {
+        tail.push(car);
+      }
+    }
+    cars = [...head, ...tail];
+  }
   return cars;
 }
 

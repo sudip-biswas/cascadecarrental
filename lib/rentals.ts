@@ -66,8 +66,8 @@ export const RENTAL_PAGES: RentalPage[] = [
     search: { near: "sea" },
     faq: [
       {
-        q: "Will the host meet me at the terminal?",
-        a: "Handover is wherever the host keeps the car. The exact address shows on your trip once it's confirmed, and you can message the host before you book if you need something specific.",
+        q: "Can I pick up the car at the airport?",
+        a: "Yes. We meet you at the car at the DoubleTree by Hilton SeaTac (18740 International Blvd, SeaTac, WA 98188) — a short walk from the terminal. Or add airport delivery at checkout and we'll have it waiting in the airport parking garage.",
       },
       {
         q: "What time do I pick up and return the car?",

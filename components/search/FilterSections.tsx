@@ -169,6 +169,7 @@ export function Toggle({
 
 export function sortChoices(filters: SearchFilters): { value: SortKey; label: string }[] {
   return [
+    { value: "recommended", label: "Recommended" },
     { value: "price", label: filters.dates ? "Lowest total" : "Lowest price" },
     { value: "price_high", label: filters.dates ? "Highest total" : "Highest price" },
     ...(filters.lat !== null ? [{ value: "distance" as const, label: "Closest first" }] : []),
@@ -180,7 +181,7 @@ export function SortSection({ filters, set }: SectionProps) {
   return (
     <Choices>
       {sortChoices(filters).map((s) => (
-        <Choice key={s.value} active={filters.sort === s.value} onClick={() => set({ sort: s.value === "price" ? null : s.value })}>
+        <Choice key={s.value} active={filters.sort === s.value} onClick={() => set({ sort: s.value === "recommended" ? null : s.value })}>
           {s.label}
         </Choice>
       ))}
@@ -455,7 +456,7 @@ export function MoreSection({ filters, set }: SectionProps) {
         on={filters.nearSea}
         onChange={(on) => set({ near: on ? "sea" : null })}
         label="Near SEA"
-        hint="Parked within about ten miles of the airport."
+        hint="Meet us by Sea-Tac or get the car delivered to the airport parking garage."
       />
       <Toggle
         on={filters.weekDiscount}

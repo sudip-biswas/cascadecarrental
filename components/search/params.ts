@@ -4,7 +4,7 @@ function readTime(value: string | undefined): string {
   return typeof value === "string" && /^\d{2}:\d{2}$/.test(value) ? value : DEFAULT_TIME;
 }
 
-export type SortKey = "price" | "price_high" | "newest" | "distance";
+export type SortKey = "recommended" | "price" | "price_high" | "newest" | "distance";
 
 /** Miles a day the car must include, or a car that offers unlimited miles. */
 export type MilesFilter = 100 | 200 | 300 | "unlimited";
@@ -99,9 +99,9 @@ export function parseSearchParams(raw: RawParams): SearchFilters {
     weekDiscount: one(raw.discount) === "week",
     // Distance needs a picked place to measure from.
     sort:
-      sort === "newest" || sort === "price_high" || (sort === "distance" && hasPlace)
+      sort === "newest" || sort === "price_high" || sort === "price" || (sort === "distance" && hasPlace)
         ? sort
-        : "price",
+        : "recommended",
   };
 }
 

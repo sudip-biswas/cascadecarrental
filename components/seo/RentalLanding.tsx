@@ -78,7 +78,7 @@ export function RentalLanding({ crumbs, h1, intro, cars, searchHref, faq, curren
             ))}
           </ol>
         </nav>
-        <h1 className="headline text-[clamp(40px,6vw,88px)] leading-none">{h1}</h1>
+        <h1 className="headline text-[clamp(30px,4vw,44px)] leading-none">{h1}</h1>
         <div className="flex max-w-[68ch] flex-col gap-3 text-[17px] leading-[1.5] text-slate">
           {intro.map((p) => (
             <p key={p}>{p}</p>
