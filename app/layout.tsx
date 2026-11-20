@@ -47,6 +47,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
           })(window,document,'script','dataLayer','GTM-NTVXF669');
         `}</Script>
+        <Script src="https://t.contentsquare.net/uxa/507a3e86c185e.js" strategy="afterInteractive" />
       </head>
       <body className="min-h-full flex flex-col">
         <noscript>
