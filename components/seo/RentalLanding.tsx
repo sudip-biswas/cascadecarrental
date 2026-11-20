@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { ArrowRight, CalendarSearch, ChevronRight } from "lucide-react";
+import { ArrowRight, CalendarSearch, ChevronRight, PlaneLanding } from "lucide-react";
 import { RENTAL_PAGES, type Faq as FaqItem } from "@/lib/rentals";
 import { absoluteUrl, carPath } from "@/lib/site";
-import { Container, EmptyState } from "@/components/kit";
+import { Container, EmptyState, Tile } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { VehicleCard } from "@/components/search/VehicleCard";
 import type { ListedVehicle } from "@/components/search/vehicle";
@@ -85,6 +85,16 @@ export function RentalLanding({ crumbs, h1, intro, cars, searchHref, faq, curren
           ))}
         </div>
       </div>
+
+      <Tile tone="sky" className="flex items-start gap-4">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-white/60">
+          <PlaneLanding className="size-5" strokeWidth={1.75} />
+        </span>
+        <span className="flex flex-col gap-0.5">
+          <span className="text-[17px] font-extrabold">Pickup is easy — we meet you at the car</span>
+          <span className="text-[15px] leading-snug opacity-70">We deliver to the SeaTac Airport parking garage or the DoubleTree by Hilton SeaTac. No rental counter, no shuttle, no queue — text us when you land and your car is waiting.</span>
+        </span>
+      </Tile>
 
       <section className="flex flex-col gap-4 sm:gap-5">
         <div className="flex flex-wrap items-end justify-between gap-4">

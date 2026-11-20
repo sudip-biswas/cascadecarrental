@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
-import { CalendarSearch, Hourglass, List, Map as MapIcon, SearchX } from "lucide-react";
+import { CalendarSearch, Hourglass, List, Map as MapIcon, PlaneLanding, SearchX } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Container, EmptyState, Tile } from "@/components/kit";
 import { Button } from "@/components/ui/button";
@@ -242,6 +242,15 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
       <Suspense fallback={<div className="h-11" />}>
         <Filters />
       </Suspense>
+      <Tile tone="sky" className="flex items-start gap-4">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-white/60">
+          <PlaneLanding className="size-5" strokeWidth={1.75} />
+        </span>
+        <span className="flex flex-col gap-0.5">
+          <span className="text-[17px] font-extrabold">Pickup is easy — we meet you at the car</span>
+          <span className="text-[15px] leading-snug opacity-70">We deliver to the SeaTac Airport parking garage or the DoubleTree by Hilton SeaTac. No rental counter, no shuttle, no queue — text us when you land and your car is waiting.</span>
+        </span>
+      </Tile>
       <Suspense key={JSON.stringify(raw)} fallback={<VehicleGridSkeleton layout="row" count={4} />}>
         <Results filters={filters} raw={raw} view={view} />
       </Suspense>
