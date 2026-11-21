@@ -228,12 +228,23 @@ export function CarBooking({
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
+  /** Times on a date that are beyond the advance notice window. */
+  function validPickupTimes(key: DateKey): string[] {
+    const noticeCutoff = Date.now() + vehicle.advance_notice_hours * 3_600_000;
+    return timesOn(hours, key).filter((t) => zonedInstant(key, t).getTime() >= noticeCutoff);
+  }
+
   function changeDates(nextFrom?: DateKey, nextUntil?: DateKey) {
     setFrom(nextFrom);
     setUntil(nextUntil);
     // Move the times into the host's hours for the new days.
-    const nextFromTime = nextFrom ? snapTime(hours, nextFrom, fromTime) : fromTime;
+    let nextFromTime = nextFrom ? snapTime(hours, nextFrom, fromTime) : fromTime;
     const nextUntilTime = nextUntil ? snapTime(hours, nextUntil, untilTime) : untilTime;
+    // Snap the pickup time past the advance notice window so today never defaults to a past slot.
+    if (nextFrom) {
+      const valid = validPickupTimes(nextFrom);
+      if (valid.length > 0 && !valid.includes(nextFromTime)) nextFromTime = valid[0];
+    }
     setFromTime(nextFromTime);
     setUntilTime(nextUntilTime);
     if (!nextFrom || nextUntil) {
@@ -308,7 +319,7 @@ export function CarBooking({
           onTimeChange={changeTimes}
           isDisabled={insideNotice}
           booked={nights}
-          timeOptions={(key) => timesOn(hours, key)}
+          timeOptions={(key) => key ? validPickupTimes(key) : timesOn(hours, key)}
           note={from && until ? (problem ?? hoursHint(hours, from, until) ?? undefined) : undefined}
         />
 
