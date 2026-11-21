@@ -31,11 +31,11 @@ export type TripRules = CarRules & { hours: HostHours };
 
 export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-export const DEFAULT_DAY: DayHours = { open: true, from: "10:00", to: "22:00" };
+export const DEFAULT_DAY: DayHours = { open: true, from: "08:00", to: "23:00" };
 
-/** What a host who never set hours gets: guests can come at any time. */
+/** What a host who never set hours gets: 8 AM – 11 PM every day. */
 export const ALWAYS_AVAILABLE: HostHours = {
-  alwaysAvailable: true,
+  alwaysAvailable: false,
   week: WEEKDAYS.map(() => ({ ...DEFAULT_DAY })),
 };
 
