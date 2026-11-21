@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AddressElement, Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import type { Appearance, StripeElements } from "@stripe/stripe-js";
-import { ArrowLeft, CalendarDays, Clock, CreditCard, Lock, Mail, Phone, Shield, User } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock, CreditCard, Lock, MapPin, Phone, Shield, User } from "lucide-react";
 import { getStripe } from "@/lib/stripe/client";
 import {
   NON_REFUNDABLE_DISCOUNT,
@@ -37,7 +37,6 @@ import { driverCheck, needsAge, type DriverRules } from "./rules";
 import { TOLL_WINDOW_DAYS } from "@/lib/charge-windows";
 import { CAR_SPOT, quotePickup, type PickupChoice, type PickupOption } from "@/lib/locations";
 import { PAID_WITH_LABEL, PAY_OVER_TIME, isPayOverTime, payOverTimeEnabled } from "@/lib/pay-over-time";
-import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { CardOnFile, PayOverTimeNote, pendingNoteKey } from "./PayOverTime";
 
 export interface CheckoutVehicle extends DeliverySettings, DriverRules {
@@ -228,23 +227,25 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
         <Section icon={<User />} iconTone="bg-mint" title="Contact info">
           <div className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-[13px] font-semibold text-slate">Full name</span>
+              <span className="text-[13px] font-semibold text-slate">Full name <span aria-hidden="true" className="text-error">*</span></span>
               <Input
                 type="text"
                 value={guestName}
                 onChange={(e) => setGuestName(e.target.value)}
                 placeholder="Jane Smith"
                 autoComplete="name"
+                required
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[13px] font-semibold text-slate">Email</span>
+              <span className="text-[13px] font-semibold text-slate">Email <span aria-hidden="true" className="text-error">*</span></span>
               <Input
                 type="email"
                 value={guestEmail}
                 onChange={(e) => setGuestEmail(e.target.value)}
                 placeholder="you@example.com"
                 autoComplete="email"
+                required
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -259,7 +260,7 @@ export function CheckoutForm({ vehicle, from, until, fromTime, untilTime, initia
             </label>
             {needsAge(vehicle) && (
               <label className="flex flex-col gap-1">
-                <span className="text-[13px] font-semibold text-slate">Date of birth</span>
+                <span className="text-[13px] font-semibold text-slate">Date of birth <span aria-hidden="true" className="text-error">*</span></span>
                 <Input
                   type="date"
                   value={dateOfBirth ?? ""}
@@ -393,12 +394,10 @@ function CheckoutLayout({
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(paymentNotice ?? null);
   const [busy, setBusy] = useState(false);
-  const [magicLinkSentTo, setMagicLinkSentTo] = useState<string | null>(null);
   const [guestBooked, setGuestBooked] = useState<{ email: string; tripId: string; totalCents: number } | null>(null);
 
-  // After a guest booking: fire GTM purchase event + send PKCE magic link so the user
-  // can access their trip page. signInWithOtp uses the browser client (PKCE, 1-hour TTL)
-  // which works reliably — admin.generateLink (implicit flow) has immediate expiry here.
+  // After a guest booking: fire GTM purchase event. The confirmation email (sent by the
+  // server) contains a token-hash magic link that works in any browser/device.
   useEffect(() => {
     if (!guestBooked) return;
 
@@ -416,15 +415,6 @@ function CheckoutLayout({
       value: guestBooked.totalCents / 100,
       currency: "USD",
       transaction_id: guestBooked.tripId,
-    });
-
-    // Send the "View booking" magic link email via browser signInWithOtp (PKCE).
-    createSupabaseClient().auth.signInWithOtp({
-      email: guestBooked.email,
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(`/trips/${guestBooked.tripId}?booked=1`)}`,
-      },
     });
   }, [guestBooked]);
   // What's picked in the Payment Element, and the card form a lender needs beside it.
@@ -515,22 +505,6 @@ function CheckoutLayout({
     let res = await book({ cardConfirmationTokenId: cardToken });
     let data = await res.json().catch(() => ({}));
 
-    // Existing account: trigger a PKCE magic link from the browser client so the
-    // token goes through /auth/callback (reliable, full 1-hour TTL).
-    if (data.existingAccount) {
-      const { error: otpErr } = await createSupabaseClient().auth.signInWithOtp({
-        email: data.email ?? guestEmail,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(checkoutHere)}`,
-        },
-      });
-      if (otpErr) return stop("Could not send sign-in link. Try again.");
-      setMagicLinkSentTo(data.email ?? guestEmail);
-      setBusy(false);
-      return;
-    }
-
     // The card on file needs its bank's check first; then book again with it saved.
     if (res.ok && data.cardAction) {
       const { clientSecret: cardSecret, setupIntentId } = data.cardAction as { clientSecret: string; setupIntentId: string };
@@ -587,7 +561,7 @@ function CheckoutLayout({
     <Button
       size="lg"
       className="h-[60px] w-full text-[18px]"
-      disabled={!stripe || busy || !!blocker || !!magicLinkSentTo || !!guestBooked}
+      disabled={!stripe || busy || !!blocker || !!guestBooked}
       onClick={pay}
     >
       {busy ? "Working on it…" : cta}
@@ -676,16 +650,6 @@ function CheckoutLayout({
                 Confirmation sent to <strong>{guestBooked.email}</strong>. Check your inbox for a link to view and manage your booking.
               </p>
             </div>
-          ) : magicLinkSentTo ? (
-            <div className="flex flex-col gap-4 rounded-[24px] bg-board p-6">
-              <span className="flex size-10 items-center justify-center rounded-[12px] bg-butter">
-                <Mail className="size-5" />
-              </span>
-              <p className="text-[17px] font-bold">Check your inbox</p>
-              <p className="text-[15px] text-slate">
-                We sent a sign-in link to <strong>{magicLinkSentTo}</strong>. Click it to return here and complete your booking — your dates and vehicle are saved.
-              </p>
-            </div>
           ) : (
             <Section icon={<CreditCard />} iconTone="bg-sky" title="Payment">
               <PaymentElement options={{ layout: "tabs" }} onChange={(e) => setMethod(e.value.type)} />
@@ -743,6 +707,10 @@ function CheckoutLayout({
             <Fact label="Pick-up" value={formatDateTime(start)} />
             <Fact label="Return" value={formatDateTime(end)} />
           </div>
+          <p className="flex items-start gap-2 text-[13px] leading-snug text-slate">
+            <MapPin className="mt-px size-4 shrink-0" strokeWidth={1.75} />
+            SeaTac Airport parking garage or DoubleTree by Hilton SeaTac. We meet you at the car — no counter, no shuttle.
+          </p>
 
           <Breakdown pricing={pricing} plan={plan} deliveryLabel={deliveryLabel} />
           <PayOverTimeNote amountCents={pricing.totalCents} standalone={false} />
@@ -771,7 +739,7 @@ function CheckoutLayout({
 
       <div className="fixed inset-x-0 bottom-0 z-40 flex flex-col gap-2 rounded-t-[26px] bg-white px-4 pt-3 pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
         {payButton}
-        {!magicLinkSentTo && !guestBooked && (
+        {!guestBooked && (
           <span className="text-center text-xs leading-snug text-slate">
             {blocker ??
               (vehicle.instant_book

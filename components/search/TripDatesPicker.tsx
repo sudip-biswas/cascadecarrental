@@ -101,7 +101,6 @@ export function TripDatesPicker({
     // A single tapped day is a pick-up date, not a zero-day trip.
     const nextUntil = rawUntil && nextFrom && rawUntil > nextFrom ? rawUntil : undefined;
     onChange(nextFrom, nextUntil);
-    if (nextFrom && nextUntil) setOpen(false);
   }
 
   return (
@@ -159,17 +158,28 @@ export function TripDatesPicker({
         )}
         <div className="flex max-w-[300px] items-center justify-between gap-3 px-2 pt-1 pb-1 text-sm">
           <span className="text-slate">
-            {note ?? (from && !until ? "Now pick the return day." : undefined)}
+            {from && !until ? "Now pick the return day." : (note ?? undefined)}
           </span>
-          {(from || until) && (
-            <button
-              type="button"
-              className="shrink-0 font-bold hover:text-cobalt"
-              onClick={() => onChange(undefined, undefined)}
-            >
-              Clear
-            </button>
-          )}
+          <div className="flex shrink-0 gap-3">
+            {(from || until) && (
+              <button
+                type="button"
+                className="font-bold text-slate hover:text-cobalt"
+                onClick={() => onChange(undefined, undefined)}
+              >
+                Clear
+              </button>
+            )}
+            {from && until && (
+              <button
+                type="button"
+                className="font-bold hover:text-cobalt"
+                onClick={() => setOpen(false)}
+              >
+                Done
+              </button>
+            )}
+          </div>
         </div>
       </PopoverContent>
     </Popover>

@@ -9,6 +9,13 @@ import { MonthlyDatesPicker } from "./MonthlyDatesPicker";
 import { DEFAULT_TIME, type DateKey } from "./dates";
 import type { GeocodeSuggestion } from "@/app/api/geocode/route";
 
+/** Allowed pickup/return times for the search form: 8 AM – 11 PM. */
+const OPEN_TIMES: string[] = [];
+for (let h = 8; h <= 23; h++) {
+  OPEN_TIMES.push(`${h.toString().padStart(2, "0")}:00`);
+  if (h < 23) OPEN_TIMES.push(`${h.toString().padStart(2, "0")}:30`);
+}
+
 interface Props {
   where?: string;
   from?: DateKey;
@@ -247,6 +254,8 @@ export function SearchForm({ where = "", from, until, fromTime, untilTime, month
           untilTime={times.until}
           onChange={(f, u) => setDates({ from: f, until: u })}
           onTimeChange={(ft, ut) => setTimes({ from: ft, until: ut })}
+          timeOptions={() => OPEN_TIMES}
+          note="Pickup & return: 8 AM – 11 PM"
           className="sm:flex-[2_1_280px]"
         />
       )}

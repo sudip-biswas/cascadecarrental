@@ -231,10 +231,12 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   return (
     <Container className="flex flex-col gap-4 pt-5 pb-16">
       <SearchForm
-        key={`${filters.where}|${filters.dates?.from}|${filters.dates?.until}|${filters.months}`}
+        key={`${filters.where}|${filters.dates?.from}|${filters.dates?.until}|${filters.months}|${filters.fromTime}|${filters.untilTime}`}
         where={filters.where ?? ""}
         from={filters.dates?.from}
         until={filters.dates?.until}
+        fromTime={filters.fromTime}
+        untilTime={filters.untilTime}
         months={filters.months}
         keep={keep}
         size="md"

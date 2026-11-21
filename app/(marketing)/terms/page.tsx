@@ -43,9 +43,9 @@ export default function TermsPage() {
 
         <h2>4. Cancellation</h2>
         <p>
-          Flexible-rate bookings may be cancelled for a full refund up to 24 hours before the
-          trip starts. Non-refundable rates are not eligible for a refund after booking.
-          Cancellation terms are shown on each vehicle listing before you book.
+          <strong>Free cancellation (Flexible rate):</strong> Cancel any time before pick-up for a full refund.{" "}
+          <strong>Pay now (Non-refundable rate):</strong> Free to cancel for 24 hours after the booking is confirmed; no refund after that.{" "}
+          Cancellation terms are shown on each vehicle listing and at checkout before you book.
         </p>
 
         <h2>5. Protection Plans</h2>
@@ -71,8 +71,10 @@ export default function TermsPage() {
 
         <h2>8. Pick-Up and Return</h2>
         <p>
-          All vehicles are picked up and returned at the{" "}
+          Vehicles are picked up and returned at one of two locations near Seattle-Tacoma
+          International Airport: the <strong>SeaTac Airport parking garage</strong> or the{" "}
           <strong>DoubleTree by Hilton Seattle Airport, 18740 International Blvd, SeaTac WA 98188</strong>.
+          We confirm your exact spot after booking — text us when you land and we meet you at the car.
           A one-hour grace period applies to late returns; after that a late fee applies as
           described in the Rules of the Road.
         </p>

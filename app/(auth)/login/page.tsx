@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { CalendarCheck, CarFront, MessageSquare } from "lucide-react";
+import { CalendarCheck, MessageSquare } from "lucide-react";
 import { AuthCard, AuthPanel } from "@/components/auth/AuthPanel";
 import { LoginForm } from "@/components/auth/LoginForm";
+import { ResendLink } from "@/components/auth/ResendLink";
 import { safeRedirect } from "@/lib/utils";
 
 export const instant = false;
@@ -10,18 +11,19 @@ export const metadata: Metadata = { title: "Sign in" };
 
 const waiting = [
   { icon: CalendarCheck, label: "Your trips and bookings" },
-  { icon: MessageSquare, label: "Messages with hosts" },
-  { icon: CarFront, label: "Your cars, if you host" },
+  { icon: MessageSquare, label: "Messages with Cascade" },
 ];
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const { redirectTo, message, error } = await searchParams;
+  const { redirectTo, message, error, email, next: nextParam } = await searchParams;
   const next = safeRedirect(typeof redirectTo === "string" ? redirectTo : undefined);
+  const resendEmail = typeof email === "string" ? email : null;
+  const resendNext = typeof nextParam === "string" ? nextParam : next;
 
   return (
     <>
       <AuthPanel tone="sky" title="Welcome back.">
-        <ul className="grid gap-2.5 sm:grid-cols-3">
+        <ul className="grid gap-2.5 sm:grid-cols-2">
           {waiting.map(({ icon: Icon, label }) => (
             <li key={label} className="flex flex-col gap-3 rounded-[22px] bg-white p-4">
               <Icon className="size-[26px]" strokeWidth={1.75} />
@@ -37,9 +39,12 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           </p>
         )}
         {error === "auth_callback_failed" && (
-          <p role="alert" className="rounded-[14px] bg-error-soft px-3.5 py-3 text-[15px] font-semibold text-error">
-            That sign-in link didn&apos;t work. It may have expired, so try again.
-          </p>
+          <div role="alert" className="flex flex-col gap-2 rounded-[14px] bg-error-soft px-3.5 py-3">
+            <p className="text-[15px] font-semibold text-error">
+              That sign-in link didn&apos;t work. It may have expired.
+            </p>
+            {resendEmail && <ResendLink email={resendEmail} next={resendNext} />}
+          </div>
         )}
         <LoginForm redirectTo={next} />
       </AuthCard>

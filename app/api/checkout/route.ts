@@ -475,15 +475,31 @@ export async function POST(req: Request) {
       : fail("Couldn't start the booking. Try again.", 500);
   }
 
-  // Guest confirmation email (plain — magic link sent separately by the browser via signInWithOtp).
+  // Guest confirmation email — server-side token-hash magic link (works in any browser/device).
   if (!user && userEmail) {
+    let confirmUrl: string | null = null;
+    try {
+      const { data: linkData } = await admin.auth.admin.generateLink({
+        type: "magiclink",
+        email: userEmail,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tokenHash = (linkData as any)?.properties?.hashed_token as string | undefined;
+      if (tokenHash) {
+        const nextEncoded = encodeURIComponent(`/trips/${tripId}?booked=1`);
+        confirmUrl = `${origin}/confirm?token_hash=${encodeURIComponent(tokenHash)}&next=${nextEncoded}&email=${encodeURIComponent(userEmail)}`;
+      }
+    } catch {
+      // Link generation failed; email is sent without a CTA button.
+    }
     await sendEmail({
       to: userEmail,
       subject: "Your Cascade booking is confirmed",
       lines: [
         "Your booking is confirmed and your payment has been processed.",
-        "You'll receive a separate email shortly with a link to view and manage your trip.",
+        confirmUrl ? "Tap the button below to view and manage your trip." : "Sign in at cascadecarrental.com to view and manage your trip.",
       ],
+      ...(confirmUrl ? { action: { label: "View your booking", href: confirmUrl } } : {}),
     });
   }
 
