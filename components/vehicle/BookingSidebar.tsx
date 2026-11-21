@@ -187,9 +187,14 @@ export function CarBooking({
   const firstTier = DISCOUNT_TIERS.find((tier) => vehicle[tier.column] > 0);
   const longTripDeal = firstTier && `Save ${vehicle[firstTier.column]}% on trips of ${firstTier.days}+ days.`;
   // Days inside the notice window, or when the host can't meet guests at all.
-  const insideNotice = (key: DateKey) =>
-    (zonedInstant(key, fromTime).getTime() - Date.now()) / 3_600_000 < vehicle.advance_notice_hours ||
-    isClosedOn(hours, key);
+  // Check the LAST available time slot on the day — not the currently selected time —
+  // so a date is only greyed out if even the latest pickup time is too soon.
+  const insideNotice = (key: DateKey) => {
+    const times = timesOn(hours, key);
+    if (!times.length) return true; // closed
+    const lastTime = times[times.length - 1];
+    return (zonedInstant(key, lastTime).getTime() - Date.now()) / 3_600_000 < vehicle.advance_notice_hours;
+  };
 
   // A week and a month from the first day the host can meet, as Turo shows them before dates are picked.
   const [firstDay] = useState(() => {

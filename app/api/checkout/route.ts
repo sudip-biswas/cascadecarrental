@@ -156,31 +156,31 @@ export async function POST(req: Request) {
         createErr.status === 422 ||
         /already (registered|exists)/i.test(createErr.message) ||
         /user with this email/i.test(createErr.message);
-      if (alreadyRegistered) {
-        // Existing account: tell the client to trigger signInWithOtp() from the browser.
-        // admin.generateLink() uses implicit flow (tokens in URL hash) with a very short
-        // TTL; the browser's signInWithOtp() uses PKCE and the full 1-hour OTP expiry,
-        // and its redirect goes through /auth/callback which already works.
-        return NextResponse.json({ existingAccount: true, email: guestEmail });
-      }
-      return fail("Could not create account. Try again.", 500);
+      if (!alreadyRegistered) return fail("Could not create account. Try again.", 500);
+      // Existing account: look up the user's ID so the booking can still go through.
+      const { data: list } = await admin.auth.admin.listUsers({ perPage: 1000 });
+      const existing = list?.users?.find((u) => u.email?.toLowerCase() === guestEmail.toLowerCase());
+      if (!existing) return fail("Could not create account. Try again.", 500);
+      userId = existing.id;
+      userEmail = guestEmail;
+      // Fall through — booking proceeds normally for the existing account.
+    } else {
+      userId = created.user.id;
+      userEmail = guestEmail;
+
+      // Seed profile — admin-created users may not trigger the auto-create trigger.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("profiles") as any).upsert(
+        {
+          id: userId,
+          full_name: guestName ?? "",
+          date_of_birth: guestDateOfBirth ?? null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
     }
-
-    userId = created.user.id;
-    userEmail = guestEmail;
-
-    // Seed profile — admin-created users may not trigger the auto-create trigger.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (admin.from("profiles") as any).upsert(
-      {
-        id: userId,
-        full_name: guestName ?? "",
-        date_of_birth: guestDateOfBirth ?? null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" }
-    );
   }
 
   const startsAt = zonedInstant(from, fromTime);
