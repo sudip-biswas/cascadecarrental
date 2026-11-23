@@ -48,13 +48,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           })(window,document,'script','dataLayer','GTM-NTVXF669');
         `}</Script>
         <Script src="https://t.contentsquare.net/uxa/507a3e86c185e.js" strategy="afterInteractive" />
-        <Script id="clarity" strategy="afterInteractive">{`
-          (function(c,l,a,r,i,t,y){
-            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-          })(window,document,"clarity","script","zh87fbzlfa");
-        `}</Script>
+        <script type="text/javascript" dangerouslySetInnerHTML={{ __html: `(function(c,l,a,r,i,t,y){
+    c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+    t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+    y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "zh87fbzlfa");` }} />
       </head>
       <body className="min-h-full flex flex-col">
         <noscript>
