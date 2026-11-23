@@ -3,7 +3,6 @@ import {
   CalendarSync,
   Camera,
   Gauge,
-  MessageSquare,
   RotateCcw,
   ShieldCheck,
   Truck,
@@ -42,18 +41,14 @@ function Item({
  * roadside or round-the-clock support, because Cascade doesn't offer them.
  */
 export function IncludedWithTrip({
-  host,
   days,
   distanceIncludedMi,
   extraMileFeeCents,
-  instantBook,
   delivery,
 }: {
-  host: string;
   days: number | null;
   distanceIncludedMi: number;
   extraMileFeeCents: number;
-  instantBook: boolean;
   delivery: boolean;
 }) {
   const miles = days
@@ -71,19 +66,11 @@ export function IncludedWithTrip({
             Convenience
           </h3>
           <ul className="flex flex-col gap-3.5 text-ink">
-            {instantBook ? (
-              <Item
-                icon={Zap}
-                title="Instant book"
-                body="It's yours as soon as you pay. No waiting on the host."
-              />
-            ) : (
-              <Item
-                icon={MessageSquare}
-                title={`${host} confirms each request`}
-                body="Your card is only held until then."
-              />
-            )}
+            <Item
+              icon={Zap}
+              title="Instant book"
+              body="It's yours as soon as you pay. No waiting on the host."
+            />
             <Item
               icon={Gauge}
               title={miles}

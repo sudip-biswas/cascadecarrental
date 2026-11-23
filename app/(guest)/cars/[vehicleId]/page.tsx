@@ -398,11 +398,9 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
 
       <div className="grid gap-2.5">
         <IncludedWithTrip
-          host={host}
           days={days}
           distanceIncludedMi={car.distance_included_mi}
           extraMileFeeCents={car.extra_mile_fee_cents}
-          instantBook={car.instant_book}
           delivery={car.delivery_enabled}
         />
         <VehicleFeatures features={car.vehicle_features} />
