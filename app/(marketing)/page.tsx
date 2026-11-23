@@ -202,7 +202,10 @@ export default async function HomePage() {
             <p className="max-w-lg text-sm leading-relaxed text-ink/70 sm:text-base">
               Convenient Sea-Tac pickup. Great cars. Transparent pricing.
             </p>
-            <SearchForm />
+            <SearchForm
+              where="Seattle-Tacoma International Airport"
+              initialGeo={{ lat: 47.4502, lng: -122.3088 }}
+            />
             <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink/60">
               {TRUST_ITEMS.map((t) => (
                 <li key={t} className="flex items-center gap-1">

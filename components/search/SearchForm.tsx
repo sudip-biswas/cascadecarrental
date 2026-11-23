@@ -25,6 +25,8 @@ function validPickupTimes(key: DateKey): string[] {
 
 interface Props {
   where?: string;
+  /** Pre-set coordinates for the initial location (e.g. SEA airport). */
+  initialGeo?: { lat: number; lng: number };
   from?: DateKey;
   until?: DateKey;
   fromTime?: string;
@@ -40,10 +42,10 @@ interface Props {
 type Mode = "daily" | "monthly";
 
 /** Where and when. Sends people to /search with both in the URL. */
-export function SearchForm({ where = "", from, until, fromTime, untilTime, months, keep, size = "lg", className }: Props) {
+export function SearchForm({ where = "", initialGeo, from, until, fromTime, untilTime, months, keep, size = "lg", className }: Props) {
   const router = useRouter();
   const [place, setPlace] = useState(where);
-  const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
+  const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(initialGeo ?? null);
   const [mode, setMode] = useState<Mode>(months ? "monthly" : "daily");
   const [monthCount, setMonthCount] = useState(months ?? 1);
   const [dates, setDates] = useState<{ from?: DateKey; until?: DateKey }>({ from, until: months ? undefined : until });
@@ -207,7 +209,7 @@ export function SearchForm({ where = "", from, until, fromTime, untilTime, month
               onFocus={() => { if (suggestions.length > 0) setOpen(true); }}
               autoComplete="off"
               spellCheck={false}
-              placeholder="SeaTac, Capitol Hill, Bellevue"
+              placeholder="SeaTac, Bellevue, Seattle"
               className="w-full min-w-0 bg-transparent text-base font-semibold outline-none placeholder:font-medium placeholder:text-quiet sm:text-[17px]"
             />
             {loading && (
