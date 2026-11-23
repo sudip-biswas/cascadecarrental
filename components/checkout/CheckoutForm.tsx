@@ -38,6 +38,7 @@ import { TOLL_WINDOW_DAYS } from "@/lib/charge-windows";
 import { CAR_SPOT, quotePickup, type PickupChoice, type PickupOption } from "@/lib/locations";
 import { PAID_WITH_LABEL, PAY_OVER_TIME, isPayOverTime, payOverTimeEnabled } from "@/lib/pay-over-time";
 import { CardOnFile, PayOverTimeNote, pendingNoteKey } from "./PayOverTime";
+import { beginCheckout, conversion } from "@/lib/gtag";
 
 export interface CheckoutVehicle extends DeliverySettings, DriverRules {
   id: string;
@@ -396,26 +397,27 @@ function CheckoutLayout({
   const [busy, setBusy] = useState(false);
   const [guestBooked, setGuestBooked] = useState<{ email: string; tripId: string; totalCents: number } | null>(null);
 
-  // After a guest booking: fire GTM purchase event. The confirmation email (sent by the
-  // server) contains a token-hash magic link that works in any browser/device.
+  // After a guest booking: fire GTM purchase + Google Ads conversion events.
+  // The confirmation email contains a token-hash magic link that works in any browser/device.
   useEffect(() => {
     if (!guestBooked) return;
 
-    // GTM purchase event — fire once per trip UUID.
+    // De-duplicate: only fire once per trip UUID.
     const key = `gtm_purchase_${guestBooked.tripId}`;
     try {
       if (sessionStorage.getItem(key)) return;
       sessionStorage.setItem(key, "1");
     } catch { /* storage blocked — fire anyway */ }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).dataLayer = (window as any).dataLayer || [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).dataLayer.push({
-      event: "purchase",
-      value: guestBooked.totalCents / 100,
-      currency: "USD",
-      transaction_id: guestBooked.tripId,
-    });
+
+    const value = guestBooked.totalCents / 100;
+    const txId = guestBooked.tripId;
+
+    // GTM purchase event
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({ event: "purchase", value, currency: "USD", transaction_id: txId });
+
+    // Google Ads conversion
+    conversion(value, txId);
   }, [guestBooked]);
   // What's picked in the Payment Element, and the card form a lender needs beside it.
   const [method, setMethod] = useState("card");
@@ -444,6 +446,7 @@ function CheckoutLayout({
     if (!stripe || !elements || busy || blocker || !request.delivery) return;
     setError(null);
     setBusy(true);
+    beginCheckout(pricing.totalCents / 100);
 
     const stop = (message: string) => {
       setError(message);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Script from "next/script";
 import { Check, MessageSquare } from "lucide-react";
+import { GADS_ID, CONVERSION_LABEL } from "@/lib/gtag";
 import { Container, Tile, TileTitle } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { tripDays } from "@/lib/pricing";
@@ -74,13 +75,23 @@ export function BookedView({ trip }: { trip: TripRow }) {
           (function() {
             var key = 'gtm_purchase_${trip.id}';
             try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch(e) {}
+            var value = ${(trip.total_cents ?? 0) / 100};
+            var txId = '${trip.id}';
             window.dataLayer = window.dataLayer || [];
             window.dataLayer.push({
               event: 'purchase',
-              value: ${(trip.total_cents ?? 0) / 100},
+              value: value,
               currency: 'USD',
-              transaction_id: '${trip.id}',
+              transaction_id: txId,
             });
+            if (typeof window.gtag === 'function') {
+              window.gtag('event', 'conversion', {
+                send_to: '${GADS_ID}/${CONVERSION_LABEL}',
+                value: value,
+                currency: 'USD',
+                transaction_id: txId,
+              });
+            }
           })();
         `}</Script>
       )}

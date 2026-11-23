@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { INDEXABLE, OPEN_GRAPH, SITE_NAME, SITE_URL } from "@/lib/site";
+import { GADS_ID } from "@/lib/gtag";
 
 const geist = Geist({
   variable: "--font-geist",
@@ -46,6 +47,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
           })(window,document,'script','dataLayer','GTM-NTVXF669');
+        `}</Script>
+        {/* Google Ads gtag.js — loads after hydration, non-blocking */}
+        <Script src={`https://www.googletagmanager.com/gtag/js?id=${GADS_ID}`} strategy="afterInteractive" />
+        <Script id="gtag-init" strategy="afterInteractive">{`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', '${GADS_ID}');
         `}</Script>
         <Script src="https://t.contentsquare.net/uxa/507a3e86c185e.js" strategy="afterInteractive" />
         <script type="text/javascript" dangerouslySetInnerHTML={{ __html: `(function(c,l,a,r,i,t,y){
