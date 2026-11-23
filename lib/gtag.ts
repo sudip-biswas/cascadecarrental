@@ -14,10 +14,10 @@
  */
 
 // TODO: replace with your Google Ads Measurement ID, e.g. "AW-123456789"
-export const GADS_ID = "AW-XXXXXXXXX";
+export const GADS_ID = "AW-18572680418";
 
 // TODO: replace with your Purchase conversion label, e.g. "AbCdEfGhIjk"
-export const CONVERSION_LABEL = "XXXXXXXXXXXXXXXXXXX";
+export const CONVERSION_LABEL = "--31CJiHyrcdEOK5kphF";
 
 // Let TypeScript know gtag and dataLayer exist on window after the script loads.
 declare global {
