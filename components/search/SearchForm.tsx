@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MapPin, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, zonedInstant } from "@/lib/utils";
 import { TripDatesPicker } from "./TripDatesPicker";
 import { MonthlyDatesPicker } from "./MonthlyDatesPicker";
-import { DEFAULT_TIME, type DateKey } from "./dates";
+import { DEFAULT_TIME, todayKey, type DateKey } from "./dates";
 import type { GeocodeSuggestion } from "@/app/api/geocode/route";
 
 /** Allowed pickup/return times for the search form: 8 AM – 11 PM. */
@@ -14,6 +14,13 @@ const OPEN_TIMES: string[] = [];
 for (let h = 8; h <= 23; h++) {
   OPEN_TIMES.push(`${h.toString().padStart(2, "0")}:00`);
   if (h < 23) OPEN_TIMES.push(`${h.toString().padStart(2, "0")}:30`);
+}
+
+/** On today's date, only show times at least 1 hour from now. Other dates: all OPEN_TIMES. */
+function validPickupTimes(key: DateKey): string[] {
+  if (key !== todayKey()) return OPEN_TIMES;
+  const cutoff = Date.now() + 3_600_000;
+  return OPEN_TIMES.filter((t) => zonedInstant(key, t).getTime() >= cutoff);
 }
 
 interface Props {
@@ -252,9 +259,18 @@ export function SearchForm({ where = "", from, until, fromTime, untilTime, month
           until={dates.until}
           fromTime={times.from}
           untilTime={times.until}
-          onChange={(f, u) => setDates({ from: f, until: u })}
+          onChange={(f, u) => {
+            setDates({ from: f, until: u });
+            // If the pickup date changed, snap the time if it's now in the past.
+            if (f) {
+              const valid = validPickupTimes(f);
+              if (valid.length > 0 && !valid.includes(times.from)) {
+                setTimes((prev) => ({ ...prev, from: valid[0] }));
+              }
+            }
+          }}
           onTimeChange={(ft, ut) => setTimes({ from: ft, until: ut })}
-          timeOptions={() => OPEN_TIMES}
+          timeOptions={(key) => key ? validPickupTimes(key) : OPEN_TIMES}
           note="Pickup & return: 8 AM – 11 PM"
           className="sm:flex-[2_1_280px]"
         />
