@@ -8,6 +8,7 @@ import { VehicleCard } from "@/components/search/VehicleCard";
 import type { ListedVehicle } from "@/components/search/vehicle";
 import { Faq } from "./Faq";
 import { JsonLd } from "./JsonLd";
+import { ReviewsSection } from "./ReviewsSection";
 
 interface Crumb {
   name: string;
@@ -132,6 +133,8 @@ export function RentalLanding({ crumbs, h1, intro, cars, searchHref, faq, curren
       </section>
 
       {faq?.length ? <Faq items={faq} /> : null}
+
+      {current === "airport-car-rental" && <ReviewsSection />}
 
       <section className="flex flex-col gap-4 sm:gap-5">
         <h2 className="headline text-[28px] leading-[1.12] sm:text-[44px]">More ways to rent in Seattle</h2>

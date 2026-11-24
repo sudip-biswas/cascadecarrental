@@ -10,6 +10,7 @@ import { PROTECTION_DAILY_CENTS } from "@/lib/pricing";
 import { Container, toneClass } from "@/components/kit";
 import { Faq } from "@/components/seo/Faq";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { ReviewsSection } from "@/components/seo/ReviewsSection";
 import { SearchForm } from "@/components/search/SearchForm";
 import { VehicleCard } from "@/components/search/VehicleCard";
 import { withTodayPrices } from "@/components/search/prices";
@@ -317,6 +318,9 @@ export default async function HomePage() {
           </ol>
         </Container>
       </section>
+
+      {/* ── Reviews ───────────────────────────────────────────────────────── */}
+      <ReviewsSection className="mt-8 sm:mt-10" />
 
       {/* ── FAQ ───────────────────────────────────────────────────────────── */}
       <Container className="py-10 sm:py-14">
