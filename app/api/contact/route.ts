@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   rateMap.set(`ip:${ip}`, Date.now());
   rateMap.set(`em:${email.toLowerCase()}`, Date.now());
 
-  const inbox = process.env.CONTACT_EMAIL ?? "trips@cascadecarrental.com";
+  const inbox = process.env.CONTACT_EMAIL ?? "sudip@cascadecarrental.com";
 
   await Promise.all([
     // Notify the team, Reply-To the guest so we can reply directly.
