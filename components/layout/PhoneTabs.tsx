@@ -66,7 +66,7 @@ export function PhoneTabs({
               key={label}
               href={href}
               aria-current={on ? "page" : undefined}
-              className="relative flex flex-col items-center gap-[3px] text-ink"
+              className="relative flex flex-col items-center gap-[3px] text-ink active:opacity-60"
             >
               <span className={cn("flex h-8 w-14 items-center justify-center rounded-[11px]", on && "bg-sky")}>
                 <Icon className="size-[22px]" strokeWidth={on ? 2.2 : 1.8} />

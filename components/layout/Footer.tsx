@@ -5,6 +5,7 @@ import { Logo } from "./Logo";
 
 const links = [
   { href: "/search", label: "Find a car" },
+  { href: "/contact", label: "Contact us" },
   { href: "/host/vehicles/new", label: "List your car" },
   { href: "/trips", label: "Your trips" },
 ];

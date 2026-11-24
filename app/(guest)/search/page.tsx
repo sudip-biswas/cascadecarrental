@@ -127,11 +127,22 @@ async function Results({ filters, raw, view }: { filters: SearchFilters; raw: Re
               : "Cascade is new in Seattle, so there aren't many cars yet. Try a wider area."
         }
         action={
-          <Button asChild>
-            <Link href={filtered ? withoutFilters(raw) : "/search"}>
-              {filtered ? "Clear filters" : "See every car"}
-            </Link>
-          </Button>
+          filtered || !filters.dates ? (
+            <Button asChild>
+              <Link href={filtered ? withoutFilters(raw) : "/search"}>
+                {filtered ? "Clear filters" : "See every car"}
+              </Link>
+            </Button>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <Link href="/search">Try other dates</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/contact">Ask us — we may be able to help</Link>
+              </Button>
+            </div>
+          )
         }
       />
     );

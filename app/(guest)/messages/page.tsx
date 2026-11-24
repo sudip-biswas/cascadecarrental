@@ -13,7 +13,7 @@ export const metadata = { title: "Inbox", ...NO_INDEX };
 export default async function MessagesPage() {
   const supabase = await createClient();
   const user = await getUser();
-  if (!user) redirect("/login?redirectTo=/messages");
+  if (!user) redirect("/contact");
 
   const conversations = await listConversations(supabase, user.id, "guest");
 

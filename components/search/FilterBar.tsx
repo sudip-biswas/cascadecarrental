@@ -34,7 +34,7 @@ import {
 } from "./FilterSections";
 
 const chip =
-  "flex h-11 shrink-0 items-center gap-1.5 rounded-[12px] px-3.5 text-[15px] font-semibold whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-cobalt";
+  "flex h-11 shrink-0 items-center gap-1.5 rounded-[12px] px-3.5 text-[15px] font-semibold whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-cobalt active:scale-[0.97] active:opacity-75";
 
 function chipTone(active: boolean) {
   return active ? "bg-ink text-white hover:bg-graphite" : "bg-white text-ink hover:bg-line";

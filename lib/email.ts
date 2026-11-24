@@ -6,6 +6,8 @@ export interface Email {
   /** Plain sentences, one per line. The HTML version is built from these. */
   lines: string[];
   action?: { label: string; href: string };
+  /** Reply-To header, e.g. for guest inquiry emails so the reply goes to the guest. */
+  replyTo?: string;
 }
 
 const FROM = process.env.EMAIL_FROM ?? "Cascade <trips@cascadecarrental.com>";
@@ -49,7 +51,7 @@ export async function sendEmail(email: Email): Promise<boolean> {
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: FROM, to: email.to, subject: email.subject, html: html(email), text: text(email) }),
+        body: JSON.stringify({ from: FROM, to: email.to, subject: email.subject, html: html(email), text: text(email), ...(email.replyTo ? { reply_to: email.replyTo } : {}) }),
       });
       return res.ok;
     }

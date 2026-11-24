@@ -190,7 +190,7 @@ export function SearchForm({ where = "", initialGeo, from, until, fromTime, unti
               setDates((d) => ({ from: d.from }));
             }}
             className={cn(
-              "h-9 rounded-[12px] px-4 text-[15px] font-semibold transition-colors",
+              "h-9 rounded-[12px] px-4 text-[15px] font-semibold transition-colors active:scale-[0.97] active:opacity-75",
               mode === option.value ? "bg-ink text-white" : "text-ink hover:bg-board"
             )}
           >
@@ -280,7 +280,7 @@ export function SearchForm({ where = "", initialGeo, from, until, fromTime, unti
       <button
         type="submit"
         className={cn(
-          "flex flex-none items-center justify-center gap-2.5 rounded-[16px] bg-ink px-7 font-bold text-white transition-colors hover:bg-graphite",
+          "flex flex-none items-center justify-center gap-2.5 rounded-[16px] bg-ink px-7 font-bold text-white transition-colors hover:bg-graphite active:scale-[0.98] active:opacity-80",
           size === "lg" ? "min-h-[56px] text-[17px] sm:min-h-16" : "min-h-[52px] text-base"
         )}
       >

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { CalendarCheck, MessageSquare } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, CalendarCheck, MessageSquare } from "lucide-react";
 import { AuthCard, AuthPanel } from "@/components/auth/AuthPanel";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { ResendLink } from "@/components/auth/ResendLink";
@@ -33,6 +34,19 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         </ul>
       </AuthPanel>
       <AuthCard title="Sign in">
+        <div className="rounded-[14px] bg-board px-3.5 py-3 text-[14px] leading-snug text-slate">
+          <p className="font-semibold text-ink">No account needed to book.</p>
+          <p className="mt-0.5">Every car supports guest checkout — just pick your dates and pay.</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <Link href="/seattle" className="flex items-center gap-1 text-[13px] font-bold text-ink hover:text-cobalt">
+              Browse cars <ArrowRight className="size-3.5" strokeWidth={2} />
+            </Link>
+            <span aria-hidden className="text-line">·</span>
+            <Link href="/contact" className="flex items-center gap-1 text-[13px] font-bold text-ink hover:text-cobalt">
+              Ask a question <ArrowRight className="size-3.5" strokeWidth={2} />
+            </Link>
+          </div>
+        </div>
         {message === "check_email" && (
           <p role="status" className="rounded-[14px] bg-mint px-3.5 py-3 text-[15px] font-semibold text-mint-ink">
             Check your email. Tap the link we sent, then sign in here.
