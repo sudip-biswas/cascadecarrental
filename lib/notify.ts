@@ -16,6 +16,8 @@ export interface Notice {
   dedupeKey?: string;
   email?: boolean;
   actionLabel?: string;
+  /** Reply-To header on the outbound email, e.g. guest email on inquiry alerts. */
+  replyTo?: string;
 }
 
 /** Adds a notice to someone's feed and emails it. Never throws. */
@@ -64,6 +66,7 @@ export async function notify(notice: Notice): Promise<void> {
       subject: notice.title,
       lines: notice.body ? notice.body.split("\n") : [],
       action: notice.href ? { label: notice.actionLabel ?? "Open Cascade", href: notice.href } : undefined,
+      replyTo: notice.replyTo,
     });
     if (sent) {
       await admin.from("notifications").update({ emailed_at: new Date().toISOString() }).eq("id", row.id);
@@ -298,7 +301,7 @@ const MESSAGE_EMAIL_WINDOW_MS = 15 * 60 * 1000;
  * feed and by email, at most once per window so a quick back-and-forth
  * doesn't flood their inbox.
  */
-export async function notifyMessage(conversationId: string, senderId: string, body: string, photoCount = 0): Promise<void> {
+export async function notifyMessage(conversationId: string, senderId: string, body: string, photoCount = 0, replyTo?: string): Promise<void> {
   const admin = createAdminClient();
   const { data: conv } = await admin
     .from("conversations")
@@ -321,6 +324,7 @@ export async function notifyMessage(conversationId: string, senderId: string, bo
     tripId: conv.trip_id,
     dedupeKey: `message:${conv.id}:${userId}:${Math.floor(Date.now() / MESSAGE_EMAIL_WINDOW_MS)}`,
     actionLabel: "Read and reply",
+    replyTo,
   });
 }
 

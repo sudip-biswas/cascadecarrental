@@ -535,6 +535,7 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
           isLoggedIn={!!user}
           tripRules={tripRules ?? undefined}
           pickup={pickup}
+          contactHref={`/contact?car=${encodeURIComponent(`${car.year} ${car.make} ${car.model}`)}${dates?.from ? `&from=${dates.from}` : ""}${dates?.until ? `&until=${dates.until}` : ""}`}
           perks={{
             minAge: car.min_age,
             youngDriverFeeCents: car.young_driver_fee_cents,

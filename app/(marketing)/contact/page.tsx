@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, Phone } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ArrowRight, Car, CheckCircle2, Phone } from "lucide-react";
 import { Container } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 
@@ -12,7 +13,12 @@ const labelClass = "text-[13px] font-semibold text-slate";
 const inputClass =
   "w-full bg-transparent text-base font-semibold outline-none placeholder:font-medium placeholder:text-quiet";
 
-export default function ContactPage() {
+function ContactForm() {
+  const params = useSearchParams();
+  const carContext = params.get("car") ?? "";
+  const fromContext = params.get("from") ?? "";
+  const untilContext = params.get("until") ?? "";
+
   const [fields, setFields] = useState({ name: "", email: "", phone: "", message: "" });
   const [honey, setHoney] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
@@ -31,7 +37,13 @@ export default function ContactPage() {
       const res = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...fields, _honey: honey }),
+        body: JSON.stringify({
+          ...fields,
+          car: carContext || undefined,
+          from: fromContext || undefined,
+          until: untilContext || undefined,
+          _honey: honey,
+        }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
       if (data.ok) {
@@ -48,7 +60,7 @@ export default function ContactPage() {
 
   if (status === "done") {
     return (
-      <Container className="flex flex-col items-start gap-5 py-16 sm:py-24">
+      <div className="flex flex-col items-start gap-5 py-6">
         <span className="flex size-14 items-center justify-center rounded-[18px] bg-mint">
           <CheckCircle2 className="size-7 text-mint-ink" strokeWidth={1.75} />
         </span>
@@ -64,12 +76,12 @@ export default function ContactPage() {
             <Link href="/">Go home</Link>
           </Button>
         </div>
-      </Container>
+      </div>
     );
   }
 
   return (
-    <Container className="flex flex-col gap-8 py-10 sm:py-14">
+    <>
       <div className="flex flex-col gap-3">
         <h1 className="headline text-[clamp(32px,4vw,52px)] leading-none">Send us a message</h1>
         <p className="max-w-[52ch] text-[17px] leading-relaxed text-slate">
@@ -80,6 +92,19 @@ export default function ContactPage() {
           (650) 272-4085
         </a>
       </div>
+
+      {/* Car context banner from car-page link */}
+      {carContext && (
+        <div className="flex w-full max-w-[560px] items-center gap-3 rounded-[16px] bg-board px-4 py-3">
+          <Car className="size-5 shrink-0 text-slate" strokeWidth={1.75} />
+          <span className="text-[14px] text-slate">
+            <span className="font-semibold text-ink">{carContext}</span>
+            {fromContext && untilContext && (
+              <> &middot; {fromContext} → {untilContext}</>
+            )}
+          </span>
+        </div>
+      )}
 
       <form
         onSubmit={submit}
@@ -164,6 +189,16 @@ export default function ContactPage() {
         </Link>{" "}
         to message us directly.
       </p>
+    </>
+  );
+}
+
+export default function ContactPage() {
+  return (
+    <Container className="flex flex-col gap-8 py-10 sm:py-14">
+      <Suspense>
+        <ContactForm />
+      </Suspense>
     </Container>
   );
 }

@@ -107,6 +107,8 @@ interface Props {
   tripRules?: Pick<TripRules, "weekend_min_two_days" | "hours">;
   /** Where the guest can get the car: its own spot first, then the host's spots. */
   pickup?: PickupOption[];
+  /** Pre-built /contact URL with car/dates context for the "Ask a question" link. */
+  contactHref?: string;
   /** The details column, rendered by the page. */
   children: React.ReactNode;
 }
@@ -146,6 +148,7 @@ export function CarBooking({
   perks,
   tripRules,
   pickup = [],
+  contactHref,
   children,
 }: Props) {
   const router = useRouter();
@@ -447,6 +450,15 @@ export function CarBooking({
               {line}
             </p>
           ))}
+        {contactHref && (
+          <Link
+            href={contactHref}
+            className="flex items-center justify-center gap-1.5 text-center text-sm font-semibold text-slate hover:text-ink"
+          >
+            Have a question?
+            <ArrowRight className="size-3.5" strokeWidth={2} />
+          </Link>
+        )}
       </aside>
 
       {/* Phones: the price and button stay in reach while scrolling the details. */}
