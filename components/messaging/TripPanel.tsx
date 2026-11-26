@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ExternalLink, MapPin, Phone, ReceiptText } from "lucide-react";
+import { ExternalLink, Mail, MapPin, Phone, ReceiptText } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hostEarningsCents } from "@/lib/pricing";
 import { tripStatus } from "@/lib/trip-status";
@@ -26,6 +26,7 @@ export interface PanelData {
     avatar: string | null;
     joined: string | null;
     /** Only for a host, once the trip is confirmed. */
+    email: string | null;
     phone: string | null;
     licenceChecked: boolean;
   };
@@ -75,12 +76,17 @@ export async function loadPanel(conversation: ConversationDetail): Promise<Panel
   ]);
 
   const confirmed = !!trip && CONFIRMED.has(trip.status);
+  const guestEmail =
+    viewer === "host" && confirmed
+      ? (await admin.auth.admin.getUserById(conversation.other.id)).data?.user?.email ?? null
+      : null;
   const other: PanelData["other"] = {
     id: conversation.other.id,
     name: person?.full_name || conversation.other.full_name,
     avatar: person?.avatar_url ?? null,
     joined: person?.created_at ?? null,
-    // Hosts can call the guest about a confirmed trip, as on the trip page.
+    // Hosts can contact the guest about a confirmed trip, as on the trip page.
+    email: guestEmail,
     phone: viewer === "host" && confirmed ? (person?.phone ?? null) : null,
     licenceChecked: !!person?.driving_license_verified,
   };
@@ -275,6 +281,11 @@ export function TripPanel({ data, className }: { data: PanelData; className?: st
         {data.other.phone && (
           <QuickLink href={`tel:${data.other.phone}`} icon={<Phone />} external>
             Call {data.other.name.split(" ")[0]}
+          </QuickLink>
+        )}
+        {data.other.email && (
+          <QuickLink href={`mailto:${data.other.email}`} icon={<Mail />} external>
+            Email {data.other.name.split(" ")[0]}
           </QuickLink>
         )}
       </div>

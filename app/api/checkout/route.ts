@@ -127,7 +127,7 @@ export async function POST(req: Request) {
     promoCode,
     guestEmail,
     guestName,
-    guestPhone: _guestPhone,
+    guestPhone,
     guestDateOfBirth,
     checkoutHere,
   } = parsed.data;
@@ -175,11 +175,22 @@ export async function POST(req: Request) {
           id: userId,
           full_name: guestName ?? "",
           date_of_birth: guestDateOfBirth ?? null,
+          phone: guestPhone || null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
         { onConflict: "id" }
       );
+    }
+  }
+
+  // Persist phone for logged-in users and existing-account guest checkouts.
+  // Brand-new guest accounts are covered by the profile upsert above.
+  // Never overwrites a phone already on the profile.
+  if (guestPhone) {
+    const { data: ep } = await admin.from("profiles").select("phone").eq("id", userId).maybeSingle();
+    if (!ep?.phone) {
+      await admin.from("profiles").update({ phone: guestPhone }).eq("id", userId);
     }
   }
 

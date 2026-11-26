@@ -342,6 +342,11 @@ export default async function HostTripPage({ params, searchParams }: PageProps<"
                     {trip.guest.phone}
                   </a>
                 )}
+                {guestAuth.user?.email && (
+                  <a href={`mailto:${guestAuth.user.email}`} className="text-sm font-bold text-cobalt hover:underline">
+                    {guestAuth.user.email}
+                  </a>
+                )}
               </span>
             </div>
             <p className="text-sm text-slate">The primary driver. They have to be there for pick-up and return.</p>
