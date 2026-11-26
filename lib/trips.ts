@@ -369,22 +369,26 @@ async function settle(scope: string | null): Promise<SettleResult> {
   await Promise.all((started ?? []).map((t) => holdDeposit(t.id)));
   result.started = started?.length ?? 0;
 
+  // Only auto-close host-missed requests (payment_status = "authorized"): the guest's
+  // card has an active hold that must be released. Abandoned checkouts (payment_status ≠
+  // "authorized") are left as-is — there is nothing financial to release and auto-cancelling
+  // them risks voiding a real payment that was slow to capture (as happened Nov 26).
   const { data: lapsed } = await scoped(
     admin
       .from("trips")
-      .select("id, payment_status, stripe_payment_intent_id")
+      .select("id, stripe_payment_intent_id")
       .eq("status", "pending")
+      .eq("payment_status", "authorized")
       .lte("starts_at", now)
   );
 
   for (const trip of lapsed ?? []) {
-    const wasRequest = trip.payment_status === "authorized";
     try {
       const released = await releasePayment(trip.stripe_payment_intent_id);
       await updateTrip(trip.id, {
-        status: wasRequest ? "cancelled_host" : "cancelled_guest",
-        payment_status: released === "voided" && trip.payment_status === "failed" ? "failed" : released,
-        cancellation_reason: wasRequest ? CANCEL_REASON.hostMissed : CANCEL_REASON.checkoutNotFinished,
+        status: "cancelled_host",
+        payment_status: released,
+        cancellation_reason: CANCEL_REASON.hostMissed,
         cancelled_at: now,
       });
     } catch (err) {
@@ -392,10 +396,8 @@ async function settle(scope: string | null): Promise<SettleResult> {
       console.error("[settle] couldn't close", trip.id, err);
       continue;
     }
-    if (wasRequest) {
-      notifyTripLater(trip.id, "expired");
-      result.expired++;
-    }
+    notifyTripLater(trip.id, "expired");
+    result.expired++;
   }
 
   return result;
