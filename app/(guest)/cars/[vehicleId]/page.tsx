@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { addDays } from "@/components/host/days";
-import { cache } from "react";
+import { cache, Suspense } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import {
@@ -215,11 +215,20 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
     permanentRedirect(qs ? `${path}?${qs}` : path);
   }
   const isOwner = user?.id === car.host_id;
-  const { data: favorite } = user
-    ? await supabase.from("favorites").select("vehicle_id").eq("user_id", user.id).eq("vehicle_id", vehicleId).maybeSingle()
-    : { data: null };
+  // Queue the favorites lookup immediately so it runs in parallel with everything else.
+  const favoriteQ = user
+    ? supabase.from("favorites").select("vehicle_id").eq("user_id", user.id).eq("vehicle_id", vehicleId).maybeSingle()
+    : Promise.resolve({ data: null });
 
-  const [{ data: reviewData, count: reviewCount }, { count: hostCars }, unavailable, dailyPrices, tripRules, spots] = await Promise.all([
+  const [
+    { data: reviewData, count: reviewCount },
+    unavailable,
+    dailyPrices,
+    tripRules,
+    spots,
+    { data: categoryRatings },
+    { data: favorite },
+  ] = await Promise.all([
     supabase
       .from("reviews")
       .select("id, created_at, rating_overall, body, host_reply, reviewer:profiles!reviewer_id(full_name)", { count: "exact" })
@@ -227,28 +236,22 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
       .eq("kind", "guest_to_host")
       .order("created_at", { ascending: false })
       .limit(10),
-    supabase
-      .from("vehicles")
-      .select("id", { count: "exact", head: true })
-      .eq("host_id", car.host_id)
-      .eq("status", "listed"),
     unavailableRanges(vehicleId),
     loadDailyPrices(vehicleId, toDateKey(new Date())),
     loadTripRules(supabase, vehicleId),
     // Spot addresses are private until booking: read server-side, send names and prices.
     loadPickupSpots(createAdminClient(), car),
+    // Category bars average every guest rating, not just the ten listed.
+    supabase
+      .from("reviews")
+      .select("rating_cleanliness, rating_maintenance, rating_communication, rating_convenience, rating_accuracy")
+      .eq("vehicle_id", vehicleId)
+      .eq("kind", "guest_to_host"),
+    favoriteQ,
   ]);
   const pickup = spots.map(publicOption);
   const todayCents = dailyPrices[toDateKey(new Date())] ?? car.daily_rate_cents;
   const reviews = (reviewData ?? []) as unknown as ReviewRow[];
-  // Category bars average every guest rating, not just the ten listed.
-  const { data: categoryRatings } = reviews.length
-    ? await supabase
-        .from("reviews")
-        .select("rating_cleanliness, rating_maintenance, rating_communication, rating_convenience, rating_accuracy")
-        .eq("vehicle_id", vehicleId)
-        .eq("kind", "guest_to_host")
-    : { data: null };
 
   const name = `${car.make} ${car.model}`;
   const displayName = car.persona?.name ?? car.host?.full_name;
@@ -548,7 +551,9 @@ export default async function CarPage({ params, searchParams }: PageProps<"/cars
         </CarBooking>
       )}
 
-      <SimilarCars vehicleId={car.id} vehicleType={car.vehicle_type} dailyRateCents={car.daily_rate_cents} dates={dates} />
+      <Suspense fallback={<div className="h-[220px] animate-pulse rounded-[28px] bg-white/50" />}>
+        <SimilarCars vehicleId={car.id} vehicleType={car.vehicle_type} dailyRateCents={car.daily_rate_cents} dates={dates} />
+      </Suspense>
     </div>
   );
 }

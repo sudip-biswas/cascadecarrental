@@ -118,10 +118,9 @@ function Card({ vehicle, dates, fromTime, untilTime, months, layout = "tile", pr
   // Monthly search: what a month costs, tax in, discount applied.
   const perMonth = months && total !== null ? Math.round(total / months) : null;
   // Beside a month, the day price is what the month works out to, so the two agree.
-  const perDay =
-    perMonth !== null && price
-      ? Math.round(price.totalCents / price.days)
-      : (price?.dailyCents ?? vehicle.price_today_cents ?? vehicle.daily_rate_cents);
+  const perDay = price
+    ? Math.round(price.totalCents / price.days)
+    : (vehicle.price_today_cents ?? vehicle.daily_rate_cents);
   const week = dates ? null : weekPrice(vehicle);
   const month = priceMode === "month" && !dates ? monthPrice(vehicle) : null;
   const topHost = vehicle.host?.top_host ?? false;
@@ -206,7 +205,7 @@ function Card({ vehicle, dates, fromTime, untilTime, months, layout = "tile", pr
                 <span className="font-display text-[28px] font-extrabold">
                   <WasPrice cents={price?.beforeDiscountCents ?? null} className="mr-1.5 text-[17px]" />
                   {roughPrice(total)}
-                  <span className="font-sans text-sm font-medium text-slate"> total</span>
+                  <span className="font-sans text-sm font-medium text-slate"> for your dates</span>
                 </span>
                 {price?.beforeDiscountCents != null && price.discountLabel && (
                   <Tag tone="mint" className="mt-0.5">{price.discountLabel}</Tag>
@@ -218,9 +217,7 @@ function Card({ vehicle, dates, fromTime, untilTime, months, layout = "tile", pr
                 <span className="font-medium text-slate">/week</span>
                 <SaveTag pct={week.pct} />
               </span>
-            ) : (
-              <span className="text-sm text-slate">Add dates for a total</span>
-            )}
+            ) : null}
           </span>
         </span>
       </Link>
