@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarDays } from "lucide-react";
 import { DAYS_PER_MONTH } from "@/lib/pricing";
 import { cn, formatDay, zonedInstant } from "@/lib/utils";
 import { addDays, keyToLocalDate, localDateToKey, todayKey, type DateKey } from "./dates";
@@ -108,20 +109,22 @@ export function MonthlyDatesPicker({ from, months, onChange, className }: Props)
       {/* "month / months" label */}
       <p className="text-[16px] font-semibold">{months === 1 ? "month" : "months"}</p>
 
-      {/* Date range: clickable start date → return date */}
-      <div className="flex items-center gap-2 text-[15px]">
+      {/* Date range: clickable start date + computed return date */}
+      <div className="flex w-full max-w-xs gap-2">
+        {/* Start — opens calendar */}
         <Popover open={openCal} onOpenChange={setOpenCal}>
           <PopoverTrigger asChild>
             <button
               type="button"
-              className={cn(
-                "font-semibold transition-opacity hover:opacity-60",
-                from
-                  ? "underline decoration-slate underline-offset-2"
-                  : "text-slate"
-              )}
+              className="group flex flex-1 flex-col rounded-[16px] bg-board px-4 py-2.5 text-left transition-colors hover:bg-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
             >
-              {from ? formatDay(zonedInstant(from)) : "Pick a start date"}
+              <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-slate">
+                <CalendarDays className="size-3" />
+                Start
+              </span>
+              <span className={cn("text-[15px] font-bold leading-snug", !from && "text-quiet")}>
+                {from ? formatDay(zonedInstant(from)) : "Add date"}
+              </span>
             </button>
           </PopoverTrigger>
           <PopoverContent align="center" className="w-auto p-2">
@@ -139,14 +142,13 @@ export function MonthlyDatesPicker({ from, months, onChange, className }: Props)
           </PopoverContent>
         </Popover>
 
-        {until ? (
-          <>
-            <span className="text-slate">to</span>
-            <span className="font-semibold">{formatDay(zonedInstant(until))}</span>
-          </>
-        ) : (
-          <span className="text-sm text-slate">— pick a date above</span>
-        )}
+        {/* Return — computed, not interactive */}
+        <div className="flex flex-1 flex-col rounded-[16px] bg-board px-4 py-2.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate">Return</span>
+          <span className={cn("text-[15px] font-bold leading-snug", !until && "text-quiet")}>
+            {until ? formatDay(zonedInstant(until)) : "—"}
+          </span>
+        </div>
       </div>
     </div>
   );

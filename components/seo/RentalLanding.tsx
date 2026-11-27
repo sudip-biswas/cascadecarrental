@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, CalendarSearch, ChevronRight, PlaneLanding } from "lucide-react";
-import { DISCOUNT_TIERS, DEFAULT_DISCOUNTS } from "@/lib/pricing";
+import { AIRPORT, DISCOUNT_TIERS, DEFAULT_DISCOUNTS } from "@/lib/pricing";
 import { RENTAL_PAGES, type Faq as FaqItem } from "@/lib/rentals";
 import { absoluteUrl, carPath } from "@/lib/site";
 import { Container, EmptyState, Tile } from "@/components/kit";
@@ -105,6 +105,8 @@ export function RentalLanding({ crumbs, h1, intro, cars, searchHref, faq, curren
             <SearchForm
               showMonthsToggle
               months={1}
+              where="SeaTac Airport"
+              initialGeo={{ lat: AIRPORT.lat, lng: AIRPORT.lng }}
               size="lg"
               className="mt-1 max-w-3xl"
             />
