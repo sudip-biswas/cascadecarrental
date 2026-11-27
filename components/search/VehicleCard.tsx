@@ -9,6 +9,7 @@ import {
   carHref,
   coverImage,
   formatMiles,
+  monthPrice,
   offersUnlimitedMiles,
   roughPrice,
   tripPrice,
@@ -26,6 +27,8 @@ interface Props {
   months?: number | null;
   /** tile: photo on top. row: photo beside the details. compact: small phone row. */
   layout?: "tile" | "row" | "compact";
+  /** Monthly landing page: tile leads with $/month instead of $/day. */
+  priceMode?: "month";
   priority?: boolean;
   /** Shows the heart. Leave out where saving makes no sense. */
   favorite?: { userId: string | null; saved: boolean };
@@ -73,12 +76,12 @@ const HEART_SPOT = {
   compact: "top-3 left-3",
 } as const;
 
-export function VehicleCard({ favorite, ...props }: Props) {
-  if (!favorite) return <Card {...props} />;
+export function VehicleCard({ favorite, priceMode, ...props }: Props) {
+  if (!favorite) return <Card {...props} priceMode={priceMode} />;
   const layout = props.layout ?? "tile";
   return (
     <div className="relative">
-      <Card {...props} heart />
+      <Card {...props} priceMode={priceMode} heart />
       <FavoriteButton
         vehicleId={props.vehicle.id}
         userId={favorite.userId}
@@ -107,7 +110,7 @@ function SaveTag({ pct }: { pct: number }) {
   return <Tag tone="mint">Save {pct}%</Tag>;
 }
 
-function Card({ vehicle, dates, fromTime, untilTime, months, layout = "tile", priority, heart, distanceMi }: Omit<Props, "favorite"> & { heart?: boolean }) {
+function Card({ vehicle, dates, fromTime, untilTime, months, layout = "tile", priceMode, priority, heart, distanceMi }: Omit<Props, "favorite"> & { heart?: boolean }) {
   const href = carHref(vehicle, dates, fromTime, untilTime);
   const name = `${vehicle.make} ${vehicle.model}`;
   const price = dates ? tripPrice(vehicle, dates.from, dates.until) : null;
@@ -120,6 +123,7 @@ function Card({ vehicle, dates, fromTime, untilTime, months, layout = "tile", pr
       ? Math.round(price.totalCents / price.days)
       : (price?.dailyCents ?? vehicle.price_today_cents ?? vehicle.daily_rate_cents);
   const week = dates ? null : weekPrice(vehicle);
+  const month = priceMode === "month" && !dates ? monthPrice(vehicle) : null;
   const topHost = vehicle.host?.top_host ?? false;
   const unlimited = offersUnlimitedMiles(vehicle);
   const place = distanceMi != null ? `${vehicle.location_name} · ${formatMiles(distanceMi)}` : vehicle.location_name;
@@ -247,17 +251,30 @@ function Card({ vehicle, dates, fromTime, untilTime, months, layout = "tile", pr
         <span className="text-[15px] text-slate">
           {vehicle.year} · {vehicle.seats} seats · {place}
         </span>
-        <span className="figures flex items-baseline justify-between gap-2 pt-2">
-          <span className="text-[22px] font-extrabold">
-            {formatPrice(perDay)}
-            <span className="text-sm font-medium text-slate"> /day</span>
-          </span>
-          {total !== null && (
-            <span className="text-sm text-slate">
-              <WasPrice cents={price?.beforeDiscountCents ?? null} /> {roughPrice(total)} for your dates
+        {month ? (
+          <span className="figures flex flex-col gap-0.5 pt-2">
+            <span className="flex flex-wrap items-baseline gap-2">
+              <span className="text-[22px] font-extrabold">
+                {roughPrice(month.cents)}
+                <span className="text-sm font-medium text-slate"> /month</span>
+              </span>
+              <SaveTag pct={month.pct} />
             </span>
-          )}
-        </span>
+            <span className="text-[15px] text-slate">{formatPrice(perDay)}/day</span>
+          </span>
+        ) : (
+          <span className="figures flex items-baseline justify-between gap-2 pt-2">
+            <span className="text-[22px] font-extrabold">
+              {formatPrice(perDay)}
+              <span className="text-sm font-medium text-slate"> /day</span>
+            </span>
+            {total !== null && (
+              <span className="text-sm text-slate">
+                <WasPrice cents={price?.beforeDiscountCents ?? null} /> {roughPrice(total)} for your dates
+              </span>
+            )}
+          </span>
+        )}
       </span>
     </Link>
   );

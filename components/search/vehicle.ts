@@ -1,4 +1,4 @@
-import { bestDiscount, computePricing, dayRates, lastMinuteBoostPct, type DailyPrices } from "@/lib/pricing";
+import { bestDiscount, computePricing, dayRates, lastMinuteBoostPct, DAYS_PER_MONTH, type DailyPrices } from "@/lib/pricing";
 import { carPath } from "@/lib/site";
 import { CLOSED_ACCOUNT_NAME, formatPrice, zonedInstant } from "@/lib/utils";
 import { VEHICLE_PUBLIC, type PublicVehicle } from "@/lib/supabase/columns";
@@ -71,6 +71,17 @@ export function weekPrice(vehicle: PublicVehicle & { price_today_cents?: number 
   if (!discount) return null;
   const week = (vehicle.price_today_cents ?? vehicle.daily_rate_cents) * 7;
   return { cents: week - Math.round((week * discount.pct) / 100), pct: discount.pct };
+}
+
+/**
+ * About what a month costs without dates: today's price for 30 days with the
+ * car's monthly discount, before tax. Null when the car has no monthly discount.
+ */
+export function monthPrice(vehicle: PublicVehicle & { price_today_cents?: number }) {
+  const pct = vehicle.monthly_discount_pct ?? 0;
+  if (!pct) return null;
+  const month = (vehicle.price_today_cents ?? vehicle.daily_rate_cents) * DAYS_PER_MONTH;
+  return { cents: month - Math.round((month * pct) / 100), pct };
 }
 
 /** What a card shows a day: the average over the dates, else today's dynamic price, never the bare daily rate. */

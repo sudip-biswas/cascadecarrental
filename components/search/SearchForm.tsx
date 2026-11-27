@@ -33,6 +33,8 @@ interface Props {
   untilTime?: string;
   /** Set for a monthly search: how many months from `from`. */
   months?: number | null;
+  /** Show the Daily / Monthly toggle. Only the monthly landing page shows it. */
+  showMonthsToggle?: boolean;
   /** Filters to keep when searching again from the results page. */
   keep?: Record<string, string>;
   size?: "lg" | "md";
@@ -42,7 +44,7 @@ interface Props {
 type Mode = "daily" | "monthly";
 
 /** Where and when. Sends people to /search with both in the URL. */
-export function SearchForm({ where = "", initialGeo, from, until, fromTime, untilTime, months, keep, size = "lg", className }: Props) {
+export function SearchForm({ where = "", initialGeo, from, until, fromTime, untilTime, months, showMonthsToggle = false, keep, size = "lg", className }: Props) {
   const router = useRouter();
   const [place, setPlace] = useState(where);
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(initialGeo ?? null);
@@ -173,31 +175,33 @@ export function SearchForm({ where = "", initialGeo, from, until, fromTime, unti
         className
       )}
     >
-      <div role="radiogroup" aria-label="Trip length" className="flex gap-1 sm:basis-full">
-        {(
-          [
-            { value: "daily", label: "Daily" },
-            { value: "monthly", label: "Monthly" },
-          ] as const
-        ).map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={mode === option.value}
-            onClick={() => {
-              setMode(option.value);
-              setDates((d) => ({ from: d.from }));
-            }}
-            className={cn(
-              "h-9 rounded-[12px] px-4 text-[15px] font-semibold transition-colors active:scale-[0.97] active:opacity-75",
-              mode === option.value ? "bg-ink text-white" : "text-ink hover:bg-board"
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+      {showMonthsToggle && (
+        <div role="radiogroup" aria-label="Trip length" className="flex gap-1 sm:basis-full">
+          {(
+            [
+              { value: "daily", label: "Dates" },
+              { value: "monthly", label: "Months" },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={mode === option.value}
+              onClick={() => {
+                setMode(option.value);
+                setDates((d) => ({ from: d.from }));
+              }}
+              className={cn(
+                "h-9 rounded-[12px] px-4 text-[15px] font-semibold transition-colors active:scale-[0.97] active:opacity-75",
+                mode === option.value ? "bg-ink text-white" : "text-ink hover:bg-board"
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div ref={containerRef} className="relative flex min-w-0 flex-col sm:flex-[2_1_220px]">
         <label className="flex flex-col gap-0.5 rounded-[16px] bg-board px-4 py-2.5 focus-within:ring-2 focus-within:ring-ink">
           <span className="text-[13px] font-semibold text-slate">Where</span>

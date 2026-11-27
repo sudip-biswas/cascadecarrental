@@ -81,29 +81,45 @@ export const RENTAL_PAGES: RentalPage[] = [
   },
   {
     slug: "monthly-car-rental",
-    label: "Week or longer",
-    h1: "Weekly and monthly car rental in Seattle",
-    title: "Weekly and monthly car rental in Seattle",
+    label: "Long-term & monthly",
+    h1: "Long-term car rental in Seattle",
+    title: "Long-term & monthly car rental in Seattle | Cascade",
     description:
-      "Long-term car rental in Seattle from local hosts who discount trips of a week or a month. The discount is applied automatically at checkout.",
+      "Long-term car rental in Seattle with automatic monthly discounts up to 30%, 6,000 miles included per month, and no rental counter. Book 30 days or more and the monthly rate is shown before you pay.",
     intro: [
-      "Staying a while, between cars, or waiting on a repair? These hosts discount trips of 7 days or more, and many go further for 30 days or more.",
-      "The discount is worked out from your dates and shown before you pay. There's nothing to ask for and no code to enter.",
+      "Staying a while, between cars, relocating, or waiting on a repair? Book 30 days or more and the monthly discount — up to 30% — applies automatically. No code, nothing to ask for.",
+      "The discounted total, including tax, is shown before you pay. Pick up at the SeaTac Airport parking garage or the DoubleTree by Hilton SeaTac — we meet you at the car.",
     ],
     filters: { weekDiscount: true },
     search: { discount: "week" },
     faq: [
       {
-        q: "How do weekly and monthly discounts work?",
-        a: "Each host sets their own. Book 7 days or more and the weekly discount applies; book 30 days or more and the monthly one applies instead, if the host sets one.",
+        q: "How do monthly discounts work?",
+        a: "Book 30 days or more and the monthly discount applies automatically; shorter trips get the best tier they qualify for — 7+ days 15%, 14+ days 20%, 21+ days 25%. The discounted total is shown before you pay — no code, nothing to ask for.",
       },
       {
-        q: "Are miles included on a long rental?",
-        a: "Yes. Each car includes a set number of miles per day, so a month-long trip includes 30 days' worth. Extra miles are charged at the rate on the listing.",
+        q: "How much does a monthly rental cost?",
+        a: "It depends on the car; monthly rates are shown on every car on this page, and the cheapest cars come to a few hundred dollars less than paying the daily rate for a month. The price includes 200 miles per day (6,000 miles over 30 days), and the total including tax is shown before you pay.",
+      },
+      {
+        q: "How many miles are included?",
+        a: "200 miles per day, so 6,000 miles on a 30-day rental. Extra miles are 20¢ per mile.",
+      },
+      {
+        q: "Do I need my own insurance?",
+        a: "No. Choose a protection plan at checkout: Basic $9.99/day, Standard $16.99/day, or Complete $24.99/day. If you have personal auto insurance, it may apply as well.",
+      },
+      {
+        q: "Where do I pick the car up?",
+        a: "At the SeaTac Airport parking garage or the DoubleTree by Hilton SeaTac; we meet you at the car. Pickup and return are between 8 AM and 11 PM.",
       },
       {
         q: "Can I cancel a long rental?",
-        a: "On the flexible rate you can cancel for a full refund until pick-up. The pay-now rate is cheaper and free to cancel for 24 hours after the trip is confirmed.",
+        a: "On the flexible rate, cancel any time before pick-up for a full refund. The pay-now rate costs 9% less and is free to cancel for 24 hours after the trip is confirmed.",
+      },
+      {
+        q: "What do I need to book?",
+        a: "A valid driver's license and a card. You must be 21 or older. A refundable $250 hold is placed at pick-up and released after return; it's waived with the Complete protection plan. No account is needed to book.",
       },
     ],
   },
