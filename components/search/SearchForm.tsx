@@ -257,7 +257,7 @@ export function SearchForm({ where = "", initialGeo, from, until, fromTime, unti
             setDates({ from: f });
             setMonthCount(n);
           }}
-          className="sm:flex-[2_1_280px]"
+          className="sm:order-last sm:basis-full"
         />
       ) : (
         <TripDatesPicker
