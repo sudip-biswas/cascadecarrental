@@ -136,7 +136,8 @@ export type TripEvent =
   | "review_deadline"
   | "driver_added"
   | "driver_approved"
-  | "driver_declined";
+  | "driver_declined"
+  | "refund_due";
 
 /**
  * The emails and feed items for one moment in a trip, to whoever needs them.
@@ -289,6 +290,15 @@ export async function notifyTrip(
       return;
     case "driver_declined":
       await toGuest(`${host} declined ${extra.note ?? "your driver"}`, `${car}, ${when}.\nThey can't drive the car on this trip. Message ${host} if you're not sure why.`);
+      return;
+    // Policy: automated refunds are disabled. When one is owed, code records it
+    // and notifies the host to process manually in the Stripe Dashboard.
+    case "refund_due":
+      await toHost(
+        `Refund due${amount ? `: ${amount}` : ""} — action needed`,
+        `${guest}, ${car}, ${when}.\nA refund is owed but was not issued automatically. Process it in the Stripe Dashboard.`,
+        "Open the trip"
+      );
       return;
   }
 }

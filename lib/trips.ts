@@ -34,20 +34,13 @@ export function holdsDates(now = Date.now()) {
   return `status.neq.pending,payment_status.not.in.(pending,failed),created_at.gte.${cutoff}`;
 }
 
-/** One key for every full refund of a payment, so two code paths can't refund it twice. */
-function fullRefund(paymentIntentId: string) {
-  return stripe.refunds.create(
-    { payment_intent: paymentIntentId },
-    { idempotencyKey: `full-refund-${paymentIntentId}` }
-  );
-}
-
 /**
- * Lets go of a payment the guest shouldn't pay: releases the card hold, or
- * refunds it in full if it was charged in the meantime (say the host accepted
- * at the same moment).
+ * Voids a payment the guest shouldn't pay (the card hold is released).
+ * Per policy: if the PI has already captured money, we do NOT refund it
+ * automatically — that requires Sudip to act manually in Stripe Dashboard.
+ * Returns "captured" in that case so the caller can store it on the trip row.
  */
-async function releasePayment(paymentIntentId: string | null): Promise<"voided" | "refunded"> {
+async function releasePayment(paymentIntentId: string | null): Promise<"voided" | "refunded" | "captured"> {
   if (!paymentIntentId) return "voided";
   try {
     await stripe.paymentIntents.cancel(paymentIntentId);
@@ -57,8 +50,10 @@ async function releasePayment(paymentIntentId: string | null): Promise<"voided" 
   }
   const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
   if (pi.status !== "succeeded") return "voided";
-  await fullRefund(paymentIntentId);
-  return "refunded";
+  // Policy: never issue automated refunds. The PI captured money — flag it for
+  // manual action instead of calling stripe.refunds.create.
+  console.error("[ALERT] releasePayment: PI already captured — manual refund required in Stripe Dashboard:", paymentIntentId);
+  return "captured";
 }
 
 async function updateTrip(id: string, update: TripUpdate) {
@@ -86,6 +81,20 @@ export async function releaseStaleCheckouts(vehicleId: string, guestId: string) 
     .or(`created_at.lt.${cutoff},guest_id.eq.${guestId}`);
 
   for (const trip of stale ?? []) {
+    // Check Stripe truth before releasing: the row's payment_status may be stale
+    // (missed webhook). A succeeded PI means the checkout did complete — self-heal
+    // rather than voiding money the guest already paid.
+    if (trip.stripe_payment_intent_id) {
+      try {
+        const pi = await stripe.paymentIntents.retrieve(trip.stripe_payment_intent_id);
+        if (pi.status === "succeeded") {
+          await applyPaymentIntent(pi);
+          continue; // self-healed; do not void
+        }
+      } catch {
+        // If we can't reach Stripe, fall through to release conservatively.
+      }
+    }
     const released = await releasePayment(trip.stripe_payment_intent_id);
     await updateTrip(trip.id, {
       status: "cancelled_guest",
@@ -180,9 +189,12 @@ export async function applyPaymentIntent(pi: Stripe.PaymentIntent) {
     case "succeeded": {
       if (trip.payment_status === "captured" || trip.payment_status === "refunded") break;
       if (cancelled) {
-        // Paid after the trip was called off: give it back.
-        await fullRefund(pi.id);
-        update = { payment_status: "refunded" };
+        // Paid after the trip was called off. Per policy: no automated refunds.
+        // Record the captured money and alert — Sudip processes the refund manually
+        // in Stripe Dashboard. The trip stays cancelled in status.
+        const charge = typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id;
+        console.error("[ALERT] Payment arrived after cancellation — manual refund required in Stripe Dashboard. PI:", pi.id, "trip:", trip.id);
+        update = { payment_status: "captured", stripe_charge_id: charge ?? null };
         break;
       }
       const charge = typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge?.id;
@@ -259,12 +271,11 @@ export async function settleCancellation(
   if (trip.payment_status === "pending" || trip.payment_status === "authorized") {
     return releasePayment(trip.stripe_payment_intent_id);
   }
-  if (trip.payment_status === "captured" && refundCents > 0 && trip.stripe_payment_intent_id) {
-    await stripe.refunds.create(
-      { payment_intent: trip.stripe_payment_intent_id, amount: refundCents },
-      { idempotencyKey: `cancel-${trip.id}` }
-    );
-    return "refunded";
+  if (trip.payment_status === "captured" && refundCents > 0) {
+    // Policy: no automated refunds. Notify the host that manual action is needed.
+    console.error("[ALERT] Refund due on cancellation — manual action required:", trip.id, "amount:", refundCents);
+    notifyTripLater(trip.id, "refund_due", { amountCents: refundCents });
+    return "captured"; // money is still present; Sudip refunds via Stripe Dashboard
   }
   return trip.payment_status;
 }
@@ -313,6 +324,8 @@ export interface SettleResult {
   started: number;
   expired: number;
   paidOut: number;
+  /** Trips whose missed-webhook was caught by the reconciliation pass and self-healed. */
+  healed?: number;
 }
 
 const PAYOUT_SELECT = "id, host_id, subtotal_cents, stripe_charge_id";
@@ -368,6 +381,33 @@ async function settle(scope: string | null): Promise<SettleResult> {
   // holdDeposit never throws, so one card can't stop the rest.
   await Promise.all((started ?? []).map((t) => holdDeposit(t.id)));
   result.started = started?.length ?? 0;
+
+  // Reconcile: for every pending trip with a PI, check Stripe truth.
+  // This catches missed webhooks before the lapse check runs — a succeeded PI
+  // heals the trip to captured/approved without any refund. Without this,
+  // a missed webhook leaves the row payment_status=pending, which the lapse
+  // block would then try to void (see the Larissa incident, Nov 26 2026).
+  const { data: pendingPIs } = await scoped(
+    admin
+      .from("trips")
+      .select("id, stripe_payment_intent_id")
+      .eq("status", "pending")
+      .eq("payment_status", "pending")
+      .not("stripe_payment_intent_id", "is", null)
+      .gte("starts_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+  );
+  for (const t of pendingPIs ?? []) {
+    if (!t.stripe_payment_intent_id) continue;
+    try {
+      const pi = await stripe.paymentIntents.retrieve(t.stripe_payment_intent_id);
+      if (pi.status === "succeeded") {
+        await applyPaymentIntent(pi);
+        result.healed = (result.healed ?? 0) + 1;
+      }
+    } catch (err) {
+      console.error("[settle] reconcile failed for trip", t.id, err);
+    }
+  }
 
   // Only auto-close host-missed requests (payment_status = "authorized"): the guest's
   // card has an active hold that must be released. Abandoned checkouts (payment_status ≠
